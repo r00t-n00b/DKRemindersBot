@@ -344,6 +344,42 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return
 
+async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+
+    if chat is None or message is None:
+        return
+
+    now = datetime.now(TZ)
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, text, remind_at
+        FROM reminders
+        WHERE chat_id = ? AND delivered = 0
+        ORDER BY remind_at ASC
+        """,
+        (chat.id,),
+    )
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.reply_text("Напоминаний нет.")
+        return
+
+    lines = []
+    for rid, text, remind_at_str in rows:
+        dt = datetime.fromisoformat(remind_at_str)
+        ts = dt.strftime("%d.%m %H:%M")
+        lines.append(f"{rid}. {ts} - {text}")
+
+    reply = "Активные напоминания:\n\n" + "\n".join(lines)
+    await message.reply_text(reply)
+
     is_private = chat.type == Chat.PRIVATE
 
     target_chat_id = chat.id
@@ -515,6 +551,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("remind", remind_command))
+application.add_handler(CommandHandler("list", list_command))
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
