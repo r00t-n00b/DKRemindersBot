@@ -9,11 +9,12 @@ from typing import Optional, List
 
 from zoneinfo import ZoneInfo
 
-from telegram import Update, Chat
+from telegram import Update, Chat, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    CallbackQueryHandler,
 )
 
 # ===== Настройки =====
@@ -143,8 +144,7 @@ def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
         ON CONFLICT(alias) DO UPDATE SET
             chat_id = excluded.chat_id,
             title = excluded.title
-        """
-        ,
+        """,
         (alias, chat_id, title),
     )
     conn.commit()
@@ -169,6 +169,44 @@ def get_all_aliases():
     rows = c.fetchall()
     conn.close()
     return rows
+
+
+def get_active_reminders_for_chat(chat_id: int) -> List[Reminder]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, text, remind_at, created_by
+        FROM reminders
+        WHERE chat_id = ? AND delivered = 0
+        ORDER BY remind_at ASC
+        """,
+        (chat_id,),
+    )
+    rows = c.fetchall()
+    conn.close()
+
+    reminders: List[Reminder] = []
+    for row in rows:
+        rid, chat_id_db, text, remind_at_str, created_by = row
+        reminders.append(
+            Reminder(
+                id=rid,
+                chat_id=chat_id_db,
+                text=text,
+                remind_at=datetime.fromisoformat(remind_at_str),
+                created_by=created_by,
+            )
+        )
+    return reminders
+
+
+def delete_reminder_by_id(reminder_id: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
 
 
 # ===== Парсинг команд =====
@@ -456,32 +494,95 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if chat is None or message is None:
         return
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, text, remind_at
-        FROM reminders
-        WHERE chat_id = ? AND delivered = 0
-        ORDER BY remind_at ASC
-        """,
-        (chat.id,),
-    )
-    rows = c.fetchall()
-    conn.close()
-
-    if not rows:
-        await message.reply_text("Напоминаний нет.")
+    reminders = get_active_reminders_for_chat(chat.id)
+    if not reminders:
+        await message.reply_text("Активных напоминаний нет.")
         return
 
-    lines = []
-    for rid, text, remind_at_str in rows:
-        dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%M")
-        lines.append(f"{rid}. {ts} - {text}")
+    # Текстовый список
+    lines: list[str] = ["Активные напоминания:", ""]
+    for idx, r in enumerate(reminders, start=1):
+        when_str = r.remind_at.astimezone(TZ).strftime("%d.%m %H:%M")
+        lines.append(f"{idx}. {when_str} - {r.text}")
+    text = "\n".join(lines)
 
-    reply = "Активные напоминания:\n\n" + "\n".join(lines)
-    await message.reply_text(reply)
+    # Кнопки: ❌1 ❌2 ... по 5 в ряд
+    buttons: list[InlineKeyboardButton] = []
+    for idx, r in enumerate(reminders, start=1):
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"❌{idx}",
+                callback_data=f"del:{r.id}",
+            )
+        )
+
+    rows: list[list[InlineKeyboardButton]] = []
+    for i in range(0, len(buttons), 5):
+        rows.append(buttons[i:i + 5])
+
+    reply_markup = InlineKeyboardMarkup(rows)
+
+    await message.reply_text(text, reply_markup=reply_markup)
+
+
+async def delete_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+
+    data = query.data or ""
+    if not data.startswith("del:"):
+        return
+
+    try:
+        reminder_id = int(data.split(":", 1)[1])
+    except ValueError:
+        await query.answer("Не могу понять, что удалить.", show_alert=True)
+        return
+
+    # Удаляем ремайндер
+    delete_reminder_by_id(reminder_id)
+
+    msg = query.message
+    if msg is None:
+        await query.answer("Сообщение не найдено.", show_alert=True)
+        return
+
+    chat = msg.chat
+    reminders = get_active_reminders_for_chat(chat.id)
+
+    # Если ничего не осталось - просто редактируем текст без кнопок
+    if not reminders:
+        await query.edit_message_text("Активных напоминаний нет.")
+        await query.answer("Напоминание удалено.")
+        return
+
+    # Пересобираем текст
+    lines: list[str] = ["Активные напоминания:", ""]
+    for idx, r in enumerate(reminders, start=1):
+        when_str = r.remind_at.astimezone(TZ).strftime("%d.%m %H:%M")
+        lines.append(f"{idx}. {when_str} - {r.text}")
+    text = "\n".join(lines)
+
+    # Пересобираем кнопки
+    buttons: list[InlineKeyboardButton] = []
+    for idx, r in enumerate(reminders, start=1):
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"❌{idx}",
+                callback_data=f"del:{r.id}",
+            )
+        )
+
+    rows: list[list[InlineKeyboardButton]] = []
+    for i in range(0, len(buttons), 5):
+        rows.append(buttons[i:i + 5])
+
+    reply_markup = InlineKeyboardMarkup(rows)
+
+    # Обновляем то же сообщение
+    await query.edit_message_text(text, reply_markup=reply_markup)
+    await query.answer("Напоминание удалено.")
 
 
 # ===== Фоновый worker =====
@@ -538,6 +639,7 @@ def main() -> None:
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
+    application.add_handler(CallbackQueryHandler(delete_reminder_callback, pattern=r"^del:"))
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
