@@ -19,7 +19,7 @@ from telegram.ext import (
 # ===== Настройки =====
 
 TZ = ZoneInfo("Europe/Madrid")
-DB_PATH = os.environ.get("DB_PATH", "reminders.db")
+DB_PATH = os.environ.get("DB_PATH", "/data/reminders.db")
 
 logging.basicConfig(
     level=logging.INFO,
