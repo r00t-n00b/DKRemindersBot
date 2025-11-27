@@ -1,39 +1,68 @@
-import os
 import asyncio
 import logging
+import os
+import re
 import sqlite3
-from datetime import datetime, time as dtime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Optional, List
 
 from zoneinfo import ZoneInfo
-from telegram import Update
+
+from telegram import Update, Chat
 from telegram.ext import (
     Application,
+    ApplicationBuilder,
     CommandHandler,
     ContextTypes,
 )
 
-DB_PATH = "reminders.db"
+# ===== Настройки =====
+
 TZ = ZoneInfo("Europe/Madrid")
+DB_PATH = os.environ.get("DB_PATH", "reminders.db")
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
+# ===== Модель данных =====
 
-# ---------- БД ----------
+@dataclass
+class Reminder:
+    id: int
+    chat_id: int
+    text: str
+    remind_at: datetime
+    created_by: Optional[int]
+
+
+# ===== Работа с БД =====
 
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
+    c = conn.cursor()
+    c.execute(
         """
         CREATE TABLE IF NOT EXISTS reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER NOT NULL,
             text TEXT NOT NULL,
-            remind_at TEXT NOT NULL
+            remind_at TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_aliases (
+            alias TEXT PRIMARY KEY,
+            chat_id INTEGER NOT NULL,
+            title TEXT
         )
         """
     )
@@ -41,207 +70,452 @@ def init_db() -> None:
     conn.close()
 
 
-def add_reminder(chat_id: int, text: str, remind_at: datetime) -> None:
+def add_reminder(
+    chat_id: int,
+    text: str,
+    remind_at: datetime,
+    created_by: Optional[int],
+) -> int:
     conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO reminders (chat_id, text, remind_at) VALUES (?, ?, ?)",
-        (chat_id, text, remind_at.isoformat()),
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO reminders (chat_id, text, remind_at, created_by, created_at, delivered)
+        VALUES (?, ?, ?, ?, ?, 0)
+        """,
+        (
+            chat_id,
+            text,
+            remind_at.isoformat(),
+            created_by,
+            datetime.now(TZ).isoformat(),
+        ),
+    )
+    reminder_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return reminder_id
+
+
+def get_due_reminders(now: datetime) -> List[Reminder]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, text, remind_at, created_by
+        FROM reminders
+        WHERE delivered = 0 AND remind_at <= ?
+        ORDER BY remind_at ASC
+        """,
+        (now.isoformat(),),
+    )
+    rows = c.fetchall()
+    conn.close()
+    reminders: List[Reminder] = []
+    for row in rows:
+        rid, chat_id, text, remind_at_str, created_by = row
+        reminders.append(
+            Reminder(
+                id=rid,
+                chat_id=chat_id,
+                text=text,
+                remind_at=datetime.fromisoformat(remind_at_str),
+                created_by=created_by,
+            )
+        )
+    return reminders
+
+
+def mark_reminder_sent(reminder_id: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE reminders SET delivered = 1 WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+
+def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO chat_aliases(alias, chat_id, title)
+        VALUES (?, ?, ?)
+        ON CONFLICT(alias) DO UPDATE SET
+            chat_id = excluded.chat_id,
+            title = excluded.title
+        """,
+        (alias, chat_id, title),
     )
     conn.commit()
     conn.close()
 
 
-def get_upcoming_reminders(chat_id: int | None = None):
+def get_chat_id_by_alias(alias: str) -> Optional[int]:
     conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    if chat_id is None:
-        cur.execute(
-            "SELECT id, chat_id, text, remind_at FROM reminders ORDER BY remind_at ASC"
-        )
-    else:
-        cur.execute(
-            "SELECT id, chat_id, text, remind_at FROM reminders WHERE chat_id = ? ORDER BY remind_at ASC",
-            (chat_id,),
-        )
-    rows = cur.fetchall()
+    c = conn.cursor()
+    c.execute("SELECT chat_id FROM chat_aliases WHERE alias = ?", (alias,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return int(row[0])
+    return None
+
+
+def get_all_aliases() -> List[tuple]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT alias, chat_id, title FROM chat_aliases ORDER BY alias")
+    rows = c.fetchall()
     conn.close()
     return rows
 
 
-def get_due_reminders(now: datetime):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id, chat_id, text, remind_at FROM reminders WHERE remind_at <= ?",
-        (now.isoformat(),),
-    )
-    rows = cur.fetchall()
-    if rows:
-        ids = [row[0] for row in rows]
-        cur.execute(
-            f"DELETE FROM reminders WHERE id IN ({','.join('?' for _ in ids)})",
-            ids,
-        )
-        conn.commit()
-    conn.close()
-    return rows
+# ===== Парсинг команд =====
+
+REMIND_LINE_RE = re.compile(
+    r"""
+    ^\s*
+    (?P<day>\d{1,2})
+    [./](?P<month>\d{1,2})
+    \s+
+    (?P<hour>\d{1,2})
+    :
+    (?P<minute>\d{2})
+    \s*
+    [-–—]
+    \s*
+    (?P<text>.+)
+    $
+    """,
+    re.VERBOSE,
+)
 
 
-# ---------- Парсинг даты/времени ----------
-
-def parse_date_time(date_str: str, time_str: str) -> datetime | None:
+def parse_reminder_line(line: str, now: datetime) -> Reminder:
     """
-    Ожидаем формат:
-    - дата: 1.12 или 01.12
-    - время: 11:00 или 11.00
+    Парсит строку вида:
+    28.11 12:00 - завтра футбол в 20:45
+    Возвращает (remind_at, text) - без chat_id и id.
     """
+    m = REMIND_LINE_RE.match(line.strip())
+    if not m:
+        raise ValueError("Ожидаю формат 'DD.MM HH:MM - текст'")
+
+    day = int(m.group("day"))
+    month = int(m.group("month"))
+    hour = int(m.group("hour"))
+    minute = int(m.group("minute"))
+    text = m.group("text").strip()
+
+    year = now.year
     try:
-        day_str, month_str = date_str.split(".")
-        day = int(day_str)
-        month = int(month_str)
-        # год - текущий или следующий, если дата уже прошла
-        now = datetime.now(TZ)
-        year = now.year
-        dt_candidate = datetime(year, month, day, tzinfo=TZ)
-        if dt_candidate.date() < now.date():
-            year += 1
-        # время
-        sep = ":" if ":" in time_str else "."
-        hh_str, mm_str = time_str.split(sep)
-        hh = int(hh_str)
-        mm = int(mm_str)
-        return datetime(year, month, day, hh, mm, tzinfo=TZ)
-    except Exception as e:
-        logger.warning("Не смог распарсить дату/время %s %s: %s", date_str, time_str, e)
-        return None
+        dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+    except ValueError as e:
+        raise ValueError(f"Неверная дата или время: {e}") from e
+
+    # Если дата уже в прошлом - считаем, что имеется в виду следующий год
+    if dt < now - timedelta(minutes=1):
+        try:
+            dt = dt.replace(year=year + 1)
+        except ValueError as e:
+            raise ValueError(f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}") from e
+
+    dummy = Reminder(id=-1, chat_id=0, text=text, remind_at=dt, created_by=None)
+    return dummy
 
 
-# ---------- Хендлеры команд ----------
+def extract_after_command(text: str) -> str:
+    """
+    Убирает /remind или /remind@Bot и возвращает остальной текст (с переносами строк).
+    """
+    if not text:
+        return ""
+    stripped = text.strip()
+    parts = stripped.split(maxsplit=1)
+    if not parts:
+        return ""
+    if not parts[0].startswith("/"):
+        return stripped
+    if len(parts) == 1:
+        return ""
+    return parts[1]
+
+
+def maybe_split_alias_first_token(args_text: str) -> tuple[Optional[str], str]:
+    """
+    Для лички: если первая "словечка" не похоже на дату, считаем его alias.
+
+    Пример:
+    "football 28.11 12:00 - текст"
+      -> ("football", "28.11 12:00 - текст")
+
+    "28.11 12:00 - текст"
+      -> (None, "28.11 12:00 - текст")
+    """
+    args_text = args_text.strip()
+    if not args_text:
+        return None, ""
+
+    first, *rest = args_text.split(maxsplit=1)
+    # Похоже ли это на дату? 2 цифры.2 цифры
+    if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
+        return None, args_text
+
+    if not rest:
+        return first, ""
+    return first, rest[0]
+
+
+# ===== Хендлеры команд =====
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
-        "Привет! Я бот-напоминалка.\n\n"
-        "Формат команды:\n"
-        "/remind 1.12 11:00 Завтра в 20:45 футбол\n\n"
-        "Это значит: 1 декабря в 11:00 я напомню в этот чат текстом "
-        "«Завтра в 20:45 футбол».\n\n"
-        "Посмотреть все напоминания в чате:\n"
-        "/list"
+        "Привет. Я твой личный бот для напоминаний.\n\n"
+        "Основное:\n"
+        "/remind DD.MM HH:MM - текст\n"
+        "Пример: /remind 28.11 12:00 - завтра футбол в 20:45\n\n"
+        "Bulk (много строк сразу):\n"
+        "/remind\\n"
+        "- 28.11 12:00 - завтра спринт Ф1 в 15:00\\n"
+        "- 28.11 12:00 - завтра футбол в 20:45\n\n"
+        "Личка с alias чата:\n"
+        "1) В чате: /linkchat football\n"
+        "2) В личке: /remind football 28.11 12:00 - завтра футбол\n"
     )
     await update.message.reply_text(text)
 
 
-async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message is None:
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await start(update, context)
+
+
+async def linkchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+
+    if chat is None or message is None:
         return
 
-    chat_id = update.effective_chat.id
-
-    if len(context.args) < 3:
-        await update.message.reply_text(
-            "Нужно так:\n/reminд 1.12 11:00 Текст напоминания"
-        )
+    if chat.type == Chat.PRIVATE:
+        await message.reply_text("Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать.")
         return
 
-    date_str = context.args[0]
-    time_str = context.args[1]
-    text = " ".join(context.args[2:])
-
-    remind_at = parse_date_time(date_str, time_str)
-    if remind_at is None:
-        await update.message.reply_text(
-            "Не понял дату/время. Пример: /remind 1.12 11:00 Завтра футбол"
-        )
+    if not context.args:
+        await message.reply_text("Формат: /linkchat alias\nНапример: /linkchat football")
         return
 
-    add_reminder(chat_id, text, remind_at)
+    alias = context.args[0].strip()
+    if not alias:
+        await message.reply_text("Alias не должен быть пустым.")
+        return
 
-    await update.message.reply_text(
-        f"Ок, напомню {remind_at.strftime('%d.%m.%Y в %H:%M')}:\n{text}"
+    title = chat.title or chat.username or str(chat.id)
+    set_chat_alias(alias, chat.id, title)
+
+    await message.reply_text(
+        f"Ок, запомнил этот чат как '{alias}'.\n"
+        f"Теперь в личке можно писать:\n"
+        f"/remind {alias} 28.11 12:00 - завтра футбол"
     )
 
 
-async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message is None:
+async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+    user = update.effective_user
+
+    if chat is None or message is None or user is None:
         return
 
-    chat_id = update.effective_chat.id
-    rows = get_upcoming_reminders(chat_id)
+    now = datetime.now(TZ)
+    raw_args = extract_after_command(message.text or "")
 
-    if not rows:
-        await update.message.reply_text("В этом чате нет запланированных напоминаний.")
+    if not raw_args.strip():
+        await message.reply_text(
+            "Формат:\n"
+            "/remind DD.MM HH:MM - текст\n"
+            "или bulk:\n"
+            "/remind\\n"
+            "- 28.11 12:00 - завтра футбол\n"
+        )
         return
 
-    lines = ["Запланированные напоминания:"]
-    for _, _chat_id, text, remind_at_str in rows:
-        dt = datetime.fromisoformat(remind_at_str)
-        lines.append(f"- {dt.strftime('%d.%m %H:%M')} — {text}")
+    is_private = chat.type == Chat.PRIVATE
 
-    await update.message.reply_text("\n".join(lines))
+    target_chat_id = chat.id
+    used_alias: Optional[str] = None
+
+    # В личке допускаем alias первым словом
+    if is_private:
+        maybe_alias, rest = maybe_split_alias_first_token(raw_args)
+        if maybe_alias is not None:
+            alias_chat_id = get_chat_id_by_alias(maybe_alias)
+            if alias_chat_id is None:
+                aliases = get_all_aliases()
+                if not aliases:
+                    await message.reply_text(
+                        f"Alias '{maybe_alias}' не найден.\n"
+                        f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
+                    )
+                else:
+                    known = ", ".join(a for a, _, _ in aliases)
+                    await message.reply_text(
+                        f"Alias '{maybe_alias}' не найден.\n"
+                        f"Из известных: {known}"
+                    )
+                return
+
+            target_chat_id = alias_chat_id
+            used_alias = maybe_alias
+            raw_args = rest.strip()
+
+            if not raw_args:
+                await message.reply_text(
+                    "После alias нужно указать дату и текст.\n"
+                    "Пример:\n"
+                    f"/remind {used_alias} 28.11 12:00 - завтра футбол"
+                )
+                return
+
+    # Bulk или одиночный?
+    # Bulk - если есть перенос строки.
+    if "\n" in raw_args:
+        # У тебя будет что-то вроде:
+        # "- 28.11 12:00 - текст"
+        lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
+        created = 0
+        failed = 0
+        error_lines: list[str] = []
+
+        for line in lines:
+            # убираем ведущий "- " если есть
+            if line.startswith("- "):
+                line = line[2:].strip()
+            try:
+                parsed = parse_reminder_line(line, now)
+                reminder_id = add_reminder(
+                    chat_id=target_chat_id,
+                    text=parsed.text,
+                    remind_at=parsed.remind_at,
+                    created_by=user.id,
+                )
+                created += 1
+                logger.info(
+                    "Создан bulk reminder id=%s chat_id=%s at=%s text=%s",
+                    reminder_id,
+                    target_chat_id,
+                    parsed.remind_at.isoformat(),
+                    parsed.text,
+                )
+            except Exception as e:
+                failed += 1
+                error_lines.append(f"'{line}': {e}")
+
+        reply = f"Готово. Создано напоминаний: {created}."
+        if failed:
+            reply += f" Не удалось разобрать строк: {failed}."
+        if error_lines:
+            # не спамим, максимум 5 строк деталей
+            reply += "\n\nПроблемные строки (до 5):\n" + "\n".join(error_lines[:5])
+
+        await message.reply_text(reply)
+        return
+
+    # Одиночная строка
+    try:
+        parsed = parse_reminder_line(raw_args.strip(), now)
+    except ValueError as e:
+        await message.reply_text(f"Не смог понять дату и текст: {e}")
+        return
+
+    reminder_id = add_reminder(
+        chat_id=target_chat_id,
+        text=parsed.text,
+        remind_at=parsed.remind_at,
+        created_by=user.id,
+    )
+
+    logger.info(
+        "Создан reminder id=%s chat_id=%s at=%s text=%s (from chat %s, user %s)",
+        reminder_id,
+        target_chat_id,
+        parsed.remind_at.isoformat(),
+        parsed.text,
+        chat.id,
+        user.id,
+    )
+
+    when_str = parsed.remind_at.strftime("%d.%m %H:%M")
+    if used_alias:
+        await message.reply_text(
+            f"Ок, напомню в чате '{used_alias}' {when_str}: {parsed.text}"
+        )
+    else:
+        await message.reply_text(
+            f"Ок, напомню {when_str}: {parsed.text}"
+        )
 
 
-# ---------- Фоновая проверка напоминаний ----------
+# ===== Фоновый worker =====
 
 async def reminders_worker(app: Application) -> None:
-    """
-    Вместо JobQueue просто крутится вечный цикл и каждые 30 секунд
-    проверяет, нет ли напоминаний с временем ≤ сейчас.
-    """
-    await asyncio.sleep(5)  # чуть подождать после старта
     logger.info("Запущен фоновой worker напоминаний")
-
     while True:
         try:
             now = datetime.now(TZ)
             due = get_due_reminders(now)
-            for _id, chat_id, text, remind_at_str in due:
+            if due:
+                logger.info("Нашел %s напоминаний к отправке", len(due))
+            for r in due:
                 try:
-                    await app.bot.send_message(chat_id=chat_id, text=text)
+                    await app.bot.send_message(chat_id=r.chat_id, text=r.text)
+                    mark_reminder_sent(r.id)
                     logger.info(
-                        "Отправлено напоминание в чат %s: %s (время %s)",
-                        chat_id,
-                        text,
-                        remind_at_str,
+                        "Отправлено напоминание id=%s в чат %s: %s (время %s)",
+                        r.id,
+                        r.chat_id,
+                        r.text,
+                        r.remind_at.isoformat(),
                     )
-                except Exception as e:
-                    logger.warning(
-                        "Не удалось отправить напоминание в чат %s: %s", chat_id, e
-                    )
-        except Exception as e:
-            logger.error("Ошибка в reminders_worker: %s", e)
+                except Exception:
+                    logger.exception("Ошибка при отправке напоминания id=%s", r.id)
+        except Exception:
+            logger.exception("Ошибка в worker напоминаний")
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(10)
 
 
-async def post_init(app: Application) -> None:
-    # Запускаем фонового работника после инициализации приложения
-    asyncio.create_task(reminders_worker(app))
+# ===== main =====
 
-
-# ---------- main ----------
-
-def main() -> None:
-    token = os.getenv("BOT_TOKEN")
-    if not token:
+async def main() -> None:
+    bot_token = os.environ.get("BOT_TOKEN")
+    if not bot_token:
         raise RuntimeError("Не задан BOT_TOKEN")
 
     init_db()
 
-    app = (
-        Application.builder()
-        .token(token)
-        .post_init(post_init)
-        .build()
-    )
+    app = ApplicationBuilder().token(bot_token).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("remind", remind))
-    app.add_handler(CommandHandler("list", list_cmd))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("linkchat", linkchat_command))
+    app.add_handler(CommandHandler("remind", remind_command))
 
     logger.info("Запускаем бота polling...")
-    app.run_polling()
+
+    worker_task = asyncio.create_task(reminders_worker(app))
+
+    try:
+        await app.run_polling()
+    finally:
+        # аккуратно останавливаем worker
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
