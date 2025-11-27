@@ -33,8 +33,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ===== Модель данных =====
 
+# ===== Модель данных =====
 
 @dataclass
 class Reminder:
@@ -46,7 +46,6 @@ class Reminder:
 
 
 # ===== Работа с БД =====
-
 
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -149,27 +148,6 @@ def delete_reminder(reminder_id: int) -> None:
     conn.close()
 
 
-def load_active_reminders(chat_id: int) -> List[tuple]:
-    """
-    Сырые данные для /list и обновления после удаления.
-    Возвращает список (id, text, remind_at_str).
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, text, remind_at
-        FROM reminders
-        WHERE chat_id = ? AND delivered = 0
-        ORDER BY remind_at ASC
-        """,
-        (chat_id,),
-    )
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
-
 def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -202,6 +180,23 @@ def get_all_aliases():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT alias, chat_id, title FROM chat_aliases ORDER BY alias")
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_chat_reminders(chat_id: int) -> List[tuple]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, text, remind_at
+        FROM reminders
+        WHERE chat_id = ? AND delivered = 0
+        ORDER BY remind_at ASC
+        """,
+        (chat_id,),
+    )
     rows = c.fetchall()
     conn.close()
     return rows
@@ -279,66 +274,57 @@ def extract_after_command(text: str) -> str:
     return parts[1]
 
 
-def maybe_split_alias_first_token(args_text: str):
+def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     """
-    В личке: если первое слово не похоже на дату, считаем его alias.
+    В личке: если первое словечко (на первой строке) не похоже на дату и строка
+    не начинается с "-", считаем его alias.
+
+    Работает и с bulk:
+      "football 28.11 12:00 - текст"
+        -> ("football", "28.11 12:00 - текст")
+
+      "football\n- 28.11 12:00 - текст"
+        -> ("football", "- 28.11 12:00 - текст")
+
+      "- 28.11 12:00 - текст" (bulk без alias)
+        -> (None, "- 28.11 12:00 - текст")
     """
-    args_text = args_text.strip()
     if not args_text:
         return None, ""
 
-    first, *rest = args_text.split(maxsplit=1)
-    # Похоже ли это на дату? 2 цифры.2 цифры
+    lines = args_text.splitlines()
+    first_line = lines[0].lstrip()
+    rest_lines = "\n".join(lines[1:])
+
+    if not first_line:
+        # пустая первая строка - точно не alias
+        return None, args_text.lstrip()
+
+    # если начинается с "-", это точно bulk без alias
+    if first_line.startswith("-"):
+        return None, args_text.lstrip()
+
+    first, *rest_first = first_line.split(maxsplit=1)
+
+    # если первое слово - дата, то это не alias
     if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
-        return None, args_text
+        return None, args_text.lstrip()
 
-    if not rest:
-        return first, ""
-    return first, rest[0]
+    # иначе считаем это alias
+    alias = first
+    after_alias_first_line = rest_first[0] if rest_first else ""
 
+    parts: List[str] = []
+    if after_alias_first_line:
+        parts.append(after_alias_first_line)
+    if rest_lines:
+        parts.append(rest_lines)
 
-# ===== Формирование списка напоминаний (+кнопки) =====
-
-
-def build_list_message(chat_id: int) -> Tuple[str, Optional[InlineKeyboardMarkup]]:
-    """
-    Возвращает (text, reply_markup) для текущего состояния напоминаний чата.
-    Если напоминаний нет - текст 'Напоминаний нет.' и reply_markup = None.
-    """
-    rows = load_active_reminders(chat_id)
-
-    if not rows:
-        return "Напоминаний нет.", None
-
-    lines: List[str] = []
-    buttons_row: List[InlineKeyboardButton] = []
-    keyboard: List[List[InlineKeyboardButton]] = []
-
-    for idx, (rid, text, remind_at_str) in enumerate(rows, start=1):
-        dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%M")
-        lines.append(f"{idx}. {ts} - {text}")
-
-        # красный крест ❌ и номер
-        btn = InlineKeyboardButton(
-            text=f"❌ {idx}",
-            callback_data=f"del:{rid}",
-        )
-        buttons_row.append(btn)
-        if len(buttons_row) == 5:
-            keyboard.append(buttons_row)
-            buttons_row = []
-
-    if buttons_row:
-        keyboard.append(buttons_row)
-
-    reply_text = "Активные напоминания:\n\n" + "\n".join(lines)
-    markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-    return reply_text, markup
+    new_args = "\n".join(parts).lstrip()
+    return alias, new_args
 
 
 # ===== Хендлеры команд =====
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
@@ -371,7 +357,9 @@ async def linkchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     if chat.type == Chat.PRIVATE:
-        await message.reply_text("Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать.")
+        await message.reply_text(
+            "Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать."
+        )
         return
 
     if not context.args:
@@ -391,6 +379,71 @@ async def linkchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"Теперь в личке можно писать:\n"
         f"/remind {alias} 28.11 12:00 - завтра футбол"
     )
+
+
+def build_list_message_and_keyboard(chat_id: int) -> tuple[str, Optional[InlineKeyboardMarkup]]:
+    rows = get_chat_reminders(chat_id)
+    if not rows:
+        return "Напоминаний нет.", None
+
+    # текст
+    lines: List[str] = ["Активные напоминания:", ""]
+    for idx, (rid, text, remind_at_str) in enumerate(rows, start=1):
+        dt = datetime.fromisoformat(remind_at_str)
+        ts = dt.strftime("%d.%m %H:%M")
+        lines.append(f"{idx}. {ts} - {text}")
+    text = "\n".join(lines)
+
+    # кнопки
+    buttons: List[InlineKeyboardButton] = []
+    for idx, (rid, _, _) in enumerate(rows, start=1):
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"❌ {idx}",
+                callback_data=f"del:{rid}",
+            )
+        )
+    keyboard_rows = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
+    markup = InlineKeyboardMarkup(keyboard_rows)
+
+    return text, markup
+
+
+async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+
+    if chat is None or message is None:
+        return
+
+    text, markup = build_list_message_and_keyboard(chat.id)
+    await message.reply_text(text, reply_markup=markup)
+
+
+async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None or query.message is None:
+        return
+
+    data = query.data or ""
+    if not data.startswith("del:"):
+        await query.answer()
+        return
+
+    try:
+        reminder_id = int(data.split(":", 1)[1])
+    except ValueError:
+        await query.answer("Что-то пошло не так.")
+        return
+
+    # удаляем напоминание
+    delete_reminder(reminder_id)
+
+    chat_id = query.message.chat_id
+    text, markup = build_list_message_and_keyboard(chat_id)
+
+    await query.edit_message_text(text=text, reply_markup=markup)
+    await query.answer("Удалил.")
 
 
 async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -415,13 +468,12 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     is_private = chat.type == Chat.PRIVATE
-    has_newline = "\n" in raw_args  # важно: определяем до любых манипуляций
 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
-    # В личке допускаем alias первым словом, НО только если это не bulk
-    if is_private and not has_newline:
+    # В личке допускаем alias в первой строке, но корректно обрабатываем bulk
+    if is_private:
         maybe_alias, rest = maybe_split_alias_first_token(raw_args)
         if maybe_alias is not None:
             alias_chat_id = get_chat_id_by_alias(maybe_alias)
@@ -527,50 +579,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
 
-async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat = update.effective_chat
-    message = update.effective_message
-
-    if chat is None or message is None:
-        return
-
-    text, markup = build_list_message(chat.id)
-    await message.reply_text(text, reply_markup=markup)
-
-
-async def delete_reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    if query is None or query.data is None:
-        return
-
-    await query.answer()
-
-    data = query.data
-    if not data.startswith("del:"):
-        return
-
-    try:
-        reminder_id = int(data.split(":", 1)[1])
-    except ValueError:
-        return
-
-    delete_reminder(reminder_id)
-
-    msg = query.message
-    if msg is None or msg.chat is None:
-        return
-
-    chat_id = msg.chat.id
-    text, markup = build_list_message(chat_id)
-
-    try:
-        await query.edit_message_text(text=text, reply_markup=markup)
-    except Exception:
-        logger.exception("Не удалось отредактировать сообщение после удаления напоминания")
-
-
 # ===== Фоновый worker =====
-
 
 async def reminders_worker(app: Application) -> None:
     logger.info("Запущен фоновой worker напоминаний")
@@ -607,7 +616,6 @@ async def post_init(application: Application) -> None:
 
 # ===== main =====
 
-
 def main() -> None:
     bot_token = os.environ.get("BOT_TOKEN")
     if not bot_token:
@@ -625,7 +633,7 @@ def main() -> None:
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
-    application.add_handler(CallbackQueryHandler(delete_reminder_callback, pattern=r"^del:\d+$"))
+    application.add_handler(CallbackQueryHandler(delete_callback))
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
