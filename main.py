@@ -349,37 +349,40 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
-    # В личке допускаем alias первым словом
+    # В личке допускаем alias первым словом,
+    # но если текст начинается с "-" или цифры (bulk/дата) - alias не ищем
     if is_private:
-        maybe_alias, rest = maybe_split_alias_first_token(raw_args)
-        if maybe_alias is not None:
-            alias_chat_id = get_chat_id_by_alias(maybe_alias)
-            if alias_chat_id is None:
-                aliases = get_all_aliases()
-                if not aliases:
-                    await message.reply_text(
-                        f"Alias '{maybe_alias}' не найден.\n"
-                        f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
-                    )
-                else:
-                    known = ", ".join(a for a, _, _ in aliases)
-                    await message.reply_text(
-                        f"Alias '{maybe_alias}' не найден.\n"
-                        f"Из известных: {known}"
-                    )
-                return
+        stripped = raw_args.lstrip()
+        if stripped and not stripped[0] in "-–—" and not stripped[0].isdigit():
+            maybe_alias, rest = maybe_split_alias_first_token(raw_args)
+            if maybe_alias is not None:
+                alias_chat_id = get_chat_id_by_alias(maybe_alias)
+                if alias_chat_id is None:
+                    aliases = get_all_aliases()
+                    if not aliases:
+                        await message.reply_text(
+                            f"Alias '{maybe_alias}' не найден.\n"
+                            f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
+                        )
+                    else:
+                        known = ", ".join(a for a, _, _ in aliases)
+                        await message.reply_text(
+                            f"Alias '{maybe_alias}' не найден.\n"
+                            f"Из известных: {known}"
+                        )
+                    return
 
-            target_chat_id = alias_chat_id
-            used_alias = maybe_alias
-            raw_args = rest.strip()
+                target_chat_id = alias_chat_id
+                used_alias = maybe_alias
+                raw_args = rest.strip()
 
-            if not raw_args:
-                await message.reply_text(
-                    "После alias нужно указать дату и текст.\n"
-                    "Пример:\n"
-                    f"/remind {used_alias} 28.11 12:00 - завтра футбол"
-                )
-                return
+                if not raw_args:
+                    await message.reply_text(
+                        "После alias нужно указать дату и текст.\n"
+                        "Пример:\n"
+                        f"/remind {used_alias} 28.11 12:00 - завтра футбол"
+                    )
+                    return
 
     # Bulk или одиночный?
     if "\n" in raw_args:
