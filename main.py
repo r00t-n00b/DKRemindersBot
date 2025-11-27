@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 from telegram import Update, Chat
 from telegram.ext import (
     Application,
-    ApplicationBuilder,
     CommandHandler,
     ContextTypes,
 )
@@ -144,7 +143,8 @@ def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
         ON CONFLICT(alias) DO UPDATE SET
             chat_id = excluded.chat_id,
             title = excluded.title
-        """,
+        """
+        ,
         (alias, chat_id, title),
     )
     conn.commit()
@@ -162,7 +162,7 @@ def get_chat_id_by_alias(alias: str) -> Optional[int]:
     return None
 
 
-def get_all_aliases() -> List[tuple]:
+def get_all_aliases():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT alias, chat_id, title FROM chat_aliases ORDER BY alias")
@@ -194,9 +194,8 @@ REMIND_LINE_RE = re.compile(
 
 def parse_reminder_line(line: str, now: datetime) -> Reminder:
     """
-    Парсит строку вида:
+    Строка вида:
     28.11 12:00 - завтра футбол в 20:45
-    Возвращает dummy Reminder без chat_id и id.
     """
     m = REMIND_LINE_RE.match(line.strip())
     if not m:
@@ -229,7 +228,7 @@ def parse_reminder_line(line: str, now: datetime) -> Reminder:
 
 def extract_after_command(text: str) -> str:
     """
-    Убирает /remind или /remind@Bot и возвращает остальной текст (с переносами строк).
+    Убирает /remind или /remind@Bot и возвращает остальной текст.
     """
     if not text:
         return ""
@@ -244,16 +243,9 @@ def extract_after_command(text: str) -> str:
     return parts[1]
 
 
-def maybe_split_alias_first_token(args_text: str) -> tuple[Optional[str], str]:
+def maybe_split_alias_first_token(args_text: str):
     """
-    Для лички: если первая "словечка" не похоже на дату, считаем его alias.
-
-    Пример:
-    "football 28.11 12:00 - текст"
-      -> ("football", "28.11 12:00 - текст")
-
-    "28.11 12:00 - текст"
-      -> (None, "28.11 12:00 - текст")
+    В личке: если первое слово не похоже на дату, считаем его alias.
     """
     args_text = args_text.strip()
     if not args_text:
@@ -284,9 +276,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Личка с alias чата:\n"
         "1) В чате: /linkchat football\n"
         "2) В личке: /remind football 28.11 12:00 - завтра футбол\n"
+        "\n"
+        "/list - показать активные напоминания для чата\n"
     )
-    if update.effective_message:
-        await update.effective_message.reply_text(text)
+    await update.message.reply_text(text)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -344,81 +337,42 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return
 
-async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat = update.effective_chat
-    message = update.effective_message
-
-    if chat is None or message is None:
-        return
-
-    now = datetime.now(TZ)
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, text, remind_at
-        FROM reminders
-        WHERE chat_id = ? AND delivered = 0
-        ORDER BY remind_at ASC
-        """,
-        (chat.id,),
-    )
-    rows = c.fetchall()
-    conn.close()
-
-    if not rows:
-        await message.reply_text("Напоминаний нет.")
-        return
-
-    lines = []
-    for rid, text, remind_at_str in rows:
-        dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%M")
-        lines.append(f"{rid}. {ts} - {text}")
-
-    reply = "Активные напоминания:\n\n" + "\n".join(lines)
-    await message.reply_text(reply)
-
     is_private = chat.type == Chat.PRIVATE
 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
-    # В личке допускаем alias первым словом,
-    # но если текст начинается с "-" или цифры (bulk/дата) - alias не ищем
+    # В личке допускаем alias первым словом
     if is_private:
-        stripped = raw_args.lstrip()
-        if stripped and not stripped[0] in "-–—" and not stripped[0].isdigit():
-            maybe_alias, rest = maybe_split_alias_first_token(raw_args)
-            if maybe_alias is not None:
-                alias_chat_id = get_chat_id_by_alias(maybe_alias)
-                if alias_chat_id is None:
-                    aliases = get_all_aliases()
-                    if not aliases:
-                        await message.reply_text(
-                            f"Alias '{maybe_alias}' не найден.\n"
-                            f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
-                        )
-                    else:
-                        known = ", ".join(a for a, _, _ in aliases)
-                        await message.reply_text(
-                            f"Alias '{maybe_alias}' не найден.\n"
-                            f"Из известных: {known}"
-                        )
-                    return
-
-                target_chat_id = alias_chat_id
-                used_alias = maybe_alias
-                raw_args = rest.strip()
-
-                if not raw_args:
+        maybe_alias, rest = maybe_split_alias_first_token(raw_args)
+        if maybe_alias is not None:
+            alias_chat_id = get_chat_id_by_alias(maybe_alias)
+            if alias_chat_id is None:
+                aliases = get_all_aliases()
+                if not aliases:
                     await message.reply_text(
-                        "После alias нужно указать дату и текст.\n"
-                        "Пример:\n"
-                        f"/remind {used_alias} 28.11 12:00 - завтра футбол"
+                        f"Alias '{maybe_alias}' не найден.\n"
+                        f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
                     )
-                    return
+                else:
+                    known = ", ".join(a for a, _, _ in aliases)
+                    await message.reply_text(
+                        f"Alias '{maybe_alias}' не найден.\n"
+                        f"Из известных: {known}"
+                    )
+                return
+
+            target_chat_id = alias_chat_id
+            used_alias = maybe_alias
+            raw_args = rest.strip()
+
+            if not raw_args:
+                await message.reply_text(
+                    "После alias нужно указать дату и текст.\n"
+                    "Пример:\n"
+                    f"/remind {used_alias} 28.11 12:00 - завтра футбол"
+                )
+                return
 
     # Bulk или одиночный?
     if "\n" in raw_args:
@@ -428,6 +382,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         error_lines: list[str] = []
 
         for line in lines:
+            # убираем ведущий "- " если есть
             if line.startswith("- "):
                 line = line[2:].strip()
             try:
@@ -494,6 +449,41 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
 
 
+async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+
+    if chat is None or message is None:
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, text, remind_at
+        FROM reminders
+        WHERE chat_id = ? AND delivered = 0
+        ORDER BY remind_at ASC
+        """,
+        (chat.id,),
+    )
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.reply_text("Напоминаний нет.")
+        return
+
+    lines = []
+    for rid, text, remind_at_str in rows:
+        dt = datetime.fromisoformat(remind_at_str)
+        ts = dt.strftime("%d.%m %H:%M")
+        lines.append(f"{rid}. {ts} - {text}")
+
+    reply = "Активные напоминания:\n\n" + "\n".join(lines)
+    await message.reply_text(reply)
+
+
 # ===== Фоновый worker =====
 
 async def reminders_worker(app: Application) -> None:
@@ -524,9 +514,9 @@ async def reminders_worker(app: Application) -> None:
 
 
 async def post_init(application: Application) -> None:
-    # здесь просто стартуем воркер внутри event loop PTB
+    init_db()
     application.create_task(reminders_worker(application))
-    logger.info("Фоновый worker напоминаний зарегистрирован")
+    logger.info("Фоновый worker напоминаний запущен из post_init")
 
 
 # ===== main =====
@@ -536,22 +526,18 @@ def main() -> None:
     if not bot_token:
         raise RuntimeError("Не задан BOT_TOKEN")
 
-    # Инициализируем БД один раз при старте
-    init_db()
-
     application = (
-        ApplicationBuilder()
+        Application.builder()
         .token(bot_token)
         .post_init(post_init)
         .build()
     )
 
-    # Регистрируем хендлеры
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("remind", remind_command))
-application.add_handler(CommandHandler("list", list_command))
+    application.add_handler(CommandHandler("list", list_command))
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
