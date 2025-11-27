@@ -196,7 +196,7 @@ def parse_reminder_line(line: str, now: datetime) -> Reminder:
     """
     Парсит строку вида:
     28.11 12:00 - завтра футбол в 20:45
-    Возвращает (remind_at, text) - без chat_id и id.
+    Возвращает dummy Reminder без chat_id и id.
     """
     m = REMIND_LINE_RE.match(line.strip())
     if not m:
@@ -219,7 +219,9 @@ def parse_reminder_line(line: str, now: datetime) -> Reminder:
         try:
             dt = dt.replace(year=year + 1)
         except ValueError as e:
-            raise ValueError(f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}") from e
+            raise ValueError(
+                f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+            ) from e
 
     dummy = Reminder(id=-1, chat_id=0, text=text, remind_at=dt, created_by=None)
     return dummy
@@ -276,14 +278,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/remind DD.MM HH:MM - текст\n"
         "Пример: /remind 28.11 12:00 - завтра футбол в 20:45\n\n"
         "Bulk (много строк сразу):\n"
-        "/remind\\n"
-        "- 28.11 12:00 - завтра спринт Ф1 в 15:00\\n"
+        "/remind\n"
+        "- 28.11 12:00 - завтра спринт Ф1 в 15:00\n"
         "- 28.11 12:00 - завтра футбол в 20:45\n\n"
         "Личка с alias чата:\n"
         "1) В чате: /linkchat football\n"
         "2) В личке: /remind football 28.11 12:00 - завтра футбол\n"
     )
-    await update.message.reply_text(text)
+    if update.effective_message:
+        await update.effective_message.reply_text(text)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -336,7 +339,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "Формат:\n"
             "/remind DD.MM HH:MM - текст\n"
             "или bulk:\n"
-            "/remind\\n"
+            "/remind\n"
             "- 28.11 12:00 - завтра футбол\n"
         )
         return
@@ -379,17 +382,13 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 return
 
     # Bulk или одиночный?
-    # Bulk - если есть перенос строки.
     if "\n" in raw_args:
-        # У тебя будет что-то вроде:
-        # "- 28.11 12:00 - текст"
         lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
         created = 0
         failed = 0
         error_lines: list[str] = []
 
         for line in lines:
-            # убираем ведущий "- " если есть
             if line.startswith("- "):
                 line = line[2:].strip()
             try:
@@ -416,7 +415,6 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if failed:
             reply += f" Не удалось разобрать строк: {failed}."
         if error_lines:
-            # не спамим, максимум 5 строк деталей
             reply += "\n\nПроблемные строки (до 5):\n" + "\n".join(error_lines[:5])
 
         await message.reply_text(reply)
@@ -486,36 +484,38 @@ async def reminders_worker(app: Application) -> None:
         await asyncio.sleep(10)
 
 
+async def post_init(application: Application) -> None:
+    # здесь просто стартуем воркер внутри event loop PTB
+    application.create_task(reminders_worker(application))
+    logger.info("Фоновый worker напоминаний зарегистрирован")
+
+
 # ===== main =====
 
-async def main() -> None:
+def main() -> None:
     bot_token = os.environ.get("BOT_TOKEN")
     if not bot_token:
         raise RuntimeError("Не задан BOT_TOKEN")
 
+    # Инициализируем БД один раз при старте
     init_db()
 
-    app = ApplicationBuilder().token(bot_token).build()
+    application = (
+        ApplicationBuilder()
+        .token(bot_token)
+        .post_init(post_init)
+        .build()
+    )
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("linkchat", linkchat_command))
-    app.add_handler(CommandHandler("remind", remind_command))
+    # Регистрируем хендлеры
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("linkchat", linkchat_command))
+    application.add_handler(CommandHandler("remind", remind_command))
 
     logger.info("Запускаем бота polling...")
-
-    worker_task = asyncio.create_task(reminders_worker(app))
-
-    try:
-        await app.run_polling()
-    finally:
-        # аккуратно останавливаем worker
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
+    application.run_polling()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
