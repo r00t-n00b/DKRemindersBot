@@ -204,6 +204,7 @@ def get_chat_reminders(chat_id: int) -> List[tuple]:
 
 # ===== Парсинг команд =====
 
+# Старый строгий формат DD.MM HH:MM - текст
 REMIND_LINE_RE = re.compile(
     r"""
     ^\s*
@@ -223,38 +224,290 @@ REMIND_LINE_RE = re.compile(
 )
 
 
+def add_months(dt: datetime, months: int) -> datetime:
+    """Примитивное добавление месяцев: тот же день месяца, если возможно, иначе последний день."""
+    year = dt.year
+    month = dt.month + months
+    while month > 12:
+        month -= 12
+        year += 1
+    while month < 1:
+        month += 12
+        year -= 1
+    day = dt.day
+    for d in range(day, 0, -1):
+        try:
+            return dt.replace(year=year, month=month, day=d)
+        except ValueError:
+            continue
+    return dt.replace(year=year, month=month, day=1)
+
+
+def weekday_from_name(name: str) -> Optional[int]:
+    """Преобразует имя дня недели (en/ru) в номер weekday 0-6 (понедельник - понедельник)."""
+    n = name.strip().lower()
+    mapping = {
+        "monday": 0, "mon": 0, "понедельник": 0, "пн": 0,
+        "tuesday": 1, "tue": 1, "tues": 1, "вторник": 1, "вт": 1,
+        "wednesday": 2, "wed": 2, "среда": 2, "ср": 2,
+        "thursday": 3, "thu": 3, "thur": 3, "thurs": 3, "четверг": 3, "чт": 3,
+        "friday": 4, "fri": 4, "пятница": 4, "пт": 4,
+        "saturday": 5, "sat": 5, "суббота": 5, "сб": 5,
+        "sunday": 6, "sun": 6, "воскресенье": 6, "вс": 6,
+    }
+    return mapping.get(n)
+
+
+def next_weekday_date(now: datetime, target_wd: int) -> datetime:
+    today_wd = now.weekday()
+    delta = (target_wd - today_wd) % 7
+    if delta == 0:
+        delta = 7
+    return now + timedelta(days=delta)
+
+
+def next_weekend_date(now: datetime) -> datetime:
+    """Ближайшая суббота 11:00, если уже прошло - следующая."""
+    target_wd = 5  # суббота
+    today_wd = now.weekday()
+    delta = (target_wd - today_wd) % 7
+    candidate_date = now.date() + timedelta(days=delta)
+    candidate_dt = datetime(
+        candidate_date.year,
+        candidate_date.month,
+        candidate_date.day,
+        11,
+        0,
+        tzinfo=TZ,
+    )
+    if candidate_dt <= now:
+        candidate_dt = candidate_dt + timedelta(days=7)
+    return candidate_dt
+
+
+def next_workday_date(now: datetime) -> datetime:
+    """Ближайший рабочий день (пн-пт) на 11:00."""
+    candidate = now
+    while True:
+        wd = candidate.weekday()
+        if wd < 5:  # пн-пт
+            candidate_dt = datetime(
+                candidate.year,
+                candidate.month,
+                candidate.day,
+                11,
+                0,
+                tzinfo=TZ,
+            )
+            if candidate_dt > now:
+                return candidate_dt
+        candidate = candidate + timedelta(days=1)
+
+
+def parse_relative_in(rest: str, now: datetime) -> datetime:
+    """
+    "in 2 hours", "in 3 days", "in 1 week", "in 2 months"
+    "через 2 часа", "через 3 дня", "через 2 недели", "через 1 месяц"
+    """
+    tokens = rest.split()
+    if len(tokens) < 2:
+        raise ValueError("Не смог понять формат после 'in/через'")
+
+    try:
+        num = int(tokens[0])
+    except ValueError:
+        raise ValueError("Ожидаю число после 'in/через', например 'in 2 hours'")
+
+    unit = tokens[1].lower()
+
+    minute_words_en = {"minute", "minutes", "min", "mins"}
+    hour_words_en = {"hour", "hours", "hr", "hrs"}
+    day_words_en = {"day", "days"}
+    week_words_en = {"week", "weeks"}
+    month_words_en = {"month", "months"}
+
+    minute_words_ru = {"минута", "минуту", "минуты", "минут"}
+    hour_words_ru = {"час", "часа", "часов"}
+    day_words_ru = {"день", "дня", "дней"}
+    week_words_ru = {"неделя", "неделю", "недели", "недель"}
+    month_words_ru = {"месяц", "месяца", "месяцев"}
+
+    if unit in minute_words_en or unit in minute_words_ru:
+        return now + timedelta(minutes=num)
+    if unit in hour_words_en or unit in hour_words_ru:
+        return now + timedelta(hours=num)
+    if unit in day_words_en or unit in day_words_ru:
+        return now + timedelta(days=num)
+    if unit in week_words_en or unit in week_words_ru:
+        return now + timedelta(weeks=num)
+    if unit in month_words_en or unit in month_words_ru:
+        return add_months(now, num)
+
+    raise ValueError("Не смог понять единицу времени после 'in/через'")
+
+
+def parse_natural_when(when_str: str, now: datetime) -> datetime:
+    """
+    Поддерживает:
+    - in / через N units
+    - today / завтра / послезавтра и т.п.
+    - next week/month/day/Monday/следующая неделя/следующий понедельник
+    - weekend / weekday / workday / рабочий день
+    - только дату DD.MM -> 11:00 по умолчанию
+    - только время HH:MM -> ближайшее такое время (сегодня или завтра)
+    """
+    s = when_str.strip().lower()
+    if not s:
+        raise ValueError("Пустое время напоминания")
+
+    # 1. 'in ...' / 'через ...'
+    if s.startswith("in "):
+        return parse_relative_in(s[3:].strip(), now)
+    if s.startswith("через "):
+        return parse_relative_in(s[6:].strip(), now)
+
+    # 2. Выделяем возможное HH:MM в конце
+    m_time = re.search(r'(\d{1,2}):(\d{2})$', s)
+    time_hm: Optional[tuple[int, int]] = None
+    if m_time:
+        h = int(m_time.group(1))
+        m = int(m_time.group(2))
+        if h > 23 or m > 59:
+            raise ValueError("Неверный формат времени HH:MM")
+        time_hm = (h, m)
+        s = s[:m_time.start()].strip()
+
+    # 3. Только время без даты
+    if not s and time_hm:
+        h, m = time_hm
+        candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if candidate <= now:
+            candidate = candidate + timedelta(days=1)
+        return candidate
+
+    # 4. Только дата DD.MM или DD/MM
+    m_date = re.fullmatch(r'(\d{1,2})[./](\d{1,2})', s)
+    if m_date:
+        day = int(m_date.group(1))
+        month = int(m_date.group(2))
+        year = now.year
+        hour, minute = time_hm if time_hm else (11, 0)
+        try:
+            dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+        except ValueError as e:
+            raise ValueError(f"Неверная дата: {e}") from e
+
+        if dt < now - timedelta(minutes=1):
+            try:
+                dt = datetime(year + 1, month, day, hour, minute, tzinfo=TZ)
+            except ValueError as e:
+                raise ValueError(
+                    f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+                ) from e
+        return dt
+
+    # 5. Текстовые варианты
+    canon = " ".join(s.split())
+
+    base_date = None
+
+    if canon in ("today", "сегодня"):
+        base_date = now.date()
+    elif canon in ("tomorrow", "завтра", "next day", "следующий день"):
+        base_date = now.date() + timedelta(days=1)
+    elif canon in ("day after tomorrow", "послезавтра"):
+        base_date = now.date() + timedelta(days=2)
+    elif canon in ("next week", "следующая неделя"):
+        base_date = now.date() + timedelta(weeks=1)
+    elif canon in ("next month", "следующий месяц"):
+        base_date = add_months(now, 1).date()
+    elif canon in ("weekend", "выходные", "выходной"):
+        return next_weekend_date(now)
+    elif canon in ("weekday", "workday", "рабочий день"):
+        return next_workday_date(now)
+    elif canon.startswith("next "):
+        wd_name = canon[5:].strip()
+        wd = weekday_from_name(wd_name)
+        if wd is None:
+            raise ValueError("Не узнал день недели после 'next'")
+        base_date = next_weekday_date(now, wd).date()
+    elif canon.startswith("следующий "):
+        wd_name = canon[len("следующий "):].strip()
+        wd = weekday_from_name(wd_name)
+        if wd is None:
+            raise ValueError("Не узнал день недели после 'следующий'")
+        base_date = next_weekday_date(now, wd).date()
+    else:
+        raise ValueError("Не распознал формат времени")
+
+    hour, minute = time_hm if time_hm else (11, 0)
+    return datetime(base_date.year, base_date.month, base_date.day, hour, minute, tzinfo=TZ)
+
+
 def parse_reminder_line(line: str, now: datetime) -> Reminder:
     """
-    Строка вида:
-    28.11 12:00 - завтра футбол в 20:45
+    Поддерживает:
+    - 28.11 12:00 - текст
+    - 28.11 - текст (по умолчанию 11:00)
+    - 12:30 - текст (ближайшее такое время: сегодня или завтра)
+    - tomorrow 18:00 - текст / завтра 18:00 - текст
+    - tomorrow - текст (11:00)
+    - day after tomorrow / послезавтра - текст
+    - next Monday 19:00 - текст / следующий понедельник 19:00 - текст
+    - weekend / weekday / workday / рабочий день - текст
+    - in 2 hours - текст / через 2 часа - текст
     """
-    m = REMIND_LINE_RE.match(line.strip())
-    if not m:
-        raise ValueError("Ожидаю формат 'DD.MM HH:MM - текст'")
 
-    day = int(m.group("day"))
-    month = int(m.group("month"))
-    hour = int(m.group("hour"))
-    minute = int(m.group("minute"))
-    text = m.group("text").strip()
+    stripped = line.strip()
 
-    year = now.year
-    try:
-        dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
-    except ValueError as e:
-        raise ValueError(f"Неверная дата или время: {e}") from e
+    # 1. Пробуем строгий формат DD.MM HH:MM - текст
+    m = REMIND_LINE_RE.match(stripped)
+    if m:
+        day = int(m.group("day"))
+        month = int(m.group("month"))
+        hour = int(m.group("hour"))
+        minute = int(m.group("minute"))
+        text = m.group("text").strip()
 
-    # Если дата уже в прошлом - считаем, что имеется в виду следующий год
-    if dt < now - timedelta(minutes=1):
+        year = now.year
         try:
-            dt = dt.replace(year=year + 1)
+            dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
         except ValueError as e:
-            raise ValueError(
-                f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
-            ) from e
+            raise ValueError(f"Неверная дата или время: {e}") from e
 
-    dummy = Reminder(id=-1, chat_id=0, text=text, remind_at=dt, created_by=None)
-    return dummy
+        if dt < now - timedelta(minutes=1):
+            try:
+                dt = dt.replace(year=year + 1)
+            except ValueError as e:
+                raise ValueError(
+                    f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+                ) from e
+
+        return Reminder(id=-1, chat_id=0, text=text, remind_at=dt, created_by=None)
+
+    # 2. Общий случай: "<когда> - <текст>"
+    sep_pos = None
+    sep_len = None
+    for sep in [" - ", " — ", " – "]:
+        idx = stripped.find(sep)
+        if idx != -1:
+            sep_pos = idx
+            sep_len = len(sep)
+            break
+
+    if sep_pos is None:
+        raise ValueError("Ожидаю формат '<когда> - текст'")
+
+    when_part = stripped[:sep_pos].strip()
+    text = stripped[sep_pos + sep_len:].strip()
+
+    if not when_part:
+        raise ValueError("Не указано время напоминания до '-'")
+    if not text:
+        raise ValueError("Не указан текст после '-'")
+
+    dt = parse_natural_when(when_part, now)
+    return Reminder(id=-1, chat_id=0, text=text, remind_at=dt, created_by=None)
 
 
 def extract_after_command(text: str) -> str:
