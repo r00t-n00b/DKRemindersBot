@@ -939,7 +939,8 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         "сегодня",
         "tomorrow",
         "завтра",
-        "dayaftertomorrow",
+        "dayaftertomorrow",  # можно оставить, не мешает
+        "day",               # <– вот это добавляем, чтобы "day after tomorrow" не считался alias
         "послезавтра",
         # next
         "next",
