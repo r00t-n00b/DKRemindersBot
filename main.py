@@ -828,8 +828,17 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
         len(tokens_no_time) == 1 and first == "everyday"
     ):
+        # every day / everyday
         pattern_type = "daily"
-    elif first.startswith("кажд") and len(tokens_no_time) >= 2 and tokens_no_time[1].startswith("дн"):
+    elif (
+        first.startswith("кажд")
+        and len(tokens_no_time) >= 2
+        and (
+            tokens_no_time[1] in {"день", "дня", "дней", "дни"}
+            or tokens_no_time[1].startswith("дн")
+        )
+    ):
+        # каждый день / каждую ... форму
         pattern_type = "daily"
 
     # weekly
