@@ -5,7 +5,7 @@ import re
 import sqlite3
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any
 
 from zoneinfo import ZoneInfo
@@ -39,20 +39,6 @@ class Reminder:
     remind_at: datetime
     created_by: Optional[int]
     template_id: Optional[int] = None
-
-
-@dataclass
-class ParsedReminderInput:
-    """
-    Результат разбора одной строки напоминания (как одиночной, так и в bulk).
-    """
-    remind_at: datetime
-    text: str
-    is_recurring: bool
-    pattern_type: Optional[str] = None
-    payload: Optional[Dict[str, Any]] = None
-    time_hour: Optional[int] = None
-    time_minute: Optional[int] = None
 
 
 # ===== Работа с БД =====
@@ -172,6 +158,32 @@ def get_due_reminders(now: datetime) -> List[Reminder]:
             )
         )
     return reminders
+
+
+def get_reminder(reminder_id: int) -> Optional[Reminder]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, text, remind_at, created_by, template_id
+        FROM reminders
+        WHERE id = ?
+        """,
+        (reminder_id,),
+    )
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    rid, chat_id, text, remind_at_str, created_by, template_id = row
+    return Reminder(
+        id=rid,
+        chat_id=chat_id,
+        text=text,
+        remind_at=datetime.fromisoformat(remind_at_str),
+        created_by=created_by,
+        template_id=template_id,
+    )
 
 
 def mark_reminder_sent(reminder_id: int) -> None:
@@ -515,13 +527,11 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
 
     # next week / следующая неделя
     if second in {"week", "неделя", "неделю"}:
-        # понедельник следующей недели
         base = local.date()
         cur_wd = base.weekday()
         days_until_next_monday = (7 - cur_wd) % 7
         if days_until_next_monday == 0:
             days_until_next_monday = 7
-        # время по умолчанию или из третьего токена (HH:MM)
         rest_tokens = tokens[2:]
         rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
         target_date = base + timedelta(days=days_until_next_monday)
@@ -544,7 +554,6 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
             month = 1
             year += 1
         day = local.day
-        # пытаемся сохранить тот же день месяца, при необходимости сдвигаем назад
         while day > 28:
             try:
                 return datetime(year, month, day, hour, minute, tzinfo=TZ)
@@ -588,12 +597,10 @@ def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
 
     local = now.astimezone(TZ)
 
-    # выделяем время, если есть
     tokens_no_time, hour, minute = _extract_time_from_tokens(tokens)
     if not tokens_no_time:
         return None
 
-    # weekend?
     is_weekend = False
     is_weekday = False
 
@@ -628,7 +635,6 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.strip()
     local = now.astimezone(TZ)
 
-    # дата + время или только дата
     m = re.fullmatch(r"(?P<day>\d{1,2})[./](?P<month>\d{1,2})(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?", s)
     if m:
         day = int(m.group("day"))
@@ -644,7 +650,6 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
         except ValueError as e:
             raise ValueError(f"Неверная дата или время: {e}") from e
-        # если дата уже в прошлом - переносим на следующий год
         if dt < now - timedelta(minutes=1):
             try:
                 dt = dt.replace(year=year + 1)
@@ -654,7 +659,6 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
                 ) from e
         return dt
 
-    # только время
     m2 = re.fullmatch(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})", s)
     if m2:
         hour = int(m2.group("hour"))
@@ -682,28 +686,23 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     expr_lower = expr.lower().strip()
     now = now.astimezone(TZ)
 
-    # 1) относительное "in / через"
     tokens = expr_lower.split()
     dt = _parse_in_expression(tokens, now)
     if dt is not None:
         return dt, text
 
-    # 2) today / tomorrow / day after tomorrow / сегодня / завтра / послезавтра
     dt = _parse_today_tomorrow(expr_lower, now)
     if dt is not None:
         return dt, text
 
-    # 3) next week/month/weekday
     dt = _parse_next_expression(expr_lower, now)
     if dt is not None:
         return dt, text
 
-    # 4) weekend / weekday / workday / выходные / будний / рабочий
     dt = _parse_weekend_weekday(expr_lower, now)
     if dt is not None:
         return dt, text
 
-    # 5) абсолютные дата/время
     dt = _parse_absolute(expr, now)
     if dt is not None:
         return dt, text
@@ -776,8 +775,6 @@ def compute_next_occurrence(
 
     if pattern_type == "monthly":
         day = int(payload["day"])
-        year = local.year
-        month = local.month
         base = local + timedelta(minutes=1)
         year = base.year
         month = base.month
@@ -818,7 +815,6 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     if not tokens:
         raise ValueError("Не понял повторяющийся формат")
 
-    # выделяем время (если есть) из конца
     tokens_no_time, hour, minute = _extract_time_from_tokens(tokens)
     if not tokens_no_time:
         raise ValueError("Не понял повторяющийся формат")
@@ -828,18 +824,15 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     pattern_type: Optional[str] = None
     payload: Dict[str, Any] = {}
 
-    # daily: every day / everyday / каждый день
+    # daily
     if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
         len(tokens_no_time) == 1 and first == "everyday"
     ):
         pattern_type = "daily"
-    else:
-        # русское "каждый день", "каждые дни" и т.п.
-        ru_day_words = {"день", "дня", "дней", "дни", "дн"}
-        if first.startswith("кажд") and len(tokens_no_time) >= 2 and tokens_no_time[1] in ru_day_words:
-            pattern_type = "daily"
+    elif first.startswith("кажд") and len(tokens_no_time) >= 2 and tokens_no_time[1].startswith("дн"):
+        pattern_type = "daily"
 
-    # weekly: every monday / каждый понедельник
+    # weekly
     if pattern_type is None and len(tokens_no_time) >= 2:
         second = tokens_no_time[1]
         if first == "every" and second in WEEKDAY_EN:
@@ -849,7 +842,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
             pattern_type = "weekly"
             payload = {"weekday": WEEKDAY_RU[second]}
 
-    # weekly_multi: every weekday/weekend, каждые выходные/будний день
+    # weekly_multi
     if pattern_type is None:
         if first == "every" and any(t in {"weekday", "weekdays"} for t in tokens_no_time[1:]):
             pattern_type = "weekly_multi"
@@ -864,7 +857,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
             pattern_type = "weekly_multi"
             payload = {"days": [0, 1, 2, 3, 4]}
 
-    # monthly: every month 15 [10:00], каждый месяц 15 [10:00]
+    # monthly
     if pattern_type is None and len(tokens_no_time) >= 3:
         second = tokens_no_time[1]
         third = tokens_no_time[2]
@@ -884,7 +877,6 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     if pattern_type is None:
         raise ValueError("Не понял повторяющийся формат")
 
-    # первая дата
     first_dt = compute_next_occurrence(
         pattern_type,
         payload,
@@ -898,43 +890,9 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     return first_dt, text, pattern_type, payload, hour, minute
 
 
-def parse_any_reminder_line(raw: str, now: datetime) -> ParsedReminderInput:
-    """
-    Универсальный разбор одной строки:
-    - либо recurring (every/каждый),
-    - либо обычное разовое напоминание.
-    Используется и для одиночного /remind, и для строк в bulk.
-    """
-    raw = raw.strip()
-    if not raw:
-        raise ValueError("Пустая строка")
-
-    if looks_like_recurring(raw):
-        first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw, now)
-        return ParsedReminderInput(
-            remind_at=first_dt,
-            text=text,
-            is_recurring=True,
-            pattern_type=pattern_type,
-            payload=payload,
-            time_hour=hour,
-            time_minute=minute,
-        )
-
-    remind_at, text = parse_date_time_smart(raw, now)
-    return ParsedReminderInput(
-        remind_at=remind_at,
-        text=text,
-        is_recurring=False,
-    )
-
-
 # ===== Парсинг alias =====
 
 def extract_after_command(text: str) -> str:
-    """
-    Убирает /remind или /remind@Bot и возвращает остальной текст.
-    """
     if not text:
         return ""
     stripped = text.strip()
@@ -969,34 +927,27 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     first, *rest_first = first_line.split(maxsplit=1)
     first_lower = first.lower()
 
-    # дата 29.11 / 29/11 - не alias
     if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
         return None, args_text.lstrip()
 
-    # время 23:59 - не alias
     if re.fullmatch(r"\d{1,2}:\d{2}", first):
         return None, args_text.lstrip()
 
-    # ключевые слова умного парсинга + recurring
     smart_prefixes = {
-        # относительное время
         "in",
         "через",
-        # сегодня/завтра/послезавтра
         "today",
         "сегодня",
         "tomorrow",
         "завтра",
         "dayaftertomorrow",
-        "day",               # чтобы "day after tomorrow" не считался alias
+        "day",
         "послезавтра",
-        # next
         "next",
         "следующий",
         "следующая",
         "следующее",
         "следующие",
-        # выходные / будни
         "weekend",
         "weekday",
         "workday",
@@ -1005,7 +956,6 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         "буднийдень",
         "рабочий",
         "рабочийдень",
-        # recurring "every ..."
         "every",
         "everyday",
         "каждый",
@@ -1028,6 +978,76 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
     new_args = "\n".join(parts).lstrip()
     return alias, new_args
+
+
+# ===== SNOOZE клавиатуры =====
+
+def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+    buttons: List[List[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
+            InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
+        ],
+        [
+            InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
+            InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+        ],
+        [
+            InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+            InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
+        ],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_custom_date_keyboard(reminder_id: int, start: Optional[date] = None) -> InlineKeyboardMarkup:
+    if start is None:
+        start = datetime.now(TZ).date()
+    days = [start + timedelta(days=i) for i in range(0, 14)]
+    rows: List[List[InlineKeyboardButton]] = []
+
+    header = start.strftime("Выбор даты (начало %d.%m)")
+    rows.append([InlineKeyboardButton(header, callback_data="noop")])
+
+    row: List[InlineKeyboardButton] = []
+    for d in days:
+        label = d.strftime("%d.%m")
+        data = f"snooze_pickdate:{reminder_id}:{d.isoformat()}"
+        row.append(InlineKeyboardButton(text=label, callback_data=data))
+        if len(row) == 7:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton("Отмена", callback_data=f"snooze_cancel:{reminder_id}")])
+
+    return InlineKeyboardMarkup(rows)
+
+
+def build_custom_time_keyboard(reminder_id: int, date_str: str) -> InlineKeyboardMarkup:
+    times = [
+        "09:00", "10:00", "11:00", "12:00",
+        "13:00", "14:00", "15:00", "16:00",
+        "17:00", "18:00", "19:00", "20:00",
+        "21:00",
+    ]
+    rows: List[List[InlineKeyboardButton]] = []
+    rows.append([InlineKeyboardButton(f"Выбор времени для {date_str}", callback_data="noop")])
+
+    row: List[InlineKeyboardButton] = []
+    for t in times:
+        data = f"snooze_picktime:{reminder_id}:{date_str}:{t}"
+        row.append(InlineKeyboardButton(text=t, callback_data=data))
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton("Отмена", callback_data=f"snooze_cancel:{reminder_id}")])
+
+    return InlineKeyboardMarkup(rows)
 
 
 # ===== Хендлеры команд =====
@@ -1079,6 +1099,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "- Каждый месяц:\n"
         "    /remind every month 15 10:00 - текст\n"
         "    /remind каждый месяц 15 10:00 - текст\n\n"
+        "После прихода напоминания можно сделать SNOOZE кнопками:\n"
+        " +20 минут, +1 час, +3 часа, завтра в 11:00, следующий понедельник в 11:00, кастомная дата и время.\n\n"
         "/list - показать активные напоминания для чата и удалить лишние кнопками\n"
     )
     await update.message.reply_text(text)
@@ -1152,7 +1174,6 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
-    # В личке допускаем alias первым словом / первой строкой
     if is_private:
         maybe_alias, rest = maybe_split_alias_first_token(raw_args)
         if maybe_alias is not None:
@@ -1195,42 +1216,49 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if line.startswith("- "):
                 line = line[2:].strip()
             try:
-                parsed = parse_any_reminder_line(line, now)
-
-                if parsed.is_recurring:
+                # поддержка recurring и в bulk
+                if looks_like_recurring(line):
+                    first_dt, text, pattern_type, payload, hour, minute = parse_recurring(line, now)
                     tpl_id = create_recurring_template(
                         chat_id=target_chat_id,
-                        text=parsed.text,
-                        pattern_type=parsed.pattern_type or "",
-                        payload=parsed.payload or {},
-                        time_hour=parsed.time_hour or 11,
-                        time_minute=parsed.time_minute or 0,
+                        text=text,
+                        pattern_type=pattern_type,
+                        payload=payload,
+                        time_hour=hour,
+                        time_minute=minute,
                         created_by=user.id,
                     )
                     reminder_id = add_reminder(
                         chat_id=target_chat_id,
-                        text=parsed.text,
-                        remind_at=parsed.remind_at,
+                        text=text,
+                        remind_at=first_dt,
                         created_by=user.id,
                         template_id=tpl_id,
                     )
+                    logger.info(
+                        "Создан bulk recurring reminder id=%s tpl_id=%s chat_id=%s at=%s text=%s",
+                        reminder_id,
+                        tpl_id,
+                        target_chat_id,
+                        first_dt.isoformat(),
+                        text,
+                    )
                 else:
+                    remind_at, text = parse_date_time_smart(line, now)
                     reminder_id = add_reminder(
                         chat_id=target_chat_id,
-                        text=parsed.text,
-                        remind_at=parsed.remind_at,
+                        text=text,
+                        remind_at=remind_at,
                         created_by=user.id,
                     )
-
+                    logger.info(
+                        "Создан bulk reminder id=%s chat_id=%s at=%s text=%s",
+                        reminder_id,
+                        target_chat_id,
+                        remind_at.isoformat(),
+                        text,
+                    )
                 created += 1
-                logger.info(
-                    "Создан bulk %s reminder id=%s chat_id=%s at=%s text=%s",
-                    "recurring" if parsed.is_recurring else "single",
-                    reminder_id,
-                    target_chat_id,
-                    parsed.remind_at.isoformat(),
-                    parsed.text,
-                )
             except Exception as e:
                 failed += 1
                 error_lines.append(f"'{line}': {e}")
@@ -1247,30 +1275,26 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Одиночная строка
     raw_single = raw_args.strip()
 
-    try:
-        parsed = parse_any_reminder_line(raw_single, now)
-    except ValueError as e:
-        # Если строка выглядит как recurring - показываем соответствующее сообщение
-        if looks_like_recurring(raw_single):
+    if looks_like_recurring(raw_single):
+        try:
+            first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
+        except ValueError as e:
             await message.reply_text(f"Не смог понять повторяющийся формат: {e}")
-        else:
-            await message.reply_text(f"Не смог понять дату и текст: {e}")
-        return
+            return
 
-    if parsed.is_recurring:
         tpl_id = create_recurring_template(
             chat_id=target_chat_id,
-            text=parsed.text,
-            pattern_type=parsed.pattern_type or "",
-            payload=parsed.payload or {},
-            time_hour=parsed.time_hour or 11,
-            time_minute=parsed.time_minute or 0,
+            text=text,
+            pattern_type=pattern_type,
+            payload=payload,
+            time_hour=hour,
+            time_minute=minute,
             created_by=user.id,
         )
         reminder_id = add_reminder(
             chat_id=target_chat_id,
-            text=parsed.text,
-            remind_at=parsed.remind_at,
+            text=text,
+            remind_at=first_dt,
             created_by=user.id,
             template_id=tpl_id,
         )
@@ -1280,30 +1304,35 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reminder_id,
             tpl_id,
             target_chat_id,
-            parsed.remind_at.isoformat(),
-            parsed.text,
+            first_dt.isoformat(),
+            text,
             chat.id,
             user.id,
         )
 
-        when_str = parsed.remind_at.strftime("%d.%m %H:%M")
+        when_str = first_dt.strftime("%d.%m %H:%M")
         if used_alias:
             await message.reply_text(
                 f"Ок, создал повторяющееся напоминание в чате '{used_alias}'. "
-                f"Первое напоминание будет {when_str}: {parsed.text}"
+                f"Первое напоминание будет {when_str}: {text}"
             )
         else:
             await message.reply_text(
                 f"Ок, создал повторяющееся напоминание. "
-                f"Первое напоминание будет {when_str}: {parsed.text}"
+                f"Первое напоминание будет {when_str}: {text}"
             )
         return
 
-    # Обычное разовое напоминание
+    try:
+        remind_at, text = parse_date_time_smart(raw_single, now)
+    except ValueError as e:
+        await message.reply_text(f"Не смог понять дату и текст: {e}")
+        return
+
     reminder_id = add_reminder(
         chat_id=target_chat_id,
-        text=parsed.text,
-        remind_at=parsed.remind_at,
+        text=text,
+        remind_at=remind_at,
         created_by=user.id,
     )
 
@@ -1311,20 +1340,20 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "Создан reminder id=%s chat_id=%s at=%s text=%s (from chat %s, user %s)",
         reminder_id,
         target_chat_id,
-        parsed.remind_at.isoformat(),
-        parsed.text,
+        remind_at.isoformat(),
+        text,
         chat.id,
         user.id,
     )
 
-    when_str = parsed.remind_at.strftime("%d.%m %H:%M")
+    when_str = remind_at.strftime("%d.%m %H:%M")
     if used_alias:
         await message.reply_text(
-            f"Ок, напомню в чате '{used_alias}' {when_str}: {parsed.text}"
+            f"Ок, напомню в чате '{used_alias}' {when_str}: {text}"
         )
     else:
         await message.reply_text(
-            f"Ок, напомню {when_str}: {parsed.text}"
+            f"Ок, напомню {when_str}: {text}"
         )
 
 
@@ -1357,7 +1386,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     ids: List[int] = []
     for idx, (rid, text, remind_at_str, template_id) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%M")
+        ts = dt.strftime("%d.%m %H:%М")
         marker = " 🔁" if template_id is not None else ""
         lines.append(f"{idx}. {ts} - {text}{marker}")
         ids.append(rid)
@@ -1428,12 +1457,7 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     c = conn.cursor()
     qmarks = ",".join("?" for _ in ids)
     c.execute(
-        f"""
-        SELECT id, text, remind_at, template_id
-        FROM reminders
-        WHERE id IN ({qmarks})
-        ORDER BY remind_at ASC
-        """,
+        f"SELECT id, text, remind_at, template_id FROM reminders WHERE id IN ({qmarks}) ORDER BY remind_at ASC",
         ids,
     )
     rows = c.fetchall()
@@ -1468,6 +1492,113 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.edit_message_text(reply, reply_markup=keyboard)
 
 
+# ===== SNOOZE callback =====
+
+async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+
+    data = query.data or ""
+    try:
+        if data.startswith("snooze:"):
+            _, rid_str, action = data.split(":", 2)
+            rid = int(rid_str)
+            r = get_reminder(rid)
+            if not r:
+                await query.answer("Напоминание не найдено", show_alert=True)
+                return
+
+            now = datetime.now(TZ)
+
+            if action == "20m":
+                new_dt = now + timedelta(minutes=20)
+            elif action == "1h":
+                new_dt = now + timedelta(hours=1)
+            elif action == "3h":
+                new_dt = now + timedelta(hours=3)
+            elif action == "tomorrow":
+                base = (now + timedelta(days=1)).astimezone(TZ).date()
+                new_dt = datetime(base.year, base.month, base.day, 11, 0, tzinfo=TZ)
+            elif action == "nextmon":
+                base = now.astimezone(TZ).date()
+                cur_wd = base.weekday()
+                delta = (0 - cur_wd + 7) % 7
+                if delta == 0:
+                    delta = 7
+                target = base + timedelta(days=delta)
+                new_dt = datetime(target.year, target.month, target.day, 11, 0, tzinfo=TZ)
+            elif action == "custom":
+                kb = build_custom_date_keyboard(rid)
+                await query.edit_message_reply_markup(reply_markup=kb)
+                await query.answer("Выбери дату", show_alert=False)
+                return
+            else:
+                await query.answer("Неизвестное действие", show_alert=True)
+                return
+
+            add_reminder(
+                chat_id=r.chat_id,
+                text=r.text,
+                remind_at=new_dt,
+                created_by=r.created_by,
+                template_id=None,
+            )
+            await query.answer("Перенесено")
+            await query.edit_message_reply_markup(reply_markup=None)
+            return
+
+        if data.startswith("snooze_pickdate:"):
+            _, rid_str, date_str = data.split(":", 2)
+            rid = int(rid_str)
+            kb = build_custom_time_keyboard(rid, date_str)
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer("Выбери время")
+            return
+
+        if data.startswith("snooze_picktime:"):
+            _, rid_str, date_str, time_str = data.split(":", 3)
+            rid = int(rid_str)
+            r = get_reminder(rid)
+            if not r:
+                await query.answer("Напоминание не найдено", show_alert=True)
+                return
+            try:
+                year, month, day = map(int, date_str.split("-"))
+                hour, minute = map(int, time_str.split(":"))
+                new_dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+            except Exception:
+                await query.answer("Не смог понять дату/время", show_alert=True)
+                return
+
+            add_reminder(
+                chat_id=r.chat_id,
+                text=r.text,
+                remind_at=new_dt,
+                created_by=r.created_by,
+                template_id=None,
+            )
+            await query.answer("Перенесено")
+            await query.edit_message_reply_markup(reply_markup=None)
+            return
+
+        if data.startswith("snooze_cancel:"):
+            await query.answer("Отменено")
+            await query.edit_message_reply_markup(reply_markup=None)
+            return
+
+        if data == "noop":
+            await query.answer()
+            return
+
+    except Exception:
+        logger.exception("Ошибка в snooze_callback")
+        try:
+            await query.answer("Произошла ошибка", show_alert=True)
+        except Exception:
+            pass
+
+
 # ===== Фоновый worker =====
 
 async def reminders_worker(app: Application) -> None:
@@ -1480,7 +1611,11 @@ async def reminders_worker(app: Application) -> None:
                 logger.info("Нашел %s напоминаний к отправке", len(due))
             for r in due:
                 try:
-                    await app.bot.send_message(chat_id=r.chat_id, text=r.text)
+                    msg = await app.bot.send_message(
+                        chat_id=r.chat_id,
+                        text=r.text,
+                        reply_markup=build_snooze_keyboard(r.id),
+                    )
                     mark_reminder_sent(r.id)
                     logger.info(
                         "Отправлено напоминание id=%s в чат %s: %s (время %s, template_id=%s)",
@@ -1490,7 +1625,6 @@ async def reminders_worker(app: Application) -> None:
                         r.remind_at.isoformat(),
                         r.template_id,
                     )
-                    # если это повторяющееся напоминание - планируем следующее
                     if r.template_id is not None:
                         tpl = get_recurring_template(r.template_id)
                         if tpl and tpl["active"]:
@@ -1548,6 +1682,7 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
+    application.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop)"))
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
