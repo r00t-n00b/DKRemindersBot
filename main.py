@@ -1003,12 +1003,32 @@ def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
 def build_custom_date_keyboard(reminder_id: int, start: Optional[date] = None) -> InlineKeyboardMarkup:
     if start is None:
         start = datetime.now(TZ).date()
+
+    today = datetime.now(TZ).date()
     days = [start + timedelta(days=i) for i in range(0, 14)]
     rows: List[List[InlineKeyboardButton]] = []
 
-    header = start.strftime("Выбор даты (начало %d.%m)")
-    rows.append([InlineKeyboardButton(header, callback_data="noop")])
+    # Навигация по страницам дат
+    # Левая стрелка - на 14 дней назад, но не раньше сегодняшнего дня
+    prev_start = start - timedelta(days=14)
+    if prev_start < today:
+        prev_cb = "noop"
+    else:
+        prev_cb = f"snooze_page:{reminder_id}:{prev_start.isoformat()}"
 
+    next_start = start + timedelta(days=14)
+    next_cb = f"snooze_page:{reminder_id}:{next_start.isoformat()}"
+
+    center_label = start.strftime("%d.%m")
+    rows.append(
+        [
+            InlineKeyboardButton("◀", callback_data=prev_cb),
+            InlineKeyboardButton(f"с {center_label}", callback_data="noop"),
+            InlineKeyboardButton("▶", callback_data=next_cb),
+        ]
+    )
+
+    # Сетка из 14 дней (2 недели)
     row: List[InlineKeyboardButton] = []
     for d in days:
         label = d.strftime("%d.%m")
@@ -1544,8 +1564,27 @@ async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 created_by=r.created_by,
                 template_id=None,
             )
-            await query.answer("Перенесено")
-            await query.edit_message_reply_markup(reply_markup=None)
+            when_str = new_dt.strftime("%d.%m %H:%M")
+            # Пытаемся обновить текст сообщения
+            try:
+                await query.edit_message_text(f"{r.text}\n\n(Отложено до {when_str})")
+            except Exception:
+                # если не получилось - хотя бы уберем клавиатуру
+                try:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+            await query.answer(f"Отложено до {when_str}")
+            return
+
+        if data.startswith("snooze_page:"):
+            # перелистывание календаря кастом-даты
+            _, rid_str, start_str = data.split(":", 2)
+            rid = int(rid_str)  # на будущее, пока не используем
+            start_date = date.fromisoformat(start_str)
+            kb = build_custom_date_keyboard(rid, start=start_date)
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer()
             return
 
         if data.startswith("snooze_pickdate:"):
@@ -1578,8 +1617,15 @@ async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 created_by=r.created_by,
                 template_id=None,
             )
-            await query.answer("Перенесено")
-            await query.edit_message_reply_markup(reply_markup=None)
+            when_str = new_dt.strftime("%d.%m %H:%M")
+            try:
+                await query.edit_message_text(f"{r.text}\n\n(Отложено до {when_str})")
+            except Exception:
+                try:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+            await query.answer(f"Отложено до {when_str}")
             return
 
         if data.startswith("snooze_cancel:"):
@@ -1611,11 +1657,27 @@ async def reminders_worker(app: Application) -> None:
                 logger.info("Нашел %s напоминаний к отправке", len(due))
             for r in due:
                 try:
-                    msg = await app.bot.send_message(
-                        chat_id=r.chat_id,
-                        text=r.text,
-                        reply_markup=build_snooze_keyboard(r.id),
-                    )
+                    # определяем тип чата, чтобы решать, показывать ли snooze-кнопки
+                    try:
+                        chat = await app.bot.get_chat(r.chat_id)
+                        chat_type = chat.type
+                    except Exception:
+                        chat_type = None
+
+                    if chat_type == Chat.PRIVATE:
+                        # только в личке показываем snooze-кнопки
+                        await app.bot.send_message(
+                            chat_id=r.chat_id,
+                            text=r.text,
+                            reply_markup=build_snooze_keyboard(r.id),
+                        )
+                    else:
+                        # в группах/каналах - только текст
+                        await app.bot.send_message(
+                            chat_id=r.chat_id,
+                            text=r.text,
+                        )
+
                     mark_reminder_sent(r.id)
                     logger.info(
                         "Отправлено напоминание id=%s в чат %s: %s (время %s, template_id=%s)",
@@ -1625,6 +1687,7 @@ async def reminders_worker(app: Application) -> None:
                         r.remind_at.isoformat(),
                         r.template_id,
                     )
+
                     if r.template_id is not None:
                         tpl = get_recurring_template(r.template_id)
                         if tpl and tpl["active"]:
@@ -1682,7 +1745,10 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-    application.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop)"))
+    application.add_handler(CallbackQueryHandler(
+        snooze_callback,
+        pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_page:|snooze_cancel:|noop)"
+    ))
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
