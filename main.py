@@ -527,10 +527,12 @@ def extract_after_command(text: str) -> str:
     return parts[1]
 
 
-def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
+def maybe_split_alias_first_token(args_text: str):
     """
-    В личке: если первое словечко (на первой строке) не похоже на дату и строка
-    не начинается с "-", считаем его alias.
+    В личке:
+    - если первая строка начинается с "-" -> это bulk без alias
+    - если первое слово похоже на дату/время или временное слово -> НЕ alias
+    - иначе первое слово считаем alias.
 
     Работает и с bulk:
       "football 28.11 12:00 - текст"
@@ -545,6 +547,7 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     if not args_text:
         return None, ""
 
+    # Сначала режем по строкам, потому что alias может быть только в первой
     lines = args_text.splitlines()
     first_line = lines[0].lstrip()
     rest_lines = "\n".join(lines[1:])
@@ -558,16 +561,61 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         return None, args_text.lstrip()
 
     first, *rest_first = first_line.split(maxsplit=1)
+    lower = first.lower()
 
-    # если первое слово - дата, то это не alias
+    # 1) Похоже на дату вида DD.MM или DD/MM
     if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
         return None, args_text.lstrip()
 
-    # иначе считаем это alias
+    # 2) Похоже на время вида HH:MM
+    if re.fullmatch(r"\d{1,2}:\d{2}", first):
+        return None, args_text.lstrip()
+
+    # 3) Ключевые слова, которые должны трактоваться как "время", а не alias
+    RESERVED_TIME_WORDS = {
+        # английский
+        "in",
+        "tomorrow",
+        "today",
+        "tonight",
+        "next",
+        "weekend",
+        "weekday",
+        "workday",
+        "workdays",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        # русский
+        "через",
+        "завтра",
+        "послезавтра",
+        "выходные",
+        "будни",
+        "будний",
+        "буднийдень",
+        "понедельник",
+        "вторник",
+        "среда",
+        "четверг",
+        "пятница",
+        "суббота",
+        "воскресенье",
+    }
+
+    if lower in RESERVED_TIME_WORDS:
+        # точно НЕ alias, а часть временного выражения
+        return None, args_text.lstrip()
+
+    # Иначе считаем это alias (как раньше)
     alias = first
     after_alias_first_line = rest_first[0] if rest_first else ""
 
-    parts: List[str] = []
+    parts = []
     if after_alias_first_line:
         parts.append(after_alias_first_line)
     if rest_lines:
@@ -582,18 +630,24 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         "Привет. Я твой личный бот для напоминаний.\n\n"
-        "Основное:\n"
+        "Базовый формат:\n"
         "/remind DD.MM HH:MM - текст\n"
         "Пример: /remind 28.11 12:00 - завтра футбол в 20:45\n\n"
+        "Можно по-разному задавать время:\n"
+        "- /remind 28.11 12:00 - классический формат\n"
+        "- /remind 28.11 - только дата, время будет 11:00 по умолчанию\n"
+        "- /remind 23:59 - только время, сегодня или завтра (если уже прошло)\n"
+        "- /remind in 2 hours - через 2 часа\n"
+        "- /remind tomorrow 18:00 - завтра в 18:00\n"
+        "- /remind weekend - в ближайшие выходные в 11:00\n\n"
         "Bulk (много строк сразу):\n"
         "/remind\n"
         "- 28.11 12:00 - завтра спринт Ф1 в 15:00\n"
         "- 28.11 12:00 - завтра футбол в 20:45\n\n"
         "Личка с alias чата:\n"
         "1) В чате: /linkchat football\n"
-        "2) В личке: /remind football 28.11 12:00 - завтра футбол\n"
-        "\n"
-        "/list - показать активные напоминания для чата\n"
+        "2) В личке: /remind football 28.11 12:00 - завтра футбол\n\n"
+        "/list - показать активные напоминания для чата и кнопки для удаления\n"
     )
     await update.message.reply_text(text)
 
