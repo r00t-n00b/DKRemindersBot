@@ -41,6 +41,20 @@ class Reminder:
     template_id: Optional[int] = None
 
 
+@dataclass
+class ParsedReminderInput:
+    """
+    Результат разбора одной строки напоминания (как одиночной, так и в bulk).
+    """
+    remind_at: datetime
+    text: str
+    is_recurring: bool
+    pattern_type: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+    time_hour: Optional[int] = None
+    time_minute: Optional[int] = None
+
+
 # ===== Работа с БД =====
 
 def init_db() -> None:
@@ -881,6 +895,37 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     return first_dt, text, pattern_type, payload, hour, minute
 
 
+def parse_any_reminder_line(raw: str, now: datetime) -> ParsedReminderInput:
+    """
+    Универсальный разбор одной строки:
+    - либо recurring (every/каждый),
+    - либо обычное разовое напоминание.
+    Используется и для одиночного /remind, и для строк в bulk.
+    """
+    raw = raw.strip()
+    if not raw:
+        raise ValueError("Пустая строка")
+
+    if looks_like_recurring(raw):
+        first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw, now)
+        return ParsedReminderInput(
+            remind_at=first_dt,
+            text=text,
+            is_recurring=True,
+            pattern_type=pattern_type,
+            payload=payload,
+            time_hour=hour,
+            time_minute=minute,
+        )
+
+    remind_at, text = parse_date_time_smart(raw, now)
+    return ParsedReminderInput(
+        remind_at=remind_at,
+        text=text,
+        is_recurring=False,
+    )
+
+
 # ===== Парсинг alias =====
 
 def extract_after_command(text: str) -> str:
@@ -939,8 +984,8 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         "сегодня",
         "tomorrow",
         "завтра",
-        "dayaftertomorrow",  # можно оставить, не мешает
-        "day",               # <– вот это добавляем, чтобы "day after tomorrow" не считался alias
+        "dayaftertomorrow",
+        "day",               # чтобы "day after tomorrow" не считался alias
         "послезавтра",
         # next
         "next",
@@ -1147,20 +1192,41 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if line.startswith("- "):
                 line = line[2:].strip()
             try:
-                remind_at, text = parse_date_time_smart(line, now)
-                reminder_id = add_reminder(
-                    chat_id=target_chat_id,
-                    text=text,
-                    remind_at=remind_at,
-                    created_by=user.id,
-                )
+                parsed = parse_any_reminder_line(line, now)
+
+                if parsed.is_recurring:
+                    tpl_id = create_recurring_template(
+                        chat_id=target_chat_id,
+                        text=parsed.text,
+                        pattern_type=parsed.pattern_type or "",
+                        payload=parsed.payload or {},
+                        time_hour=parsed.time_hour or 11,
+                        time_minute=parsed.time_minute or 0,
+                        created_by=user.id,
+                    )
+                    reminder_id = add_reminder(
+                        chat_id=target_chat_id,
+                        text=parsed.text,
+                        remind_at=parsed.remind_at,
+                        created_by=user.id,
+                        template_id=tpl_id,
+                    )
+                else:
+                    reminder_id = add_reminder(
+                        chat_id=target_chat_id,
+                        text=parsed.text,
+                        remind_at=parsed.remind_at,
+                        created_by=user.id,
+                    )
+
                 created += 1
                 logger.info(
-                    "Создан bulk reminder id=%s chat_id=%s at=%s text=%s",
+                    "Создан bulk %s reminder id=%s chat_id=%s at=%s text=%s",
+                    "recurring" if parsed.is_recurring else "single",
                     reminder_id,
                     target_chat_id,
-                    remind_at.isoformat(),
-                    text,
+                    parsed.remind_at.isoformat(),
+                    parsed.text,
                 )
             except Exception as e:
                 failed += 1
@@ -1178,27 +1244,30 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Одиночная строка
     raw_single = raw_args.strip()
 
-    # Сначала пробуем как recurring
-    if looks_like_recurring(raw_single):
-        try:
-            first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
-        except ValueError as e:
+    try:
+        parsed = parse_any_reminder_line(raw_single, now)
+    except ValueError as e:
+        # Если строка выглядит как recurring - показываем соответствующее сообщение
+        if looks_like_recurring(raw_single):
             await message.reply_text(f"Не смог понять повторяющийся формат: {e}")
-            return
+        else:
+            await message.reply_text(f"Не смог понять дату и текст: {e}")
+        return
 
+    if parsed.is_recurring:
         tpl_id = create_recurring_template(
             chat_id=target_chat_id,
-            text=text,
-            pattern_type=pattern_type,
-            payload=payload,
-            time_hour=hour,
-            time_minute=minute,
+            text=parsed.text,
+            pattern_type=parsed.pattern_type or "",
+            payload=parsed.payload or {},
+            time_hour=parsed.time_hour or 11,
+            time_minute=parsed.time_minute or 0,
             created_by=user.id,
         )
         reminder_id = add_reminder(
             chat_id=target_chat_id,
-            text=text,
-            remind_at=first_dt,
+            text=parsed.text,
+            remind_at=parsed.remind_at,
             created_by=user.id,
             template_id=tpl_id,
         )
@@ -1208,36 +1277,30 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reminder_id,
             tpl_id,
             target_chat_id,
-            first_dt.isoformat(),
-            text,
+            parsed.remind_at.isoformat(),
+            parsed.text,
             chat.id,
             user.id,
         )
 
-        when_str = first_dt.strftime("%d.%m %H:%M")
+        when_str = parsed.remind_at.strftime("%d.%m %H:%M")
         if used_alias:
             await message.reply_text(
                 f"Ок, создал повторяющееся напоминание в чате '{used_alias}'. "
-                f"Первое напоминание будет {when_str}: {text}"
+                f"Первое напоминание будет {when_str}: {parsed.text}"
             )
         else:
             await message.reply_text(
                 f"Ок, создал повторяющееся напоминание. "
-                f"Первое напоминание будет {when_str}: {text}"
+                f"Первое напоминание будет {when_str}: {parsed.text}"
             )
         return
 
     # Обычное разовое напоминание
-    try:
-        remind_at, text = parse_date_time_smart(raw_single, now)
-    except ValueError as e:
-        await message.reply_text(f"Не смог понять дату и текст: {e}")
-        return
-
     reminder_id = add_reminder(
         chat_id=target_chat_id,
-        text=text,
-        remind_at=remind_at,
+        text=parsed.text,
+        remind_at=parsed.remind_at,
         created_by=user.id,
     )
 
@@ -1245,20 +1308,20 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "Создан reminder id=%s chat_id=%s at=%s text=%s (from chat %s, user %s)",
         reminder_id,
         target_chat_id,
-        remind_at.isoformat(),
-        text,
+        parsed.remind_at.isoformat(),
+        parsed.text,
         chat.id,
         user.id,
     )
 
-    when_str = remind_at.strftime("%d.%m %H:%M")
+    when_str = parsed.remind_at.strftime("%d.%m %H:%M")
     if used_alias:
         await message.reply_text(
-            f"Ок, напомню в чате '{used_alias}' {when_str}: {text}"
+            f"Ок, напомню в чате '{used_alias}' {when_str}: {parsed.text}"
         )
     else:
         await message.reply_text(
-            f"Ок, напомню {when_str}: {text}"
+            f"Ок, напомню {when_str}: {parsed.text}"
         )
 
 
@@ -1273,7 +1336,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     c = conn.cursor()
     c.execute(
         """
-        SELECT id, text, remind_at
+        SELECT id, text, remind_at, template_id
         FROM reminders
         WHERE chat_id = ? AND delivered = 0
         ORDER BY remind_at ASC
@@ -1289,10 +1352,11 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     lines = []
     ids: List[int] = []
-    for idx, (rid, text, remind_at_str) in enumerate(rows, start=1):
+    for idx, (rid, text, remind_at_str, template_id) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
         ts = dt.strftime("%d.%m %H:%M")
-        lines.append(f"{idx}. {ts} - {text}")
+        marker = " 🔁" if template_id is not None else ""
+        lines.append(f"{idx}. {ts} - {text}{marker}")
         ids.append(rid)
 
     context.user_data["list_ids"] = ids
@@ -1361,17 +1425,23 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     c = conn.cursor()
     qmarks = ",".join("?" for _ in ids)
     c.execute(
-        f"SELECT id, text, remind_at FROM reminders WHERE id IN ({qmarks}) ORDER BY remind_at ASC",
+        f"""
+        SELECT id, text, remind_at, template_id
+        FROM reminders
+        WHERE id IN ({qmarks})
+        ORDER BY remind_at ASC
+        """,
         ids,
     )
     rows = c.fetchall()
     conn.close()
 
     lines = []
-    for new_idx, (rid2, text, remind_at_str) in enumerate(rows, start=1):
+    for new_idx, (rid2, text, remind_at_str, template_id) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
         ts = dt.strftime("%d.%m %H:%M")
-        lines.append(f"{new_idx}. {ts} - {text}")
+        marker = " 🔁" if template_id is not None else ""
+        lines.append(f"{new_idx}. {ts} - {text}{marker}")
 
     reply = "Активные напоминания:\n\n" + "\n".join(lines)
 
