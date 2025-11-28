@@ -3,9 +3,10 @@ import logging
 import os
 import re
 import sqlite3
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,7 @@ class Reminder:
     text: str
     remind_at: datetime
     created_by: Optional[int]
+    template_id: Optional[int] = None
 
 
 # ===== Работа с БД =====
@@ -44,6 +46,7 @@ class Reminder:
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    # основная таблица напоминаний (новые БД сразу с template_id)
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS reminders (
@@ -53,10 +56,19 @@ def init_db() -> None:
             remind_at TEXT NOT NULL,
             created_by INTEGER,
             created_at TEXT NOT NULL,
-            delivered INTEGER NOT NULL DEFAULT 0
+            delivered INTEGER NOT NULL DEFAULT 0,
+            template_id INTEGER
         )
         """
     )
+    # миграция старых БД - добавляем template_id при необходимости
+    c.execute("PRAGMA table_info(reminders)")
+    cols = [row[1] for row in c.fetchall()]
+    if "template_id" not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN template_id INTEGER")
+        logger.info("DB migration: added reminders.template_id column")
+
+    # алиасы чатов
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS chat_aliases (
@@ -66,6 +78,25 @@ def init_db() -> None:
         )
         """
     )
+
+    # таблица шаблонов повторяющихся напоминаний
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS recurring_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            pattern_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            time_hour INTEGER NOT NULL,
+            time_minute INTEGER NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -75,13 +106,14 @@ def add_reminder(
     text: str,
     remind_at: datetime,
     created_by: Optional[int],
+    template_id: Optional[int] = None,
 ) -> int:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
         """
-        INSERT INTO reminders (chat_id, text, remind_at, created_by, created_at, delivered)
-        VALUES (?, ?, ?, ?, ?, 0)
+        INSERT INTO reminders (chat_id, text, remind_at, created_by, created_at, delivered, template_id)
+        VALUES (?, ?, ?, ?, ?, 0, ?)
         """,
         (
             chat_id,
@@ -89,6 +121,7 @@ def add_reminder(
             remind_at.isoformat(),
             created_by,
             datetime.now(TZ).isoformat(),
+            template_id,
         ),
     )
     reminder_id = c.lastrowid
@@ -102,7 +135,7 @@ def get_due_reminders(now: datetime) -> List[Reminder]:
     c = conn.cursor()
     c.execute(
         """
-        SELECT id, chat_id, text, remind_at, created_by
+        SELECT id, chat_id, text, remind_at, created_by, template_id
         FROM reminders
         WHERE delivered = 0 AND remind_at <= ?
         ORDER BY remind_at ASC
@@ -113,7 +146,7 @@ def get_due_reminders(now: datetime) -> List[Reminder]:
     conn.close()
     reminders: List[Reminder] = []
     for row in rows:
-        rid, chat_id, text, remind_at_str, created_by = row
+        rid, chat_id, text, remind_at_str, created_by, template_id = row
         reminders.append(
             Reminder(
                 id=rid,
@@ -121,6 +154,7 @@ def get_due_reminders(now: datetime) -> List[Reminder]:
                 text=text,
                 remind_at=datetime.fromisoformat(remind_at_str),
                 created_by=created_by,
+                template_id=template_id,
             )
         )
     return reminders
@@ -135,17 +169,40 @@ def mark_reminder_sent(reminder_id: int) -> None:
 
 
 def delete_reminders(reminder_ids: List[int], chat_id: int) -> int:
+    """
+    Удаляем напоминания. Если у них был template_id - деактивируем соответствующие шаблоны
+    (то есть удаление повторяющегося напоминания останавливает всю серию).
+    """
     if not reminder_ids:
         return 0
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     qmarks = ",".join("?" for _ in reminder_ids)
     params = reminder_ids + [chat_id]
+
+    # какие шаблоны затронуты
+    c.execute(
+        f"SELECT DISTINCT template_id FROM reminders WHERE id IN ({qmarks}) AND chat_id = ?",
+        params,
+    )
+    template_rows = c.fetchall()
+    template_ids = [row[0] for row in template_rows if row[0] is not None]
+
+    # удаляем сами напоминания
     c.execute(
         f"DELETE FROM reminders WHERE id IN ({qmarks}) AND chat_id = ?",
         params,
     )
     deleted = c.rowcount
+
+    # деактивируем шаблоны
+    if template_ids:
+        q2 = ",".join("?" for _ in template_ids)
+        c.execute(
+            f"UPDATE recurring_templates SET active = 0 WHERE id IN ({q2})",
+            template_ids,
+        )
+
     conn.commit()
     conn.close()
     return deleted
@@ -188,432 +245,392 @@ def get_all_aliases():
     return rows
 
 
-# ===== Парсинг времени =====
+# ===== Повторяющиеся шаблоны =====
 
-REMIND_LINE_RE = re.compile(
-    r"""
-    ^\s*
-    (?P<day>\d{1,2})
-    [./](?P<month>\d{1,2})
-    (?:                           # опциональное время
-        \s+
-        (?P<hour>\d{1,2})
-        :
-        (?P<minute>\d{2})
-    )?
-    \s*
-    [-–—]
-    \s*
-    (?P<text>.+)
-    $
-    """,
-    re.VERBOSE,
-)
-
-TIME_ONLY_RE = re.compile(
-    r"""
-    ^\s*
-    (?P<hour>\d{1,2})
-    :
-    (?P<minute>\d{2})
-    \s*
-    [-–—]
-    \s*
-    (?P<text>.+)
-    $
-    """,
-    re.VERBOSE,
-)
+def create_recurring_template(
+    chat_id: int,
+    text: str,
+    pattern_type: str,
+    payload: Dict[str, Any],
+    time_hour: int,
+    time_minute: int,
+    created_by: Optional[int],
+) -> int:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO recurring_templates
+            (chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """,
+        (
+            chat_id,
+            text,
+            pattern_type,
+            json.dumps(payload, ensure_ascii=False),
+            time_hour,
+            time_minute,
+            created_by,
+            datetime.now(TZ).isoformat(),
+        ),
+    )
+    tpl_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return tpl_id
 
 
-def _parse_time_tail(tail: str) -> Optional[Tuple[int, int]]:
-    """
-    Хвост может быть пустым или содержать HH:MM.
-    Пустой -> (11, 0)
-    """
-    tail = tail.strip()
-    if not tail:
-        return 11, 0
+def get_recurring_template(template_id: int) -> Optional[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, active
+        FROM recurring_templates
+        WHERE id = ?
+        """,
+        (template_id,),
+    )
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    (
+        tpl_id,
+        chat_id,
+        text,
+        pattern_type,
+        payload_json,
+        time_hour,
+        time_minute,
+        created_by,
+        active,
+    ) = row
+    try:
+        payload = json.loads(payload_json) if payload_json else {}
+    except Exception:
+        payload = {}
+    return {
+        "id": tpl_id,
+        "chat_id": chat_id,
+        "text": text,
+        "pattern_type": pattern_type,
+        "payload": payload,
+        "time_hour": time_hour,
+        "time_minute": time_minute,
+        "created_by": created_by,
+        "active": bool(active),
+    }
 
-    m = re.fullmatch(r"(?P<h>\d{1,2}):(?P<m>\d{2})", tail)
+
+# ===== Парсинг времени (разовые напоминания) =====
+
+TIME_TOKEN_RE = re.compile(r"^\d{1,2}:\d{2}$")
+
+
+def _split_expr_and_text(s: str) -> Tuple[str, str]:
+    m = re.match(r"^(?P<expr>.+?)\s*[-–—]\s*(?P<text>.+)$", s.strip())
     if not m:
-        return None
+        raise ValueError("Ожидаю формат 'дата/время - текст'")
+    expr = m.group("expr").strip()
+    text = m.group("text").strip()
+    if not expr or not text:
+        raise ValueError("Ожидаю непустые дату/время и текст")
+    return expr, text
 
-    h = int(m.group("h"))
-    mnt = int(m.group("m"))
-    if not (0 <= h <= 23 and 0 <= mnt <= 59):
-        return None
-    return h, mnt
 
-
-def _parse_relative_in(expr: str, now: datetime) -> Optional[datetime]:
-    """
-    in 2 hours / in 45 minutes / in 3 days / in 2 weeks
-    """
-    expr_low = expr.lower().strip()
-    m = re.fullmatch(r"in\s+(\d+)\s+(\w+)", expr_low)
-    if not m:
-        return None
-
-    value = int(m.group(1))
-    unit = m.group(2)
-
-    if value <= 0:
-        return None
-
-    # англ юниты
-    minutes = 0
-    if unit.startswith("min"):  # minute / minutes / mins
-        minutes = value
-    elif unit.startswith("hour"):
-        minutes = value * 60
-    elif unit.startswith("day"):
-        minutes = value * 60 * 24
-    elif unit.startswith("week"):
-        minutes = value * 60 * 24 * 7
+def _extract_time_from_tokens(tokens: List[str], default_hour: int = 11, default_minute: int = 0) -> Tuple[List[str], int, int]:
+    if tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
+        h_s, m_s = tokens[-1].split(":", 1)
+        hour = int(h_s)
+        minute = int(m_s)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError("Неверное время")
+        core = tokens[:-1]
     else:
+        hour = default_hour
+        minute = default_minute
+        core = tokens
+    return core, hour, minute
+
+
+def _parse_in_expression(tokens: List[str], now: datetime) -> Optional[datetime]:
+    if not tokens:
+        return None
+    first = tokens[0]
+    if first not in {"in", "через"}:
+        return None
+    if len(tokens) < 3:
+        return None
+    # "in 2 hours", "через 3 часа" и т.п.
+    try:
+        amount = int(tokens[1])
+    except ValueError:
+        return None
+    unit = tokens[2]
+
+    # английские варианты
+    en_minutes = {"minute", "minutes", "min", "mins", "m"}
+    en_hours = {"hour", "hours", "h", "hr", "hrs"}
+    en_days = {"day", "days", "d"}
+    en_weeks = {"week", "weeks", "w"}
+
+    # русские варианты
+    ru_minutes = {"минуту", "минуты", "минут", "мин", "м"}
+    ru_hours = {"час", "часа", "часов", "ч"}
+    ru_days = {"день", "дня", "дней"}
+    ru_weeks = {"неделю", "недели", "недель", "нед"}
+
+    delta: Optional[timedelta] = None
+    if unit in en_minutes or unit in ru_minutes:
+        delta = timedelta(minutes=amount)
+    elif unit in en_hours or unit in ru_hours:
+        delta = timedelta(hours=amount)
+    elif unit in en_days or unit in ru_days:
+        delta = timedelta(days=amount)
+    elif unit in en_weeks or unit in ru_weeks:
+        delta = timedelta(weeks=amount)
+
+    if delta is None:
         return None
 
-    return now + timedelta(minutes=minutes)
+    dt = now + delta
+    dt = dt.replace(second=0, microsecond=0)
+    return dt
 
 
-def _parse_relative_ru(expr: str, now: datetime) -> Optional[datetime]:
-    """
-    через 3 часа / через 10 минут / через 5 дней / через 2 недели
-    """
-    expr_low = expr.lower().strip()
-    m = re.fullmatch(r"через\s+(\d+)\s+(\w+)", expr_low)
-    if not m:
-        return None
-
-    value = int(m.group(1))
-    unit = m.group(2)
-
-    if value <= 0:
-        return None
-
-    minutes = 0
-    # минуты
-    if unit.startswith("минут"):  # минута/минуты/минут
-        minutes = value
-    # часы
-    elif unit.startswith("час"):  # час/часа/часов
-        minutes = value * 60
-    # дни
-    elif unit.startswith("дн"):  # день/дня/дней
-        minutes = value * 60 * 24
-    # недели
-    elif unit.startswith("недел"):  # неделя/недели/недель
-        minutes = value * 60 * 24 * 7
-    else:
-        return None
-
-    return now + timedelta(minutes=minutes)
-
-
-def _parse_named_days(expr: str, now: datetime) -> Optional[datetime]:
-    """
-    today / tomorrow / day after tomorrow (+ optional time)
-    сегодня / завтра / послезавтра (+ optional time)
-    """
-    expr_stripped = expr.strip()
-    expr_low = expr_stripped.lower()
-
-    def build_date(delta_days: int, tail: str) -> Optional[datetime]:
-        t = _parse_time_tail(tail)
-        if t is None:
-            return None
-        h, mnt = t
-        base = (now + timedelta(days=delta_days)).date()
-        return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
-
-    # english
-    if expr_low.startswith("today"):
-        tail = expr_stripped[len("today"):].strip()
-        return build_date(0, tail)
-
-    if expr_low.startswith("tomorrow"):
-        tail = expr_stripped[len("tomorrow"):].strip()
-        return build_date(1, tail)
-
-    if expr_low.startswith("day after tomorrow"):
-        # фраза с пробелами, берем по длине именно этой подстроки
-        prefix = "day after tomorrow"
-        tail = expr_stripped[len(prefix):].strip()
-        return build_date(2, tail)
-
-    # russian
-    if expr_low.startswith("сегодня"):
-        tail = expr_stripped[len("сегодня"):].strip()
-        return build_date(0, tail)
-
-    if expr_low.startswith("завтра"):
-        tail = expr_stripped[len("завтра"):].strip()
-        return build_date(1, tail)
-
-    if expr_low.startswith("послезавтра"):
-        tail = expr_stripped[len("послезавтра"):].strip()
-        return build_date(2, tail)
-
+def _parse_today_tomorrow(expr: str, now: datetime) -> Optional[datetime]:
+    s = expr.lower().strip()
+    # today / сегодня
+    for key, days in (("today", 0), ("сегодня", 0)):
+        if s.startswith(key):
+            rest = s[len(key):].strip()
+            tokens = rest.split() if rest else []
+            tokens, hour, minute = _extract_time_from_tokens(tokens)
+            base = now.astimezone(TZ).date() + timedelta(days=days)
+            return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
+    # tomorrow / завтра
+    for key, days in (("tomorrow", 1), ("завтра", 1)):
+        if s.startswith(key):
+            rest = s[len(key):].strip()
+            tokens = rest.split() if rest else []
+            tokens, hour, minute = _extract_time_from_tokens(tokens)
+            base = now.astimezone(TZ).date() + timedelta(days=days)
+            return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
+    # day after tomorrow / послезавтра
+    if s.startswith("day after tomorrow"):
+        rest = s[len("day after tomorrow"):].strip()
+        tokens = rest.split() if rest else []
+        tokens, hour, minute = _extract_time_from_tokens(tokens)
+        base = now.astimezone(TZ).date() + timedelta(days=2)
+        return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
+    if s.startswith("послезавтра"):
+        rest = s[len("послезавтра"):].strip()
+        tokens = rest.split() if rest else []
+        tokens, hour, minute = _extract_time_from_tokens(tokens)
+        base = now.astimezone(TZ).date() + timedelta(days=2)
+        return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     return None
 
 
-WEEKDAYS_EN = {
+WEEKDAY_EN = {
     "monday": 0,
+    "mon": 0,
     "tuesday": 1,
+    "tue": 1,
+    "tues": 1,
     "wednesday": 2,
+    "wed": 2,
     "thursday": 3,
+    "thu": 3,
+    "thur": 3,
+    "thurs": 3,
     "friday": 4,
+    "fri": 4,
     "saturday": 5,
+    "sat": 5,
     "sunday": 6,
+    "sun": 6,
 }
 
-WEEKDAYS_RU = {
+WEEKDAY_RU = {
     "понедельник": 0,
+    "понедельника": 0,
+    "пн": 0,
     "вторник": 1,
+    "вторника": 1,
+    "вт": 1,
     "среда": 2,
+    "среду": 2,
+    "среды": 2,
+    "ср": 2,
     "четверг": 3,
+    "четверга": 3,
+    "чт": 3,
     "пятница": 4,
+    "пятницу": 4,
+    "пятницы": 4,
+    "пт": 4,
     "суббота": 5,
+    "субботу": 5,
+    "сб": 5,
     "воскресенье": 6,
+    "воскресенья": 6,
+    "вс": 6,
 }
 
 
-def _add_month(now: datetime) -> datetime:
-    """
-    "next month": первое число следующего месяца, 11:00 по умолчанию.
-    Конкретное время потом переопределяем в _parse_next.
-    """
-    year = now.year
-    month = now.month + 1
-    if month > 12:
-        month = 1
-        year += 1
-
-    # всегда берем 1-е число
-    return datetime(year, month, 1, 11, 0, tzinfo=TZ)
-
-
-def _parse_next(expr: str, now: datetime) -> Optional[datetime]:
-    """
-    next Monday 10:00 / next week / next month
-    следующий понедельник 10:00 / следующая неделя / следующий месяц
-    """
-    expr_stripped = expr.strip()
-    expr_low = expr_stripped.lower()
-
-    def parse_unit_and_time(rest_original: str, rest_low: str) -> Optional[Tuple[str, int, int]]:
-        parts_orig = rest_original.split()
-        parts_low = rest_low.split()
-        if not parts_low:
-            return None
-
-        unit = parts_low[0]
-        tail_orig = " ".join(parts_orig[1:])
-        t = _parse_time_tail(tail_orig)
-        if t is None:
-            return None
-        h, mnt = t
-        return unit, h, mnt
-
-    # EN: next ...
-    if expr_low.startswith("next "):
-        rest_orig = expr_stripped[5:].strip()
-        rest_low = expr_low[5:].strip()
-        parsed = parse_unit_and_time(rest_orig, rest_low)
-        if parsed is None:
-            return None
-        unit, h, mnt = parsed
-
-        # weekday
-        if unit in WEEKDAYS_EN:
-            target_wd = WEEKDAYS_EN[unit]
-            today_wd = now.weekday()
-            days_ahead = (target_wd - today_wd + 7) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            base = (now + timedelta(days=days_ahead)).date()
-            return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
-
-        # week -> понедельник следующей недели
-        if unit == "week":
-            today = now.date()
-            today_wd = now.weekday()
-            # ближайший понедельник В СЛЕДУЮЩЕЙ неделе
-            days_to_monday = (0 - today_wd + 7) % 7
-            if days_to_monday == 0:
-                days_to_monday = 7
-            base = today + timedelta(days=days_to_monday)
-            return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
-
-        # month -> 1-е число следующего месяца
-        if unit == "month":
-            base_dt = _add_month(now)
-            return base_dt.replace(hour=h, minute=mnt)
-
+def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
+    s = expr.lower().strip()
+    tokens = s.split()
+    if not tokens:
         return None
 
-    # RU: следующий / следующая / следующее ...
-    for prefix in ("следующий ", "следующая ", "следующее "):
-        if expr_low.startswith(prefix):
-            rest_orig = expr_stripped[len(prefix):].strip()
-            rest_low = expr_low[len(prefix):].strip()
-            parsed = parse_unit_and_time(rest_orig, rest_low)
-            if parsed is None:
-                return None
-            unit, h, mnt = parsed
+    # "next ..." / "следующая ..."
+    first = tokens[0]
+    if first not in {"next", "следующий", "следующая", "следующее", "следующие"}:
+        return None
 
-            # русские дни недели
-            if unit in WEEKDAYS_RU:
-                target_wd = WEEKDAYS_RU[unit]
-                today_wd = now.weekday()
-                days_ahead = (target_wd - today_wd + 7) % 7
-                if days_ahead == 0:
-                    days_ahead = 7
-                base = (now + timedelta(days=days_ahead)).date()
-                return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+    if len(tokens) == 1:
+        return None
 
-            # неделя -> понедельник следующей недели
-            if unit.startswith("недел"):  # неделя/неделю/недели
-                today = now.date()
-                today_wd = now.weekday()
-                days_to_monday = (0 - today_wd + 7) % 7
-                if days_to_monday == 0:
-                    days_to_monday = 7
-                base = today + timedelta(days=days_to_monday)
-                return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+    second = tokens[1]
 
-            # месяц -> 1-е число следующего месяца
-            if unit.startswith("месяц"):
-                base_dt = _add_month(now)
-                return base_dt.replace(hour=h, minute=mnt)
+    local = now.astimezone(TZ)
 
-            return None
+    # next week / следующая неделя
+    if second in {"week", "неделя", "неделю"}:
+        # понедельник следующей недели
+        base = local.date()
+        cur_wd = base.weekday()
+        days_until_next_monday = (7 - cur_wd) % 7
+        if days_until_next_monday == 0:
+            days_until_next_monday = 7
+        # время по умолчанию или из третьего токена (HH:MM)
+        rest_tokens = tokens[2:]
+        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
+        target_date = base + timedelta(days=days_until_next_monday)
+        return datetime(
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            hour,
+            minute,
+            tzinfo=TZ,
+        )
 
+    # next month / следующий месяц
+    if second in {"month", "месяц", "месяца"}:
+        rest_tokens = tokens[2:]
+        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
+        year = local.year
+        month = local.month + 1
+        if month > 12:
+            month = 1
+            year += 1
+        day = local.day
+        # пытаемся сохранить тот же день месяца, при необходимости сдвигаем назад
+        while day > 28:
+            try:
+                return datetime(year, month, day, hour, minute, tzinfo=TZ)
+            except ValueError:
+                day -= 1
+        return datetime(year, month, day, hour, minute, tzinfo=TZ)
+
+    # next Monday / следующий понедельник
+    target_wd: Optional[int] = None
+    if second in WEEKDAY_EN:
+        target_wd = WEEKDAY_EN[second]
+        rest_tokens = tokens[2:]
+    elif second in WEEKDAY_RU:
+        target_wd = WEEKDAY_RU[second]
+        rest_tokens = tokens[2:]
+    else:
+        return None
+
+    rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
+    base = local.date()
+    cur_wd = base.weekday()
+    delta = (target_wd - cur_wd + 7) % 7
+    if delta == 0:
+        delta = 7
+    target_date = base + timedelta(days=delta)
+    return datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        hour,
+        minute,
+        tzinfo=TZ,
+    )
+
+
+def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
+    s = expr.lower().strip()
+    tokens = s.split()
+    if not tokens:
+        return None
+
+    local = now.astimezone(TZ)
+
+    # выделяем время, если есть
+    tokens_no_time, hour, minute = _extract_time_from_tokens(tokens)
+    if not tokens_no_time:
+        return None
+
+    # weekend?
+    is_weekend = False
+    is_weekday = False
+
+    joined = " ".join(tokens_no_time)
+
+    if "weekend" in joined or "выходн" in joined:
+        is_weekend = True
+    if "weekday" in joined or "workday" in joined or "будн" in joined or "рабоч" in joined:
+        is_weekday = True
+
+    if not (is_weekend or is_weekday):
+        return None
+
+    if is_weekend and is_weekday:
+        return None
+
+    if is_weekend:
+        allowed = {5, 6}  # сб, вс
+    else:
+        allowed = {0, 1, 2, 3, 4}  # пн-пт
+
+    for delta in range(0, 8):
+        d = local.date() + timedelta(days=delta)
+        if d.weekday() in allowed:
+            candidate = datetime(d.year, d.month, d.day, hour, minute, tzinfo=TZ)
+            if candidate > now:
+                return candidate
     return None
 
 
-def _parse_week_kind(expr: str, now: datetime) -> Optional[datetime]:
-    """
-    weekend / weekday / workday
-    выходные / будний / рабочий день
-    """
-    expr_stripped = expr.strip()
-    expr_low = expr_stripped.lower()
+def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
+    s = expr.strip()
+    local = now.astimezone(TZ)
 
-    def build_dt_for_date(date_obj, tail: str) -> Optional[datetime]:
-        t = _parse_time_tail(tail)
-        if t is None:
-            return None
-        h, mnt = t
-        return datetime(date_obj.year, date_obj.month, date_obj.day, h, mnt, tzinfo=TZ)
-
-    # weekend / weekday / workday (EN)
-    if expr_low.startswith("weekend"):
-        tail = expr_stripped[len("weekend"):].strip()
-        # ближайшая суббота (если сегодня суббота и время по умолчанию уже прошло - берем следующую)
-        today = now.date()
-        today_wd = now.weekday()  # 0=Mon .. 5=Sat 6=Sun
-        days_ahead = (5 - today_wd + 7) % 7
-        candidate = today + timedelta(days=days_ahead)
-        default_dt = datetime(candidate.year, candidate.month, candidate.day, 11, 0, tzinfo=TZ)
-        if candidate == today and default_dt < now - timedelta(minutes=1):
-            candidate = candidate + timedelta(days=7)
-        return build_dt_for_date(candidate, tail)
-
-    if expr_low.startswith("weekday") or expr_low.startswith("workday"):
-        prefix = "weekday" if expr_low.startswith("weekday") else "workday"
-        tail = expr_stripped[len(prefix):].strip()
-        today = now.date()
-        date_candidate = today
-        while True:
-            wd = date_candidate.weekday()
-            if wd < 5:  # Mon-Fri
-                dt_candidate = build_dt_for_date(date_candidate, tail or "")
-                if dt_candidate is None:
-                    return None
-                if dt_candidate < now - timedelta(minutes=1):
-                    date_candidate = date_candidate + timedelta(days=1)
-                    continue
-                return dt_candidate
-            date_candidate = date_candidate + timedelta(days=1)
-
-    # RU: выходные
-    if expr_low.startswith("выходные"):
-        tail = expr_stripped[len("выходные"):].strip()
-        today = now.date()
-        today_wd = now.weekday()
-        days_ahead = (5 - today_wd + 7) % 7
-        candidate = today + timedelta(days=days_ahead)
-        default_dt = datetime(candidate.year, candidate.month, candidate.day, 11, 0, tzinfo=TZ)
-        if candidate == today and default_dt < now - timedelta(minutes=1):
-            candidate = candidate + timedelta(days=7)
-        return build_dt_for_date(candidate, tail)
-
-    # RU: будний / рабочий день
-    if expr_low.startswith("будний") or expr_low.startswith("рабочий"):
-        if expr_low.startswith("будний"):
-            tail = expr_stripped[len("будний"):].strip()
-        else:
-            tail = expr_stripped[len("рабочий"):].strip()
-
-        # срезаем слово "день" в начале, если оно есть: "будний день", "рабочий день"
-        tail_low = tail.lower()
-        if tail_low.startswith("день"):
-            tail = tail[len("день"):].strip()
-
-        today = now.date()
-        date_candidate = today
-        while True:
-            wd = date_candidate.weekday()
-            if wd < 5:
-                dt_candidate = build_dt_for_date(date_candidate, tail or "")
-                if dt_candidate is None:
-                    return None
-                if dt_candidate < now - timedelta(minutes=1):
-                    date_candidate = date_candidate + timedelta(days=1)
-                    continue
-                return dt_candidate
-            date_candidate = date_candidate + timedelta(days=1)
-
-    return None
-
-def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
-    """
-    Пытаемся понять:
-    - DD.MM HH:MM - текст
-    - DD.MM - текст (время по умолчанию 11:00)
-    - HH:MM - текст (сегодня/завтра)
-    - in / через N минут/часов/дней/недель
-    - today / tomorrow / day after tomorrow (+ русские аналоги)
-    - next Monday / next week / next month (+ русские аналоги)
-    - weekend / weekday / workday (+ русские аналоги)
-    """
-    s = s.strip()
-
-    # 1) Старый формат: дата + (опционально) время
-    m = REMIND_LINE_RE.match(s)
+    # дата + время или только дата
+    m = re.fullmatch(r"(?P<day>\d{1,2})[./](?P<month>\d{1,2})(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?", s)
     if m:
         day = int(m.group("day"))
         month = int(m.group("month"))
-        hour_str = m.group("hour")
-        minute_str = m.group("minute")
-        text = m.group("text").strip()
-
-        if hour_str is None:
+        if m.group("hour") is not None:
+            hour = int(m.group("hour"))
+            minute = int(m.group("minute"))
+        else:
             hour = 11
             minute = 0
-        else:
-            hour = int(hour_str)
-            minute = int(minute_str)
-
-        year = now.year
+        year = local.year
         try:
             dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
         except ValueError as e:
             raise ValueError(f"Неверная дата или время: {e}") from e
-
-        # Если дата уже в прошлом - считаем, что имеется в виду следующий год
+        # если дата уже в прошлом - переносим на следующий год
         if dt < now - timedelta(minutes=1):
             try:
                 dt = dt.replace(year=year + 1)
@@ -621,57 +638,250 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
                 raise ValueError(
                     f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
                 ) from e
+        return dt
 
-        return dt, text
-
-    # 2) Старый формат: только время
-    m2 = TIME_ONLY_RE.match(s)
+    # только время
+    m2 = re.fullmatch(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})", s)
     if m2:
         hour = int(m2.group("hour"))
         minute = int(m2.group("minute"))
-        text = m2.group("text").strip()
-
-        dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        dt = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if dt < now - timedelta(minutes=1):
             dt = dt + timedelta(days=1)
+        return dt
 
-        return dt, text
+    return None
 
-    # 3) Все "умные" варианты работают в формате:
-    #   <выражение времени> - текст
-    if "-" not in s:
-        raise ValueError("Не понял дату/время")
 
-    left, right = s.split("-", 1)
-    time_expr = left.strip()
-    text = right.strip()
+def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
+    """
+    Пытаемся понять:
+    - DD.MM HH:MM - текст
+    - DD.MM - текст (время по умолчанию 11:00)
+    - HH:MM - текст (сегодня/завтра)
+    - in/через N [minutes|hours|days|weeks] - текст
+    - today/tomorrow/day after tomorrow/сегодня/завтра/послезавтра [+ optional HH:MM] - текст
+    - next week/month/weekday names - текст
+    - weekend/weekday/workday/выходные/будний/рабочий - текст
+    """
+    expr, text = _split_expr_and_text(s)
+    expr_lower = expr.lower().strip()
+    now = now.astimezone(TZ)
 
-    # 3.1 относительное время EN: in 2 hours
-    dt = _parse_relative_in(time_expr, now)
+    # 1) относительное "in / через"
+    tokens = expr_lower.split()
+    dt = _parse_in_expression(tokens, now)
     if dt is not None:
         return dt, text
 
-    # 3.2 относительное время RU: через 3 часа
-    dt = _parse_relative_ru(time_expr, now)
+    # 2) today / tomorrow / day after tomorrow / сегодня / завтра / послезавтра
+    dt = _parse_today_tomorrow(expr_lower, now)
     if dt is not None:
         return dt, text
 
-    # 3.3 today / tomorrow / (сегодня/завтра/послезавтра)
-    dt = _parse_named_days(time_expr, now)
+    # 3) next week/month/weekday
+    dt = _parse_next_expression(expr_lower, now)
     if dt is not None:
         return dt, text
 
-    # 3.4 next Monday / next week / next month (+ русские аналоги)
-    dt = _parse_next(time_expr, now)
+    # 4) weekend / weekday / workday / выходные / будний / рабочий
+    dt = _parse_weekend_weekday(expr_lower, now)
     if dt is not None:
         return dt, text
 
-    # 3.5 weekend / weekday / workday (+ русские аналоги)
-    dt = _parse_week_kind(time_expr, now)
+    # 5) абсолютные дата/время
+    dt = _parse_absolute(expr, now)
     if dt is not None:
         return dt, text
 
     raise ValueError("Не понял дату/время")
+
+
+# ===== Парсинг recurring-форматов =====
+
+def looks_like_recurring(raw: str) -> bool:
+    s = raw.strip().lower()
+    if not s:
+        return False
+    first = s.split(maxsplit=1)[0]
+    return first in {"every", "everyday", "каждый", "каждую", "каждое", "каждые"}
+
+
+def compute_next_occurrence(
+    pattern_type: str,
+    payload: Dict[str, Any],
+    time_hour: int,
+    time_minute: int,
+    after_dt: datetime,
+) -> Optional[datetime]:
+    local = after_dt.astimezone(TZ)
+    if pattern_type == "daily":
+        candidate = local.replace(hour=time_hour, minute=time_minute, second=0, microsecond=0)
+        if candidate <= after_dt:
+            candidate = candidate + timedelta(days=1)
+        return candidate
+
+    if pattern_type == "weekly":
+        weekday = int(payload["weekday"])
+        base_date = local.date()
+        cur_wd = base_date.weekday()
+        delta = (weekday - cur_wd + 7) % 7
+        if delta == 0:
+            candidate = datetime(
+                base_date.year,
+                base_date.month,
+                base_date.day,
+                time_hour,
+                time_minute,
+                tzinfo=TZ,
+            )
+            if candidate <= after_dt:
+                delta = 7
+        if delta != 0:
+            base_date = base_date + timedelta(days=delta)
+        return datetime(
+            base_date.year,
+            base_date.month,
+            base_date.day,
+            time_hour,
+            time_minute,
+            tzinfo=TZ,
+        )
+
+    if pattern_type == "weekly_multi":
+        days = set(int(x) for x in payload.get("days", []))
+        if not days:
+            return None
+        for delta in range(0, 8):
+            d = local.date() + timedelta(days=delta)
+            if d.weekday() in days:
+                candidate = datetime(d.year, d.month, d.day, time_hour, time_minute, tzinfo=TZ)
+                if candidate > after_dt:
+                    return candidate
+        return None
+
+    if pattern_type == "monthly":
+        day = int(payload["day"])
+        year = local.year
+        month = local.month
+        base = local + timedelta(minutes=1)
+        year = base.year
+        month = base.month
+        for _ in range(24):
+            try:
+                candidate = datetime(year, month, day, time_hour, time_minute, tzinfo=TZ)
+            except ValueError:
+                month += 1
+                if month > 12:
+                    month = 1
+                    year += 1
+                continue
+            if candidate <= after_dt:
+                month += 1
+                if month > 12:
+                    month = 1
+                    year += 1
+                continue
+            return candidate
+        return None
+
+    return None
+
+
+def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
+    """
+    Разбираем строки вида:
+    - every monday 10:00 - текст
+    - каждый понедельник 10:00 - текст
+    - every weekday - текст
+    - каждые выходные - текст
+    - every month 15 10:00 - текст
+    - каждый месяц 15 10:00 - текст
+    """
+    expr, text = _split_expr_and_text(raw)
+    expr_lower = expr.lower().strip()
+    tokens = expr_lower.split()
+    if not tokens:
+        raise ValueError("Не понял повторяющийся формат")
+
+    # выделяем время (если есть) из конца
+    tokens_no_time, hour, minute = _extract_time_from_tokens(tokens)
+    if not tokens_no_time:
+        raise ValueError("Не понял повторяющийся формат")
+
+    first = tokens_no_time[0]
+
+    pattern_type: Optional[str] = None
+    payload: Dict[str, Any] = {}
+
+    # daily: every day / everyday / каждый день
+    if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
+        len(tokens_no_time) == 1 and first == "everyday"
+    ):
+        pattern_type = "daily"
+    elif first.startswith("кажд") and len(tokens_no_time) >= 2 and tokens_no_time[1].startswith("дн"):
+        pattern_type = "daily"
+
+    # weekly: every monday / каждый понедельник
+    if pattern_type is None and len(tokens_no_time) >= 2:
+        second = tokens_no_time[1]
+        if first == "every" and second in WEEKDAY_EN:
+            pattern_type = "weekly"
+            payload = {"weekday": WEEKDAY_EN[second]}
+        elif first.startswith("кажд") and second in WEEKDAY_RU:
+            pattern_type = "weekly"
+            payload = {"weekday": WEEKDAY_RU[second]}
+
+    # weekly_multi: every weekday/weekend, каждые выходные/будний день
+    if pattern_type is None:
+        if first == "every" and any(t in {"weekday", "weekdays"} for t in tokens_no_time[1:]):
+            pattern_type = "weekly_multi"
+            payload = {"days": [0, 1, 2, 3, 4]}
+        elif first == "every" and any(t in {"weekend", "weekends"} for t in tokens_no_time[1:]):
+            pattern_type = "weekly_multi"
+            payload = {"days": [5, 6]}
+        elif first.startswith("кажд") and any("выходн" in t for t in tokens_no_time[1:]):
+            pattern_type = "weekly_multi"
+            payload = {"days": [5, 6]}
+        elif first.startswith("кажд") and any("будн" in t or "рабоч" in t for t in tokens_no_time[1:]):
+            pattern_type = "weekly_multi"
+            payload = {"days": [0, 1, 2, 3, 4]}
+
+    # monthly: every month 15 [10:00], каждый месяц 15 [10:00]
+    if pattern_type is None and len(tokens_no_time) >= 3:
+        second = tokens_no_time[1]
+        third = tokens_no_time[2]
+        if first == "every" and second in {"month", "months"} and third.isdigit():
+            day = int(third)
+            if not (1 <= day <= 31):
+                raise ValueError("Неверный день месяца для повторяющегося напоминания")
+            pattern_type = "monthly"
+            payload = {"day": day}
+        elif first.startswith("кажд") and second.startswith("месяц") and third.isdigit():
+            day = int(third)
+            if not (1 <= day <= 31):
+                raise ValueError("Неверный день месяца для повторяющегося напоминания")
+            pattern_type = "monthly"
+            payload = {"day": day}
+
+    if pattern_type is None:
+        raise ValueError("Не понял повторяющийся формат")
+
+    # первая дата
+    first_dt = compute_next_occurrence(
+        pattern_type,
+        payload,
+        hour,
+        minute,
+        now - timedelta(seconds=1),
+    )
+    if first_dt is None:
+        raise ValueError("Не удалось посчитать дату для повторяющегося напоминания")
+
+    return first_dt, text, pattern_type, payload, hour, minute
+
+
+# ===== Парсинг alias =====
 
 def extract_after_command(text: str) -> str:
     """
@@ -694,11 +904,6 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     """
     В личке: если первое словечко (на первой строке) не похоже на дату/время
     и не является ключевым словом для "умного" парсинга, считаем его alias.
-
-    Работает и с bulk:
-      "/remind football 28.11 12:00 - текст"
-      "/remind football\n- 28.11 12:00 - текст"
-      "/remind\n- 28.11 12:00 - текст" (без alias)
     """
     if not args_text:
         return None, ""
@@ -707,62 +912,62 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     first_line = lines[0].lstrip()
     rest_lines = "\n".join(lines[1:])
 
-    # Пустая первая строка - значит, сразу bulk, alias нет
     if not first_line:
         return None, args_text.lstrip()
 
-    # Если первая осмысленная строка начинается с "-", это точно bulk без alias
     if first_line.startswith("-"):
         return None, args_text.lstrip()
 
-    first_line_low = first_line.lower()
-
-    # Многословные "умные" конструкции, которые точно НЕ alias:
-    #   "day after tomorrow 10:00 - ..."
-    #   "будний день - ..."
-    #   "рабочий день - ..."
-    smart_multi_prefixes = (
-        "day after tomorrow",
-        "будний день",
-        "рабочий день",
-    )
-    for pref in smart_multi_prefixes:
-        if first_line_low.startswith(pref):
-            # Это выражение времени, а не alias
-            return None, args_text.lstrip()
-
-    # Дальше как раньше - смотрим только на первое слово
     first, *rest_first = first_line.split(maxsplit=1)
     first_lower = first.lower()
 
-    # 1) Явная дата: 29.11 или 29/11 - не alias
+    # дата 29.11 / 29/11 - не alias
     if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
         return None, args_text.lstrip()
 
-    # 2) Явное время: 23:59 - не alias
+    # время 23:59 - не alias
     if re.fullmatch(r"\d{1,2}:\d{2}", first):
         return None, args_text.lstrip()
 
-    # 3) Ключевые слова "умного" парсинга - не alias
+    # ключевые слова умного парсинга + recurring
     smart_prefixes = {
         # относительное время
-        "in", "через",
+        "in",
+        "через",
         # сегодня/завтра/послезавтра
-        "today", "сегодня",
-        "tomorrow", "завтра",
-        "dayaftertomorrow", "послезавтра",
-        # "next something"
-        "next", "следующий", "следующая", "следующее",
-        # выходные / будни / рабочий день
-        "weekend", "weekday", "workday",
-        "выходные", "будний", "буднийдень", "рабочий", "рабочийдень",
+        "today",
+        "сегодня",
+        "tomorrow",
+        "завтра",
+        "dayaftertomorrow",
+        "послезавтра",
+        # next
+        "next",
+        "следующий",
+        "следующая",
+        "следующее",
+        "следующие",
+        # выходные / будни
+        "weekend",
+        "weekday",
+        "workday",
+        "выходные",
+        "будний",
+        "буднийдень",
+        "рабочий",
+        "рабочийдень",
+        # recurring "every ..."
+        "every",
+        "everyday",
+        "каждый",
+        "каждую",
+        "каждое",
+        "каждые",
     }
 
     if first_lower in smart_prefixes:
-        # Это часть выражения времени, а не alias
         return None, args_text.lstrip()
 
-    # Иначе считаем, что это alias
     alias = first
     after_alias_first_line = rest_first[0] if rest_first else ""
 
@@ -774,6 +979,7 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
     new_args = "\n".join(parts).lstrip()
     return alias, new_args
+
 
 # ===== Хендлеры команд =====
 
@@ -790,7 +996,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Alias чата для лички:\n"
         "1) В чате: /linkchat football\n"
         "2) В личке: /remind football 28.11 12:00 - завтра футбол\n\n"
-        "Умный парсинг времени:\n"
+        "Умный парсинг времени (разовые напоминания):\n"
         "- Только дата: /remind 29.11 - текст (по умолчанию в 11:00)\n"
         "- Только время: /remind 23:59 - текст (сегодня, или завтра, если время уже прошло)\n"
         "- Относительное:\n"
@@ -809,8 +1015,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "- Выходные / будни:\n"
         "    /remind weekend - текст\n"
         "    /remind weekday - текст\n"
-        "    /remind workday - текст\n"
-        "\n"
+        "    /remind workday - текст\n\n"
+        "Повторяющиеся напоминания:\n"
+        "- Каждый день:\n"
+        "    /remind every day 10:00 - текст\n"
+        "    /remind каждый день 10:00 - текст\n"
+        "- Каждую неделю:\n"
+        "    /remind every Monday 10:00 - текст\n"
+        "    /remind каждую среду 19:00 - текст\n"
+        "- Только будни / только выходные:\n"
+        "    /remind every weekday 09:00 - текст\n"
+        "    /remind every weekend 11:00 - текст\n"
+        "    /remind каждые выходные 11:00 - текст\n"
+        "- Каждый месяц:\n"
+        "    /remind every month 15 10:00 - текст\n"
+        "    /remind каждый месяц 15 10:00 - текст\n\n"
         "/list - показать активные напоминания для чата и удалить лишние кнопками\n"
     )
     await update.message.reply_text(text)
@@ -869,6 +1088,10 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "/remind 29.11 - важный звонок\n"
             "или только время:\n"
             "/remind 23:59 - проверить двери\n"
+            "или относительное:\n"
+            "/remind in 2 hours - текст\n"
+            "или повторяющееся:\n"
+            "/remind every Monday 10:00 - текст\n"
             "или bulk:\n"
             "/remind\n"
             "- 28.11 12:00 - завтра футбол\n"
@@ -952,8 +1175,60 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     # Одиночная строка
+    raw_single = raw_args.strip()
+
+    # Сначала пробуем как recurring
+    if looks_like_recurring(raw_single):
+        try:
+            first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
+        except ValueError as e:
+            await message.reply_text(f"Не смог понять повторяющийся формат: {e}")
+            return
+
+        tpl_id = create_recurring_template(
+            chat_id=target_chat_id,
+            text=text,
+            pattern_type=pattern_type,
+            payload=payload,
+            time_hour=hour,
+            time_minute=minute,
+            created_by=user.id,
+        )
+        reminder_id = add_reminder(
+            chat_id=target_chat_id,
+            text=text,
+            remind_at=first_dt,
+            created_by=user.id,
+            template_id=tpl_id,
+        )
+
+        logger.info(
+            "Создан recurring reminder id=%s tpl_id=%s chat_id=%s at=%s text=%s (from chat %s, user %s)",
+            reminder_id,
+            tpl_id,
+            target_chat_id,
+            first_dt.isoformat(),
+            text,
+            chat.id,
+            user.id,
+        )
+
+        when_str = first_dt.strftime("%d.%m %H:%M")
+        if used_alias:
+            await message.reply_text(
+                f"Ок, создал повторяющееся напоминание в чате '{used_alias}'. "
+                f"Первое напоминание будет {when_str}: {text}"
+            )
+        else:
+            await message.reply_text(
+                f"Ок, создал повторяющееся напоминание. "
+                f"Первое напоминание будет {when_str}: {text}"
+            )
+        return
+
+    # Обычное разовое напоминание
     try:
-        remind_at, text = parse_date_time_smart(raw_args.strip(), now)
+        remind_at, text = parse_date_time_smart(raw_single, now)
     except ValueError as e:
         await message.reply_text(f"Не смог понять дату и текст: {e}")
         return
@@ -1134,12 +1409,37 @@ async def reminders_worker(app: Application) -> None:
                     await app.bot.send_message(chat_id=r.chat_id, text=r.text)
                     mark_reminder_sent(r.id)
                     logger.info(
-                        "Отправлено напоминание id=%s в чат %s: %s (время %s)",
+                        "Отправлено напоминание id=%s в чат %s: %s (время %s, template_id=%s)",
                         r.id,
                         r.chat_id,
                         r.text,
                         r.remind_at.isoformat(),
+                        r.template_id,
                     )
+                    # если это повторяющееся напоминание - планируем следующее
+                    if r.template_id is not None:
+                        tpl = get_recurring_template(r.template_id)
+                        if tpl and tpl["active"]:
+                            next_dt = compute_next_occurrence(
+                                tpl["pattern_type"],
+                                tpl["payload"],
+                                tpl["time_hour"],
+                                tpl["time_minute"],
+                                r.remind_at,
+                            )
+                            if next_dt is not None:
+                                add_reminder(
+                                    chat_id=tpl["chat_id"],
+                                    text=tpl["text"],
+                                    remind_at=next_dt,
+                                    created_by=tpl["created_by"],
+                                    template_id=tpl["id"],
+                                )
+                                logger.info(
+                                    "Запланировано следующее повторяющееся напоминание для tpl_id=%s на %s",
+                                    tpl["id"],
+                                    next_dt.isoformat(),
+                                )
                 except Exception:
                     logger.exception("Ошибка при отправке напоминания id=%s", r.id)
         except Exception:
