@@ -1386,7 +1386,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     ids: List[int] = []
     for idx, (rid, text, remind_at_str, template_id) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%М")
+        ts = dt.strftime("%d.%m %H:%M")
         marker = " 🔁" if template_id is not None else ""
         lines.append(f"{idx}. {ts} - {text}{marker}")
         ids.append(rid)
