@@ -381,9 +381,8 @@ WEEKDAYS_RU = {
 
 def _add_month(now: datetime) -> datetime:
     """
-    Простейшее "next month": тот же день, но в следующем месяце.
-    Если дня не существует (30/31), берем последний день месяца.
-    Время берем 11:00 по умолчанию, дальше выставим отдельно.
+    "next month": первое число следующего месяца, 11:00 по умолчанию.
+    Конкретное время потом переопределяем в _parse_next.
     """
     year = now.year
     month = now.month + 1
@@ -391,20 +390,8 @@ def _add_month(now: datetime) -> datetime:
         month = 1
         year += 1
 
-    day = now.day
-
-    # находим последний день нового месяца
-    for d in range(31, 27, -1):  # 31..28
-        try:
-            _ = datetime(year, month, d, tzinfo=TZ)
-            last_day = d
-            break
-        except ValueError:
-            continue
-    if day > last_day:
-        day = last_day
-
-    return datetime(year, month, day, 11, 0, tzinfo=TZ)
+    # всегда берем 1-е число
+    return datetime(year, month, 1, 11, 0, tzinfo=TZ)
 
 
 def _parse_next(expr: str, now: datetime) -> Optional[datetime]:
@@ -448,12 +435,18 @@ def _parse_next(expr: str, now: datetime) -> Optional[datetime]:
             base = (now + timedelta(days=days_ahead)).date()
             return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
 
-        # week
+        # week -> понедельник следующей недели
         if unit == "week":
-            base = (now + timedelta(days=7)).date()
+            today = now.date()
+            today_wd = now.weekday()
+            # ближайший понедельник В СЛЕДУЮЩЕЙ неделе
+            days_to_monday = (0 - today_wd + 7) % 7
+            if days_to_monday == 0:
+                days_to_monday = 7
+            base = today + timedelta(days=days_to_monday)
             return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
 
-        # month
+        # month -> 1-е число следующего месяца
         if unit == "month":
             base_dt = _add_month(now)
             return base_dt.replace(hour=h, minute=mnt)
@@ -480,12 +473,17 @@ def _parse_next(expr: str, now: datetime) -> Optional[datetime]:
                 base = (now + timedelta(days=days_ahead)).date()
                 return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
 
-            # неделя
+            # неделя -> понедельник следующей недели
             if unit.startswith("недел"):  # неделя/неделю/недели
-                base = (now + timedelta(days=7)).date()
+                today = now.date()
+                today_wd = now.weekday()
+                days_to_monday = (0 - today_wd + 7) % 7
+                if days_to_monday == 0:
+                    days_to_monday = 7
+                base = today + timedelta(days=days_to_monday)
                 return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
 
-            # месяц
+            # месяц -> 1-е число следующего месяца
             if unit.startswith("месяц"):
                 base_dt = _add_month(now)
                 return base_dt.replace(hour=h, minute=mnt)
@@ -513,20 +511,17 @@ def _parse_week_kind(expr: str, now: datetime) -> Optional[datetime]:
     # weekend / weekday / workday (EN)
     if expr_low.startswith("weekend"):
         tail = expr_stripped[len("weekend"):].strip()
-        # ближайшая суббота (если сегодня суббота и время по умолчанию еще не прошло - берем сегодня)
+        # ближайшая суббота (если сегодня суббота и время по умолчанию уже прошло - берем следующую)
         today = now.date()
         today_wd = now.weekday()  # 0=Mon .. 5=Sat 6=Sun
         days_ahead = (5 - today_wd + 7) % 7
         candidate = today + timedelta(days=days_ahead)
-        # если сегодня суббота и 11:00 уже прошло - переносим на следующую субботу
-        if candidate == today:
-            default_dt = datetime(candidate.year, candidate.month, candidate.day, 11, 0, tzinfo=TZ)
-            if default_dt < now - timedelta(minutes=1):
-                candidate = candidate + timedelta(days=7)
+        default_dt = datetime(candidate.year, candidate.month, candidate.day, 11, 0, tzinfo=TZ)
+        if candidate == today and default_dt < now - timedelta(minutes=1):
+            candidate = candidate + timedelta(days=7)
         return build_dt_for_date(candidate, tail)
 
     if expr_low.startswith("weekday") or expr_low.startswith("workday"):
-        # первый ближайший рабочий день (пн-пт)
         prefix = "weekday" if expr_low.startswith("weekday") else "workday"
         tail = expr_stripped[len(prefix):].strip()
         today = now.date()
@@ -537,7 +532,6 @@ def _parse_week_kind(expr: str, now: datetime) -> Optional[datetime]:
                 dt_candidate = build_dt_for_date(date_candidate, tail or "")
                 if dt_candidate is None:
                     return None
-                # если это сегодня и время по умолчанию уже прошло - берем следующий рабочий
                 if dt_candidate < now - timedelta(minutes=1):
                     date_candidate = date_candidate + timedelta(days=1)
                     continue
@@ -558,11 +552,16 @@ def _parse_week_kind(expr: str, now: datetime) -> Optional[datetime]:
 
     # RU: будний / рабочий день
     if expr_low.startswith("будний") or expr_low.startswith("рабочий"):
-        # "будний", "будний день", "рабочий", "рабочий день"
         if expr_low.startswith("будний"):
             tail = expr_stripped[len("будний"):].strip()
         else:
             tail = expr_stripped[len("рабочий"):].strip()
+
+        # срезаем слово "день" в начале, если оно есть: "будний день", "рабочий день"
+        tail_low = tail.lower()
+        if tail_low.startswith("день"):
+            tail = tail[len("день"):].strip()
+
         today = now.date()
         date_candidate = today
         while True:
@@ -578,7 +577,6 @@ def _parse_week_kind(expr: str, now: datetime) -> Optional[datetime]:
             date_candidate = date_candidate + timedelta(days=1)
 
     return None
-
 
 def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     """
@@ -717,6 +715,23 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     if first_line.startswith("-"):
         return None, args_text.lstrip()
 
+    first_line_low = first_line.lower()
+
+    # Многословные "умные" конструкции, которые точно НЕ alias:
+    #   "day after tomorrow 10:00 - ..."
+    #   "будний день - ..."
+    #   "рабочий день - ..."
+    smart_multi_prefixes = (
+        "day after tomorrow",
+        "будний день",
+        "рабочий день",
+    )
+    for pref in smart_multi_prefixes:
+        if first_line_low.startswith(pref):
+            # Это выражение времени, а не alias
+            return None, args_text.lstrip()
+
+    # Дальше как раньше - смотрим только на первое слово
     first, *rest_first = first_line.split(maxsplit=1)
     first_lower = first.lower()
 
@@ -759,7 +774,6 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
     new_args = "\n".join(parts).lstrip()
     return alias, new_args
-
 
 # ===== Хендлеры команд =====
 
