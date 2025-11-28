@@ -226,16 +226,374 @@ TIME_ONLY_RE = re.compile(
 )
 
 
+def _parse_time_tail(tail: str) -> Optional[Tuple[int, int]]:
+    """
+    Хвост может быть пустым или содержать HH:MM.
+    Пустой -> (11, 0)
+    """
+    tail = tail.strip()
+    if not tail:
+        return 11, 0
+
+    m = re.fullmatch(r"(?P<h>\d{1,2}):(?P<m>\d{2})", tail)
+    if not m:
+        return None
+
+    h = int(m.group("h"))
+    mnt = int(m.group("m"))
+    if not (0 <= h <= 23 and 0 <= mnt <= 59):
+        return None
+    return h, mnt
+
+
+def _parse_relative_in(expr: str, now: datetime) -> Optional[datetime]:
+    """
+    in 2 hours / in 45 minutes / in 3 days / in 2 weeks
+    """
+    expr_low = expr.lower().strip()
+    m = re.fullmatch(r"in\s+(\d+)\s+(\w+)", expr_low)
+    if not m:
+        return None
+
+    value = int(m.group(1))
+    unit = m.group(2)
+
+    if value <= 0:
+        return None
+
+    # англ юниты
+    minutes = 0
+    if unit.startswith("min"):  # minute / minutes / mins
+        minutes = value
+    elif unit.startswith("hour"):
+        minutes = value * 60
+    elif unit.startswith("day"):
+        minutes = value * 60 * 24
+    elif unit.startswith("week"):
+        minutes = value * 60 * 24 * 7
+    else:
+        return None
+
+    return now + timedelta(minutes=minutes)
+
+
+def _parse_relative_ru(expr: str, now: datetime) -> Optional[datetime]:
+    """
+    через 3 часа / через 10 минут / через 5 дней / через 2 недели
+    """
+    expr_low = expr.lower().strip()
+    m = re.fullmatch(r"через\s+(\d+)\s+(\w+)", expr_low)
+    if not m:
+        return None
+
+    value = int(m.group(1))
+    unit = m.group(2)
+
+    if value <= 0:
+        return None
+
+    minutes = 0
+    # минуты
+    if unit.startswith("минут"):  # минута/минуты/минут
+        minutes = value
+    # часы
+    elif unit.startswith("час"):  # час/часа/часов
+        minutes = value * 60
+    # дни
+    elif unit.startswith("дн"):  # день/дня/дней
+        minutes = value * 60 * 24
+    # недели
+    elif unit.startswith("недел"):  # неделя/недели/недель
+        minutes = value * 60 * 24 * 7
+    else:
+        return None
+
+    return now + timedelta(minutes=minutes)
+
+
+def _parse_named_days(expr: str, now: datetime) -> Optional[datetime]:
+    """
+    today / tomorrow / day after tomorrow (+ optional time)
+    сегодня / завтра / послезавтра (+ optional time)
+    """
+    expr_stripped = expr.strip()
+    expr_low = expr_stripped.lower()
+
+    def build_date(delta_days: int, tail: str) -> Optional[datetime]:
+        t = _parse_time_tail(tail)
+        if t is None:
+            return None
+        h, mnt = t
+        base = (now + timedelta(days=delta_days)).date()
+        return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+
+    # english
+    if expr_low.startswith("today"):
+        tail = expr_stripped[len("today"):].strip()
+        return build_date(0, tail)
+
+    if expr_low.startswith("tomorrow"):
+        tail = expr_stripped[len("tomorrow"):].strip()
+        return build_date(1, tail)
+
+    if expr_low.startswith("day after tomorrow"):
+        # фраза с пробелами, берем по длине именно этой подстроки
+        prefix = "day after tomorrow"
+        tail = expr_stripped[len(prefix):].strip()
+        return build_date(2, tail)
+
+    # russian
+    if expr_low.startswith("сегодня"):
+        tail = expr_stripped[len("сегодня"):].strip()
+        return build_date(0, tail)
+
+    if expr_low.startswith("завтра"):
+        tail = expr_stripped[len("завтра"):].strip()
+        return build_date(1, tail)
+
+    if expr_low.startswith("послезавтра"):
+        tail = expr_stripped[len("послезавтра"):].strip()
+        return build_date(2, tail)
+
+    return None
+
+
+WEEKDAYS_EN = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+WEEKDAYS_RU = {
+    "понедельник": 0,
+    "вторник": 1,
+    "среда": 2,
+    "четверг": 3,
+    "пятница": 4,
+    "суббота": 5,
+    "воскресенье": 6,
+}
+
+
+def _add_month(now: datetime) -> datetime:
+    """
+    Простейшее "next month": тот же день, но в следующем месяце.
+    Если дня не существует (30/31), берем последний день месяца.
+    Время берем 11:00 по умолчанию, дальше выставим отдельно.
+    """
+    year = now.year
+    month = now.month + 1
+    if month > 12:
+        month = 1
+        year += 1
+
+    day = now.day
+
+    # находим последний день нового месяца
+    for d in range(31, 27, -1):  # 31..28
+        try:
+            _ = datetime(year, month, d, tzinfo=TZ)
+            last_day = d
+            break
+        except ValueError:
+            continue
+    if day > last_day:
+        day = last_day
+
+    return datetime(year, month, day, 11, 0, tzinfo=TZ)
+
+
+def _parse_next(expr: str, now: datetime) -> Optional[datetime]:
+    """
+    next Monday 10:00 / next week / next month
+    следующий понедельник 10:00 / следующая неделя / следующий месяц
+    """
+    expr_stripped = expr.strip()
+    expr_low = expr_stripped.lower()
+
+    def parse_unit_and_time(rest_original: str, rest_low: str) -> Optional[Tuple[str, int, int]]:
+        parts_orig = rest_original.split()
+        parts_low = rest_low.split()
+        if not parts_low:
+            return None
+
+        unit = parts_low[0]
+        tail_orig = " ".join(parts_orig[1:])
+        t = _parse_time_tail(tail_orig)
+        if t is None:
+            return None
+        h, mnt = t
+        return unit, h, mnt
+
+    # EN: next ...
+    if expr_low.startswith("next "):
+        rest_orig = expr_stripped[5:].strip()
+        rest_low = expr_low[5:].strip()
+        parsed = parse_unit_and_time(rest_orig, rest_low)
+        if parsed is None:
+            return None
+        unit, h, mnt = parsed
+
+        # weekday
+        if unit in WEEKDAYS_EN:
+            target_wd = WEEKDAYS_EN[unit]
+            today_wd = now.weekday()
+            days_ahead = (target_wd - today_wd + 7) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            base = (now + timedelta(days=days_ahead)).date()
+            return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+
+        # week
+        if unit == "week":
+            base = (now + timedelta(days=7)).date()
+            return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+
+        # month
+        if unit == "month":
+            base_dt = _add_month(now)
+            return base_dt.replace(hour=h, minute=mnt)
+
+        return None
+
+    # RU: следующий / следующая / следующее ...
+    for prefix in ("следующий ", "следующая ", "следующее "):
+        if expr_low.startswith(prefix):
+            rest_orig = expr_stripped[len(prefix):].strip()
+            rest_low = expr_low[len(prefix):].strip()
+            parsed = parse_unit_and_time(rest_orig, rest_low)
+            if parsed is None:
+                return None
+            unit, h, mnt = parsed
+
+            # русские дни недели
+            if unit in WEEKDAYS_RU:
+                target_wd = WEEKDAYS_RU[unit]
+                today_wd = now.weekday()
+                days_ahead = (target_wd - today_wd + 7) % 7
+                if days_ahead == 0:
+                    days_ahead = 7
+                base = (now + timedelta(days=days_ahead)).date()
+                return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+
+            # неделя
+            if unit.startswith("недел"):  # неделя/неделю/недели
+                base = (now + timedelta(days=7)).date()
+                return datetime(base.year, base.month, base.day, h, mnt, tzinfo=TZ)
+
+            # месяц
+            if unit.startswith("месяц"):
+                base_dt = _add_month(now)
+                return base_dt.replace(hour=h, minute=mnt)
+
+            return None
+
+    return None
+
+
+def _parse_week_kind(expr: str, now: datetime) -> Optional[datetime]:
+    """
+    weekend / weekday / workday
+    выходные / будний / рабочий день
+    """
+    expr_stripped = expr.strip()
+    expr_low = expr_stripped.lower()
+
+    def build_dt_for_date(date_obj, tail: str) -> Optional[datetime]:
+        t = _parse_time_tail(tail)
+        if t is None:
+            return None
+        h, mnt = t
+        return datetime(date_obj.year, date_obj.month, date_obj.day, h, mnt, tzinfo=TZ)
+
+    # weekend / weekday / workday (EN)
+    if expr_low.startswith("weekend"):
+        tail = expr_stripped[len("weekend"):].strip()
+        # ближайшая суббота (если сегодня суббота и время по умолчанию еще не прошло - берем сегодня)
+        today = now.date()
+        today_wd = now.weekday()  # 0=Mon .. 5=Sat 6=Sun
+        days_ahead = (5 - today_wd + 7) % 7
+        candidate = today + timedelta(days=days_ahead)
+        # если сегодня суббота и 11:00 уже прошло - переносим на следующую субботу
+        if candidate == today:
+            default_dt = datetime(candidate.year, candidate.month, candidate.day, 11, 0, tzinfo=TZ)
+            if default_dt < now - timedelta(minutes=1):
+                candidate = candidate + timedelta(days=7)
+        return build_dt_for_date(candidate, tail)
+
+    if expr_low.startswith("weekday") or expr_low.startswith("workday"):
+        # первый ближайший рабочий день (пн-пт)
+        prefix = "weekday" if expr_low.startswith("weekday") else "workday"
+        tail = expr_stripped[len(prefix):].strip()
+        today = now.date()
+        date_candidate = today
+        while True:
+            wd = date_candidate.weekday()
+            if wd < 5:  # Mon-Fri
+                dt_candidate = build_dt_for_date(date_candidate, tail or "")
+                if dt_candidate is None:
+                    return None
+                # если это сегодня и время по умолчанию уже прошло - берем следующий рабочий
+                if dt_candidate < now - timedelta(minutes=1):
+                    date_candidate = date_candidate + timedelta(days=1)
+                    continue
+                return dt_candidate
+            date_candidate = date_candidate + timedelta(days=1)
+
+    # RU: выходные
+    if expr_low.startswith("выходные"):
+        tail = expr_stripped[len("выходные"):].strip()
+        today = now.date()
+        today_wd = now.weekday()
+        days_ahead = (5 - today_wd + 7) % 7
+        candidate = today + timedelta(days=days_ahead)
+        default_dt = datetime(candidate.year, candidate.month, candidate.day, 11, 0, tzinfo=TZ)
+        if candidate == today and default_dt < now - timedelta(minutes=1):
+            candidate = candidate + timedelta(days=7)
+        return build_dt_for_date(candidate, tail)
+
+    # RU: будний / рабочий день
+    if expr_low.startswith("будний") or expr_low.startswith("рабочий"):
+        # "будний", "будний день", "рабочий", "рабочий день"
+        if expr_low.startswith("будний"):
+            tail = expr_stripped[len("будний"):].strip()
+        else:
+            tail = expr_stripped[len("рабочий"):].strip()
+        today = now.date()
+        date_candidate = today
+        while True:
+            wd = date_candidate.weekday()
+            if wd < 5:
+                dt_candidate = build_dt_for_date(date_candidate, tail or "")
+                if dt_candidate is None:
+                    return None
+                if dt_candidate < now - timedelta(minutes=1):
+                    date_candidate = date_candidate + timedelta(days=1)
+                    continue
+                return dt_candidate
+            date_candidate = date_candidate + timedelta(days=1)
+
+    return None
+
+
 def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     """
     Пытаемся понять:
     - DD.MM HH:MM - текст
     - DD.MM - текст (время по умолчанию 11:00)
     - HH:MM - текст (сегодня/завтра)
+    - in / через N минут/часов/дней/недель
+    - today / tomorrow / day after tomorrow (+ русские аналоги)
+    - next Monday / next week / next month (+ русские аналоги)
+    - weekend / weekday / workday (+ русские аналоги)
     """
     s = s.strip()
 
-    # 1) Формат с датой
+    # 1) Старый формат: дата + (опционально) время
     m = REMIND_LINE_RE.match(s)
     if m:
         day = int(m.group("day"))
@@ -268,7 +626,7 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
 
         return dt, text
 
-    # 2) Только время
+    # 2) Старый формат: только время
     m2 = TIME_ONLY_RE.match(s)
     if m2:
         hour = int(m2.group("hour"))
@@ -281,8 +639,41 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
 
         return dt, text
 
-    raise ValueError("Не понял дату/время")
+    # 3) Все "умные" варианты работают в формате:
+    #   <выражение времени> - текст
+    if "-" not in s:
+        raise ValueError("Не понял дату/время")
 
+    left, right = s.split("-", 1)
+    time_expr = left.strip()
+    text = right.strip()
+
+    # 3.1 относительное время EN: in 2 hours
+    dt = _parse_relative_in(time_expr, now)
+    if dt is not None:
+        return dt, text
+
+    # 3.2 относительное время RU: через 3 часа
+    dt = _parse_relative_ru(time_expr, now)
+    if dt is not None:
+        return dt, text
+
+    # 3.3 today / tomorrow / (сегодня/завтра/послезавтра)
+    dt = _parse_named_days(time_expr, now)
+    if dt is not None:
+        return dt, text
+
+    # 3.4 next Monday / next week / next month (+ русские аналоги)
+    dt = _parse_next(time_expr, now)
+    if dt is not None:
+        return dt, text
+
+    # 3.5 weekend / weekday / workday (+ русские аналоги)
+    dt = _parse_week_kind(time_expr, now)
+    if dt is not None:
+        return dt, text
+
+    raise ValueError("Не понял дату/время")
 
 def extract_after_command(text: str) -> str:
     """
