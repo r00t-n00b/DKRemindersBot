@@ -303,18 +303,13 @@ def extract_after_command(text: str) -> str:
 
 def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     """
-    В личке: если первое словечко (на первой строке) не похоже на дату и строка
-    не начинается с "-", считаем его alias.
+    В личке: если первое словечко (на первой строке) не похоже на дату/время
+    и не является ключевым словом для "умного" парсинга, считаем его alias.
 
     Работает и с bulk:
-      "football 28.11 12:00 - текст"
-        -> ("football", "28.11 12:00 - текст")
-
-      "football\n- 28.11 12:00 - текст"
-        -> ("football", "- 28.11 12:00 - текст")
-
-      "- 28.11 12:00 - текст" (bulk без alias)
-        -> (None, "- 28.11 12:00 - текст")
+      "/remind football 28.11 12:00 - текст"
+      "/remind football\n- 28.11 12:00 - текст"
+      "/remind\n- 28.11 12:00 - текст" (без alias)
     """
     if not args_text:
         return None, ""
@@ -323,19 +318,45 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     first_line = lines[0].lstrip()
     rest_lines = "\n".join(lines[1:])
 
+    # Пустая первая строка - значит, сразу bulk, alias нет
     if not first_line:
         return None, args_text.lstrip()
 
-    # если начинается с "-", это точно bulk без alias
+    # Если первая осмысленная строка начинается с "-", это точно bulk без alias
     if first_line.startswith("-"):
         return None, args_text.lstrip()
 
     first, *rest_first = first_line.split(maxsplit=1)
+    first_lower = first.lower()
 
-    # если первое слово - дата, то это не alias
+    # 1) Явная дата: 29.11 или 29/11 - не alias
     if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
         return None, args_text.lstrip()
 
+    # 2) Явное время: 23:59 - не alias
+    if re.fullmatch(r"\d{1,2}:\d{2}", first):
+        return None, args_text.lstrip()
+
+    # 3) Ключевые слова "умного" парсинга - не alias
+    smart_prefixes = {
+        # относительное время
+        "in", "через",
+        # сегодня/завтра/послезавтра
+        "today", "сегодня",
+        "tomorrow", "завтра",
+        "dayaftertomorrow", "послезавтра",
+        # "next something"
+        "next", "следующий", "следующая", "следующее",
+        # выходные / будни / рабочий день
+        "weekend", "weekday", "workday",
+        "выходные", "будний", "буднийдень", "рабочий", "рабочийдень",
+    }
+
+    if first_lower in smart_prefixes:
+        # Это часть выражения времени, а не alias
+        return None, args_text.lstrip()
+
+    # Иначе считаем, что это alias
     alias = first
     after_alias_first_line = rest_first[0] if rest_first else ""
 
@@ -354,23 +375,38 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         "Привет. Я твой личный бот для напоминаний.\n\n"
-        "Классический формат:\n"
+        "Базовый формат:\n"
         "/remind DD.MM HH:MM - текст\n"
         "Пример: /remind 28.11 12:00 - завтра футбол в 20:45\n\n"
-        "Можно опустить время - тогда напомню в 11:00:\n"
-        "/remind 29.11 - важный звонок\n\n"
-        "Можно указать только время - тогда напомню сегодня в это время,\n"
-        "или завтра, если время уже прошло:\n"
-        "/remind 23:59 - проверить двери\n\n"
         "Bulk (много строк сразу):\n"
         "/remind\n"
         "- 28.11 12:00 - завтра спринт Ф1 в 15:00\n"
         "- 28.11 12:00 - завтра футбол в 20:45\n\n"
-        "Личка с alias чата:\n"
+        "Alias чата для лички:\n"
         "1) В чате: /linkchat football\n"
         "2) В личке: /remind football 28.11 12:00 - завтра футбол\n\n"
-        "/list - показать активные напоминания для чата\n"
-        "В списке можно удалять напоминания кнопками.\n"
+        "Умный парсинг времени:\n"
+        "- Только дата: /remind 29.11 - текст (по умолчанию в 11:00)\n"
+        "- Только время: /remind 23:59 - текст (сегодня, или завтра, если время уже прошло)\n"
+        "- Относительное:\n"
+        "    /remind in 2 hours - текст\n"
+        "    /remind in 45 minutes - текст\n"
+        "    /remind через 3 часа - текст\n"
+        "- Завтра / послезавтра:\n"
+        "    /remind tomorrow 18:00 - текст\n"
+        "    /remind tomorrow - текст (11:00)\n"
+        "    /remind завтра 19:00 - текст\n"
+        "    /remind послезавтра - текст (11:00)\n"
+        "- Следующие периоды:\n"
+        "    /remind next Monday 10:00 - текст\n"
+        "    /remind next week - текст\n"
+        "    /remind next month - текст\n"
+        "- Выходные / будни:\n"
+        "    /remind weekend - текст\n"
+        "    /remind weekday - текст\n"
+        "    /remind workday - текст\n"
+        "\n"
+        "/list - показать активные напоминания для чата и удалить лишние кнопками\n"
     )
     await update.message.reply_text(text)
 
