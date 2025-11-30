@@ -1005,6 +1005,9 @@ def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
             InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
         ],
+        [
+            InlineKeyboardButton("✅ Mark complete", callback_data=f"done:{reminder_id}"),
+        ],
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -1530,6 +1533,37 @@ async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     data = query.data or ""
     try:
+        # mark complete
+        if data.startswith("done:"):
+            _, rid_str = data.split(":", 1)
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                # даже если вдруг id не распарсился, просто пометим сообщение завершенным
+                rid = None
+
+            # исходный текст сообщения
+            original_text = query.message.text if query.message and query.message.text else ""
+
+            # если есть оригинальный текст ремайндерa в БД - можно взять его
+            if rid is not None:
+                r = get_reminder(rid)
+            else:
+                r = None
+
+            base_text = r.text if r else original_text or "Напоминание"
+
+            new_text = f"{base_text} (завершено ✅)"
+
+            try:
+                await query.edit_message_text(new_text)
+            except Exception:
+                # fallback: хотя бы уберем клавиатуру
+                await query.edit_message_reply_markup(reply_markup=None)
+
+            await query.answer("Отмечено как завершенное")
+            return
+
         if data.startswith("snooze:"):
             _, rid_str, action = data.split(":", 2)
             rid = int(rid_str)
@@ -1754,10 +1788,12 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-    application.add_handler(CallbackQueryHandler(
+application.add_handler(
+    CallbackQueryHandler(
         snooze_callback,
-        pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_page:|snooze_cancel:|noop)"
-    ))
+        pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|done:|noop)"
+    )
+)
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
