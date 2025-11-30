@@ -1788,12 +1788,12 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-application.add_handler(
-    CallbackQueryHandler(
-        snooze_callback,
-        pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|done:|noop)"
+    application.add_handler(
+        CallbackQueryHandler(
+            snooze_callback,
+            pattern=r"^(snooze:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
+        )
     )
-)
 
     logger.info("Запускаем бота polling...")
     application.run_polling()
