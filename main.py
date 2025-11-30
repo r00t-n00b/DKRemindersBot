@@ -1396,6 +1396,32 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if chat is None or message is None:
         return
 
+    # по умолчанию - показываем напоминания для текущего чата
+    target_chat_id = chat.id
+    used_alias: Optional[str] = None
+
+    # В ЛИЧКЕ можно написать /list alias и посмотреть напоминания чужого чата
+    if chat.type == Chat.PRIVATE and context.args:
+        alias = context.args[0].strip()
+        if alias:
+            alias_chat_id = get_chat_id_by_alias(alias)
+            if alias_chat_id is None:
+                aliases = get_all_aliases()
+                if not aliases:
+                    await message.reply_text(
+                        f"Alias '{alias}' не найден.\n"
+                        f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
+                    )
+                else:
+                    known = ", ".join(a for a, _, _ in aliases)
+                    await message.reply_text(
+                        f"Alias '{alias}' не найден.\n"
+                        f"Из известных: {known}"
+                    )
+                return
+            target_chat_id = alias_chat_id
+            used_alias = alias
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
@@ -1405,13 +1431,16 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         WHERE chat_id = ? AND delivered = 0
         ORDER BY remind_at ASC
         """,
-        (chat.id,),
+        (target_chat_id,),
     )
     rows = c.fetchall()
     conn.close()
 
     if not rows:
-        await message.reply_text("Напоминаний нет.")
+        if used_alias:
+            await message.reply_text(f"В чате '{used_alias}' напоминаний нет.")
+        else:
+            await message.reply_text("Напоминаний нет.")
         return
 
     lines = []
@@ -1423,9 +1452,14 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         lines.append(f"{idx}. {ts} - {text}{marker}")
         ids.append(rid)
 
+    # сохраняем не только ids, но и ЧТО за чат мы сейчас смотрим
     context.user_data["list_ids"] = ids
+    context.user_data["list_chat_id"] = target_chat_id
 
-    reply = "Активные напоминания:\n\n" + "\n".join(lines)
+    if used_alias:
+        reply = f"Активные напоминания для чата '{used_alias}':\n\n" + "\n".join(lines)
+    else:
+        reply = "Активные напоминания:\n\n" + "\n".join(lines)
 
     buttons: List[List[InlineKeyboardButton]] = []
     row: List[InlineKeyboardButton] = []
@@ -1469,11 +1503,17 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     rid = ids[idx - 1]
-    chat = query.message.chat if query.message else None
-    if chat is None:
-        return
 
-    deleted = delete_reminders([rid], chat.id)
+    # Чат, для которого показывается список (может быть НЕ равен query.message.chat.id в личке)
+    target_chat_id = context.user_data.get("list_chat_id")
+    if target_chat_id is None:
+        # на всякий случай - старое поведение
+        chat = query.message.chat if query.message else None
+        if chat is None:
+            return
+        target_chat_id = chat.id
+
+    deleted = delete_reminders([rid], target_chat_id)
     if not deleted:
         await query.answer("Уже удалено", show_alert=True)
         return
