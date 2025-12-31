@@ -506,6 +506,20 @@ WEEKDAY_RU = {
     "вс": 6,
 }
 
+MONTH_EN = {
+    "january": 1, "jan": 1,
+    "february": 2, "feb": 2,
+    "march": 3, "mar": 3,
+    "april": 4, "apr": 4,
+    "may": 5,
+    "june": 6, "jun": 6,
+    "july": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "october": 10, "oct": 10,
+    "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
+}
 
 def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.lower().strip()
@@ -796,6 +810,30 @@ def compute_next_occurrence(
             return candidate
         return None
 
+    if pattern_type == "yearly":
+        month = int(payload["month"])
+        day = int(payload["day"])
+
+        base = after_dt.astimezone(TZ)
+        year = base.year
+
+        # Если дата в этом году уже прошла - берем следующий год.
+        # Плюс поддержка 29 февраля: ищем следующий валидный год.
+        for _ in range(0, 12):
+            try:
+                candidate = datetime(year, month, day, time_hour, time_minute, tzinfo=TZ)
+            except ValueError:
+                year += 1
+                continue
+
+            if candidate <= after_dt:
+                year += 1
+                continue
+
+            return candidate
+
+        return None
+
     return None
 
 
@@ -882,6 +920,27 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
                 raise ValueError("Неверный день месяца для повторяющегося напоминания")
             pattern_type = "monthly"
             payload = {"day": day}
+
+    # yearly: every year on december 25 [10:00] - text
+    # tokens: every year on december 25
+    if pattern_type is None:
+        if len(tokens_no_time) >= 4 and first == "every" and tokens_no_time[1] == "year":
+            i = 2
+            if i < len(tokens_no_time) and tokens_no_time[i] == "on":
+                i += 1
+
+            if i + 1 < len(tokens_no_time):
+                month_token = tokens_no_time[i]
+                day_token = tokens_no_time[i + 1]
+
+                if month_token in MONTH_EN and day_token.isdigit():
+                    month = int(MONTH_EN[month_token])
+                    day = int(day_token)
+                    if not (1 <= day <= 31):
+                        raise ValueError("Неверный день месяца для повторяющегося напоминания")
+
+                    pattern_type = "yearly"
+                    payload = {"month": month, "day": day}
 
     if pattern_type is None:
         raise ValueError("Не понял повторяющийся формат")
@@ -1131,6 +1190,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "- Каждый месяц:\n"
         "    /remind every month 15 10:00 - текст\n"
         "    /remind каждый месяц 15 10:00 - текст\n\n"
+        "- Каждый год:\n"
+        "    /remind every year on December 25 10:00 - текст\n"
         "После прихода напоминания можно сделать SNOOZE кнопками:\n"
         " +20 минут, +1 час, +3 часа, завтра в 11:00, следующий понедельник в 11:00, кастомная дата и время.\n\n"
         "/list - показать активные напоминания для чата и удалить лишние кнопками\n"
