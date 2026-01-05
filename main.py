@@ -97,9 +97,65 @@ def init_db() -> None:
         """
     )
 
+    # привязка пользователей (кто нажал /start в личке)
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_chats (
+            user_id INTEGER PRIMARY KEY,
+            chat_id INTEGER NOT NULL,
+            username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_chats_username ON user_chats(username)"
+    )
+
     conn.commit()
     conn.close()
 
+def upsert_user_chat(user_id: int, chat_id: int, username: Optional[str], first_name: Optional[str], last_name: Optional[str]) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO user_chats(user_id, chat_id, username, first_name, last_name, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            chat_id = excluded.chat_id,
+            username = excluded.username,
+            first_name = excluded.first_name,
+            last_name = excluded.last_name,
+            updated_at = excluded.updated_at
+        """,
+        (
+            user_id,
+            chat_id,
+            (username or "").lower() if username else None,
+            first_name,
+            last_name,
+            datetime.now(TZ).isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_chat_id_by_username(username: str) -> Optional[int]:
+    uname = username.strip().lstrip("@").lower()
+    if not uname:
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT chat_id FROM user_chats WHERE username = ? ORDER BY updated_at DESC LIMIT 1", (uname,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return int(row[0])
+    return None
 
 def add_reminder(
     chat_id: int,
@@ -1144,6 +1200,22 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str) -> InlineKeyboar
 # ===== Хендлеры команд =====
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat is None or user is None:
+        return
+
+    # ВАЖНО: регистрируем личный чат пользователя
+    if chat.type == Chat.PRIVATE:
+        upsert_user_chat(
+            user_id=user.id,
+            chat_id=chat.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+        )
+
     text = (
         "Привет. Я твой личный бот для напоминаний.\n\n"
         "Базовый формат:\n"
@@ -1267,6 +1339,41 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
+    # В личке допускаем @username первым словом / первой строкой
+    if is_private:
+        first_line = raw_args.splitlines()[0].lstrip()
+        if first_line and not first_line.startswith("-"):
+            first_token = first_line.split(maxsplit=1)[0].strip()
+            if first_token.startswith("@") and len(first_token) > 1:
+                target = get_user_chat_id_by_username(first_token)
+                if target is None:
+                    await message.reply_text(
+                        f"Я пока не могу написать {first_token} в личку, потому что он/она не нажимал(а) Start у бота.\n"
+                        f"Пусть откроет бота и нажмет Start, потом повтори команду."
+                    )
+                    return
+
+                # убираем @username из raw_args
+                rest_first_line = first_line[len(first_token):].lstrip()
+                rest_lines = "\n".join(raw_args.splitlines()[1:])
+                parts = []
+                if rest_first_line:
+                    parts.append(rest_first_line)
+                if rest_lines.strip():
+                    parts.append(rest_lines)
+                raw_args = "\n".join(parts).strip()
+
+                if not raw_args:
+                    await message.reply_text(
+                        f"После {first_token} нужно указать дату и текст.\n"
+                        f"Пример: /remind {first_token} tomorrow 10:00 - привет"
+                    )
+                    return
+
+                target_chat_id = target
+                used_alias = first_token  # просто чтобы показать в ответе, кого выбрали
+
+    # В личке допускаем alias первым словом / первой строкой
     if is_private:
         maybe_alias, rest = maybe_split_alias_first_token(raw_args)
         if maybe_alias is not None:
@@ -1298,6 +1405,16 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
                 return
 
+    # если человек пишет боту в личке - запомним его chat_id
+    if is_private:
+        upsert_user_chat(
+            user_id=user.id,
+            chat_id=chat.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+        )
+
     # Bulk или одиночный?
     if "\n" in raw_args:
         lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
@@ -1312,6 +1429,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 # поддержка recurring и в bulk
                 if looks_like_recurring(line):
                     first_dt, text, pattern_type, payload, hour, minute = parse_recurring(line, now)
+
                     tpl_id = create_recurring_template(
                         chat_id=target_chat_id,
                         text=text,
@@ -1338,6 +1456,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     )
                 else:
                     remind_at, text = parse_date_time_smart(line, now)
+
                     reminder_id = add_reminder(
                         chat_id=target_chat_id,
                         text=text,
@@ -1368,6 +1487,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Одиночная строка
     raw_single = raw_args.strip()
 
+    # Сначала пробуем как recurring
     if looks_like_recurring(raw_single):
         try:
             first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
@@ -1404,18 +1524,27 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
         when_str = first_dt.strftime("%d.%m %H:%M")
+
         if used_alias:
             await message.reply_text(
                 f"Ок, создал повторяющееся напоминание в чате '{used_alias}'. "
                 f"Первое напоминание будет {when_str}: {text}"
             )
         else:
-            await message.reply_text(
-                f"Ок, создал повторяющееся напоминание. "
-                f"Первое напоминание будет {when_str}: {text}"
-            )
+            if target_chat_id != chat.id and chat.type == Chat.PRIVATE:
+                await message.reply_text(
+                    f"Ок, создал повторяющееся напоминание для этого человека. "
+                    f"Первое напоминание будет {when_str}: {text}"
+                )
+            else:
+                await message.reply_text(
+                    f"Ок, создал повторяющееся напоминание. "
+                    f"Первое напоминание будет {when_str}: {text}"
+                )
+
         return
 
+    # Обычное разовое напоминание
     try:
         remind_at, text = parse_date_time_smart(raw_single, now)
     except ValueError as e:
@@ -1445,9 +1574,14 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"Ок, напомню в чате '{used_alias}' {when_str}: {text}"
         )
     else:
-        await message.reply_text(
-            f"Ок, напомню {when_str}: {text}"
-        )
+        if target_chat_id != chat.id and chat.type == Chat.PRIVATE:
+            await message.reply_text(
+                f"Ок, напомню этому человеку {when_str}: {text}"
+            )
+        else:
+            await message.reply_text(
+                f"Ок, напомню {when_str}: {text}"
+            )
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
