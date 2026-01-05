@@ -1092,6 +1092,49 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
     return first_dt, text, pattern_type, payload, hour, minute
 
+def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[str, Any]]) -> str:
+    """
+    Делает человекочитаемое описание регулярности для списка /list.
+    pattern_type: daily / weekly / weekly_multi / monthly / yearly
+    payload: {"weekday": 0} / {"days":[...]} / {"day":15} / {"month":12,"day":25}
+    """
+    if not pattern_type:
+        return "повтор"
+
+    payload = payload or {}
+
+    weekday_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    month_short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    if pattern_type == "daily":
+        return "daily"
+
+    if pattern_type == "weekly":
+        wd = int(payload.get("weekday", 0))
+        wd = max(0, min(6, wd))
+        return f"weekly ({weekday_short[wd]})"
+
+    if pattern_type == "weekly_multi":
+        days = payload.get("days") or []
+        days = sorted(set(int(x) for x in days))
+        if days == [0, 1, 2, 3, 4]:
+            return "weekdays"
+        if days == [5, 6]:
+            return "weekends"
+        nice = ", ".join(weekday_short[max(0, min(6, d))] for d in days) if days else "weekly"
+        return f"weekly ({nice})"
+
+    if pattern_type == "monthly":
+        day = int(payload.get("day", 1))
+        return f"monthly (day {day})"
+
+    if pattern_type == "yearly":
+        m = int(payload.get("month", 1))
+        d = int(payload.get("day", 1))
+        m = max(1, min(12, m))
+        return f"yearly ({month_short[m - 1]} {d})"
+
+    return pattern_type
 
 # ===== Парсинг alias =====
 
@@ -1762,10 +1805,17 @@ async def list_command(update: Update, context: CTX) -> None:
     c = conn.cursor()
     c.execute(
         """
-        SELECT id, text, remind_at, template_id
-        FROM reminders
-        WHERE chat_id = ? AND delivered = 0
-        ORDER BY remind_at ASC
+        SELECT
+            r.id,
+            r.text,
+            r.remind_at,
+            r.template_id,
+            rt.pattern_type,
+            rt.payload
+        FROM reminders r
+        LEFT JOIN recurring_templates rt ON rt.id = r.template_id
+        WHERE r.chat_id = ? AND r.delivered = 0
+        ORDER BY r.remind_at ASC
         """,
         (target_chat_id,),
     )
@@ -1781,11 +1831,22 @@ async def list_command(update: Update, context: CTX) -> None:
 
     lines = []
     ids: List[int] = []
-    for idx, (rid, text, remind_at_str, template_id) in enumerate(rows, start=1):
+    for idx, (rid, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
         ts = dt.strftime("%d.%m %H:%M")
-        marker = " 🔁" if template_id is not None else ""
-        lines.append(f"{idx}. {ts} - {text}{marker}")
+
+        suffix = ""
+        if template_id is not None:
+            tpl_payload: Dict[str, Any] = {}
+            if tpl_payload_json:
+                try:
+                    tpl_payload = json.loads(tpl_payload_json)
+                except Exception:
+                    tpl_payload = {}
+            human = format_recurring_human(tpl_pattern_type, tpl_payload)
+            suffix = f"  🔁 {human}"
+
+        lines.append(f"{idx}. {ts} - {text}{suffix}")
         ids.append(rid)
 
     context.user_data["list_ids"] = ids
