@@ -1749,8 +1749,21 @@ async def list_command(update: Update, context: CTX) -> None:
             for idx, r in enumerate(rows, start=1):
                 dt = datetime.fromisoformat(r["remind_at"])
                 ts = dt.strftime("%d.%m %H:%M")
-                marker = " 🔁" if r.get("template_id") is not None else ""
-                lines.append(f"{idx}. {ts} - {r['text']}{marker}")
+
+                suffix = ""
+                tpl_id = r.get("template_id")
+                if tpl_id is not None:
+                    tpl = get_recurring_template(int(tpl_id))
+                    if tpl:
+                        human = format_recurring_human(
+                            tpl.get("pattern_type"),
+                            tpl.get("payload"),
+                        )
+                        suffix = f"  🔁 {human}" if human else "  🔁"
+                    else:
+                        suffix = "  🔁"
+
+                lines.append(f"{idx}. {ts} - {r['text']}{suffix}")
                 ids.append(r["id"])
 
             context.user_data["list_ids"] = ids
