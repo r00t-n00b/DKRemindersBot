@@ -6,17 +6,43 @@ import sqlite3
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 
 from zoneinfo import ZoneInfo
 
-from telegram import Update, Chat, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    CallbackQueryHandler,
-)
+
+# --- Telegram imports ---
+# Во время тестов telegram не установлен, поэтому:
+# - в runtime импортируем нормально
+# - в pytest - типы доступны, но код не падает
+if TYPE_CHECKING:
+    from telegram import Update, Chat, InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram.ext import (
+        Application,
+        CommandHandler,
+        ContextTypes,
+        CallbackQueryHandler,
+    )
+else:
+    try:
+        from telegram import Update, Chat, InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.ext import (
+            Application,
+            CommandHandler,
+            ContextTypes,
+            CallbackQueryHandler,
+        )
+    except ImportError:
+        # pytest / test environment
+        Update = Chat = InlineKeyboardButton = InlineKeyboardMarkup = object
+        Application = CommandHandler = ContextTypes = CallbackQueryHandler = object
+
+# Тип для context в хендлерах (чтобы pytest не падал)
+try:
+    CTX = ContextTypes.DEFAULT_TYPE  # type: ignore[attr-defined]
+except Exception:
+    from typing import Any
+    CTX = Any
 
 # ===== Настройки =====
 
@@ -799,9 +825,15 @@ def compute_next_occurrence(
 ) -> Optional[datetime]:
     local = after_dt.astimezone(TZ)
     if pattern_type == "daily":
-        candidate = local.replace(hour=time_hour, minute=time_minute, second=0, microsecond=0)
-        if candidate <= after_dt:
-            candidate = candidate + timedelta(days=1)
+        candidate = (
+            local.replace(
+                hour=time_hour,
+                minute=time_minute,
+                second=0,
+                microsecond=0,
+            )
+            + timedelta(days=1)
+        )
         return candidate
 
     if pattern_type == "weekly":
@@ -1199,7 +1231,7 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str) -> InlineKeyboar
 
 # ===== Хендлеры команд =====
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     user = update.effective_user
 
@@ -1271,11 +1303,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(text)
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def help_command(update: Update, context: CTX) -> None:
     await start(update, context)
 
 
-async def linkchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def linkchat_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
 
@@ -1305,7 +1337,7 @@ async def linkchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 
-async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
     user = update.effective_user
@@ -1584,7 +1616,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
 
 
-async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def list_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
 
@@ -1676,7 +1708,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await message.reply_text(reply, reply_markup=keyboard)
 
 
-async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
     if query is None:
         return
@@ -1761,7 +1793,7 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ===== SNOOZE callback =====
 
-async def snooze_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def snooze_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
     if query is None:
         return
