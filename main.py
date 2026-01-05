@@ -267,6 +267,26 @@ def get_reminder(reminder_id: int) -> Optional[Reminder]:
         template_id=template_id,
     )
 
+def get_active_reminders_created_by_for_chat(chat_id: int, created_by: int) -> List[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id
+            FROM reminders
+            WHERE chat_id = ?
+              AND delivered = 0
+              AND created_by = ?
+            ORDER BY remind_at ASC
+            """,
+            (chat_id, created_by),
+        )
+        rows = c.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 def mark_reminder_sent(reminder_id: int) -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -352,6 +372,34 @@ def get_all_aliases():
     conn.close()
     return rows
 
+def get_private_chat_id_by_username(username: str) -> Optional[int]:
+    if not username:
+        return None
+
+    u = username.strip()
+    if u.startswith("@"):
+        u = u[1:]
+    if not u:
+        return None
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT chat_id
+            FROM user_chats
+            WHERE LOWER(username) = LOWER(?)
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (u,),
+        )
+        row = c.fetchone()
+        return int(row["chat_id"]) if row else None
+    finally:
+        conn.close()
 
 # ===== Повторяющиеся шаблоны =====
 
@@ -1619,15 +1667,77 @@ async def remind_command(update: Update, context: CTX) -> None:
 async def list_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
+    user = update.effective_user
 
-    if chat is None or message is None:
+    if chat is None or message is None or user is None:
         return
 
     # по умолчанию - показываем напоминания для текущего чата
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
-    # В ЛИЧКЕ можно написать /list alias и посмотреть напоминания чужого чата
+    # ===== НОВЫЙ РЕЖИМ: /list @username (только в личке) =====
+    if chat.type == Chat.PRIVATE and context.args:
+        first_arg = context.args[0].strip()
+
+        if first_arg.startswith("@"):
+            owner_chat_id = get_private_chat_id_by_username(first_arg)
+
+            if owner_chat_id is None:
+                await message.reply_text(
+                    f"Пользователь {first_arg} еще не писал боту.\n"
+                    f"Он должен сначала нажать Start или поставить любой ремайндер."
+                )
+                return
+
+            rows = get_active_reminders_created_by_for_chat(
+                chat_id=owner_chat_id,
+                created_by=user.id,
+            )
+
+            if not rows:
+                await message.reply_text(
+                    f"Ты не ставил напоминаний пользователю {first_arg}."
+                )
+                return
+
+            lines = []
+            ids: List[int] = []
+
+            for idx, r in enumerate(rows, start=1):
+                dt = datetime.fromisoformat(r["remind_at"])
+                ts = dt.strftime("%d.%m %H:%M")
+                marker = " 🔁" if r.get("template_id") is not None else ""
+                lines.append(f"{idx}. {ts} - {r['text']}{marker}")
+                ids.append(r["id"])
+
+            context.user_data["list_ids"] = ids
+            context.user_data["list_chat_id"] = owner_chat_id
+
+            reply = (
+                f"Напоминания, которые ты поставил пользователю {first_arg}:\n\n"
+                + "\n".join(lines)
+            )
+
+            buttons: List[List[InlineKeyboardButton]] = []
+            row: List[InlineKeyboardButton] = []
+            for idx in range(1, len(ids) + 1):
+                row.append(
+                    InlineKeyboardButton(
+                        text=f"❌{idx}",
+                        callback_data=f"del:{idx}",
+                    )
+                )
+                if len(row) == 5:
+                    buttons.append(row)
+                    row = []
+            if row:
+                buttons.append(row)
+
+            await message.reply_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
+            return
+
+    # ===== СТАРАЯ ЛОГИКА: /list alias =====
     if chat.type == Chat.PRIVATE and context.args:
         alias = context.args[0].strip()
         if alias:
@@ -1679,7 +1789,6 @@ async def list_command(update: Update, context: CTX) -> None:
         lines.append(f"{idx}. {ts} - {text}{marker}")
         ids.append(rid)
 
-    # сохраняем не только ids, но и ЧТО за чат мы сейчас смотрим
     context.user_data["list_ids"] = ids
     context.user_data["list_chat_id"] = target_chat_id
 
@@ -1704,9 +1813,7 @@ async def list_command(update: Update, context: CTX) -> None:
         buttons.append(row)
 
     keyboard = InlineKeyboardMarkup(buttons)
-
     await message.reply_text(reply, reply_markup=keyboard)
-
 
 async def delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
