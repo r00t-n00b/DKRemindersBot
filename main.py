@@ -1936,18 +1936,42 @@ async def delete_callback(update: Update, context: CTX) -> None:
     c = conn.cursor()
     qmarks = ",".join("?" for _ in ids)
     c.execute(
-        f"SELECT id, text, remind_at, template_id FROM reminders WHERE id IN ({qmarks}) ORDER BY remind_at ASC",
+        f"""
+        SELECT
+            r.id,
+            r.text,
+            r.remind_at,
+            r.template_id,
+            rt.pattern_type,
+            rt.payload
+        FROM reminders r
+        LEFT JOIN recurring_templates rt ON rt.id = r.template_id
+        WHERE r.id IN ({qmarks})
+        ORDER BY r.remind_at ASC
+        """,
         ids,
     )
     rows = c.fetchall()
     conn.close()
 
     lines = []
-    for new_idx, (rid2, text, remind_at_str, template_id) in enumerate(rows, start=1):
+    for new_idx, (rid2, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
         ts = dt.strftime("%d.%m %H:%M")
-        marker = " 🔁" if template_id is not None else ""
-        lines.append(f"{new_idx}. {ts} - {text}{marker}")
+
+        suffix = ""
+        if template_id is not None:
+            tpl_payload: Dict[str, Any] = {}
+            if tpl_payload_json:
+                try:
+                    tpl_payload = json.loads(tpl_payload_json)
+                except Exception:
+                    tpl_payload = {}
+
+            human = format_recurring_human(tpl_pattern_type, tpl_payload)
+            suffix = f"  🔁 {human}" if human else "  🔁"
+
+        lines.append(f"{new_idx}. {ts} - {text}{suffix}")
 
     reply = "Активные напоминания:\n\n" + "\n".join(lines)
 
