@@ -873,15 +873,14 @@ def compute_next_occurrence(
 ) -> Optional[datetime]:
     local = after_dt.astimezone(TZ)
     if pattern_type == "daily":
-        candidate = (
-            local.replace(
-                hour=time_hour,
-                minute=time_minute,
-                second=0,
-                microsecond=0,
-            )
-            + timedelta(days=1)
+        candidate = local.replace(
+            hour=time_hour,
+            minute=time_minute,
+            second=0,
+            microsecond=0,
         )
+        if candidate <= after_dt:
+            candidate = candidate + timedelta(days=1)
         return candidate
 
     if pattern_type == "weekly":
@@ -1086,7 +1085,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
         payload,
         hour,
         minute,
-        now - timedelta(seconds=1),
+        now,
     )
     if first_dt is None:
         raise ValueError("Не удалось посчитать дату для повторяющегося напоминания")
