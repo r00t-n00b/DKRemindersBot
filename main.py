@@ -2150,11 +2150,14 @@ async def undo_callback(update: Update, context: CTX) -> None:
     if query is None:
         return
 
-    await query.answer()
-
     data = query.data or ""
+    logger.info("UNDO pressed: data=%s", data)
+
     if not data.startswith("undo:"):
+        await query.answer()
         return
+
+    await query.answer("Ок, восстанавливаю...")
 
     token = data.split(":", 1)[1].strip()
     store = context.user_data.get("undo_tokens") or {}
@@ -2452,7 +2455,7 @@ def main() -> None:
     application.add_handler(CommandHandler("list", list_command))
 
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-    application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:[A-Za-z0-9_-]{16,}$"))
+    application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
 
     application.add_handler(
         CallbackQueryHandler(
