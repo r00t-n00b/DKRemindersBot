@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import json
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
@@ -334,6 +335,124 @@ def delete_reminders(reminder_ids: List[int], chat_id: int) -> int:
     conn.commit()
     conn.close()
     return deleted
+
+def get_reminder_row(rid: int) -> Optional[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id
+            FROM reminders
+            WHERE id = ?
+            """,
+            (rid,),
+        )
+        row = c.fetchone()
+        if not row:
+            return None
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def get_recurring_template_row(tpl_id: int) -> Optional[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active
+            FROM recurring_templates
+            WHERE id = ?
+            """,
+            (tpl_id,),
+        )
+        row = c.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        # payload в базе у нас JSON-строка
+        try:
+            d["payload"] = json.loads(d.get("payload") or "{}")
+        except Exception:
+            d["payload"] = {}
+        return d
+    finally:
+        conn.close()
+
+
+def delete_reminder_with_snapshot(rid: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Удаляет один reminder и возвращает снепшот для undo.
+    Снепшот не зависит от телеграма, чисто данные.
+    """
+    r = get_reminder_row(rid)
+    if not r:
+        return None
+
+    if int(r["chat_id"]) != int(target_chat_id):
+        # защита: не даем удалить "чужой" rid через подмену индекса/контекста
+        return None
+
+    snapshot: Dict[str, Any] = {
+        "reminder": r,
+        "template": None,
+    }
+
+    tpl_id = r.get("template_id")
+    if tpl_id is not None:
+        tpl = get_recurring_template_row(int(tpl_id))
+        snapshot["template"] = tpl
+
+    deleted = delete_reminders([rid], target_chat_id)
+    if not deleted:
+        return None
+
+    return snapshot
+
+
+def restore_deleted_snapshot(snapshot: Dict[str, Any]) -> Optional[int]:
+    """
+    Восстанавливает удаленный reminder (и recurring template, если был).
+    Возвращает новый reminder_id.
+    """
+    r = snapshot.get("reminder") or {}
+    if not r:
+        return None
+
+    tpl = snapshot.get("template")
+
+    new_tpl_id: Optional[int] = None
+    if tpl:
+        # создаем новый template (id будет новый)
+        new_tpl_id = create_recurring_template(
+            chat_id=int(tpl["chat_id"]),
+            text=str(tpl["text"]),
+            pattern_type=str(tpl["pattern_type"]),
+            payload=dict(tpl.get("payload") or {}),
+            time_hour=int(tpl["time_hour"]),
+            time_minute=int(tpl["time_minute"]),
+            created_by=tpl.get("created_by"),
+        )
+
+    # восстановим сам reminder
+    remind_at = datetime.fromisoformat(str(r["remind_at"]))
+    new_rid = add_reminder(
+        chat_id=int(r["chat_id"]),
+        text=str(r["text"]),
+        remind_at=remind_at,
+        created_by=r.get("created_by"),
+        template_id=new_tpl_id,
+    )
+    return new_rid
+
+
+def make_undo_token() -> str:
+    # короткий токен, чтобы callback_data была маленькой
+    return secrets.token_urlsafe(8)
 
 
 def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
@@ -1136,6 +1255,17 @@ def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[s
 
     return pattern_type
 
+def format_deleted_human(remind_at_iso: str, text: str, tpl_pattern_type: Optional[str], tpl_payload: Optional[Dict[str, Any]]) -> str:
+    dt = datetime.fromisoformat(remind_at_iso)
+    ts = dt.strftime("%d.%m %H:%M")
+
+    suffix = ""
+    if tpl_pattern_type:
+        human = format_recurring_human(tpl_pattern_type, tpl_payload or {})
+        suffix = f"  🔁 {human}" if human else "  🔁"
+
+    return f"{ts} - {text}{suffix}"
+
 # ===== Парсинг alias =====
 
 def extract_after_command(text: str) -> str:
@@ -1918,8 +2048,8 @@ async def delete_callback(update: Update, context: CTX) -> None:
             return
         target_chat_id = chat.id
 
-    deleted = delete_reminders([rid], target_chat_id)
-    if not deleted:
+    snapshot = delete_reminder_with_snapshot(rid, target_chat_id)
+    if not snapshot:
         await query.answer("Уже удалено", show_alert=True)
         return
 
@@ -1991,6 +2121,70 @@ async def delete_callback(update: Update, context: CTX) -> None:
     keyboard = InlineKeyboardMarkup(buttons)
 
     await query.edit_message_text(reply, reply_markup=keyboard)
+
+    # Сообщение "удалено" + Undo
+    tpl = snapshot.get("template") or {}
+    tpl_pattern_type = tpl.get("pattern_type")
+    tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
+
+    deleted_text = format_deleted_human(
+        snapshot["reminder"]["remind_at"],
+        snapshot["reminder"]["text"],
+        tpl_pattern_type,
+        tpl_payload,
+    )
+
+    token = make_undo_token()
+    context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
+    context.user_data["undo_tokens"][token] = snapshot
+
+    undo_kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=f"undo:{token}")]]
+    )
+
+    if query.message:
+        await query.message.reply_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+
+async def undo_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+
+    await query.answer()
+
+    data = query.data or ""
+    if not data.startswith("undo:"):
+        return
+
+    token = data.split(":", 1)[1].strip()
+    store = context.user_data.get("undo_tokens") or {}
+    snapshot = store.get(token)
+    if not snapshot:
+        await query.answer("Undo уже недоступен", show_alert=True)
+        return
+
+    # одноразовый undo
+    del store[token]
+    context.user_data["undo_tokens"] = store
+
+    new_rid = restore_deleted_snapshot(snapshot)
+    if not new_rid:
+        await query.answer("Не смог восстановить", show_alert=True)
+        return
+
+    tpl = snapshot.get("template") or {}
+    tpl_pattern_type = tpl.get("pattern_type")
+    tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
+
+    restored_text = format_deleted_human(
+        snapshot["reminder"]["remind_at"],
+        snapshot["reminder"]["text"],
+        tpl_pattern_type,
+        tpl_payload,
+    )
+
+    if query.message:
+        await query.message.reply_text(f"Вернул: {restored_text}")
 
 
 # ===== SNOOZE callback =====
@@ -2256,7 +2450,10 @@ def main() -> None:
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
+
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
+    application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:[A-Za-z0-9_-]{16,}$"))
+
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
