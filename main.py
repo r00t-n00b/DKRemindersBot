@@ -770,6 +770,54 @@ MONTH_EN = {
     "december": 12, "dec": 12,
 }
 
+def _normalize_on_at_phrase(expr_lower: str) -> str:
+    """
+    Нормализуем фразы:
+    - on Thursday at 20:30 -> next thursday 20:30
+    - on Thursday 20:30 -> next thursday 20:30
+    - on 25 december at 20:30 -> 25 december 20:30
+    - в четверг в 20.30 -> next четверг 20:30 (дальше разберет next-expression + time)
+    - четверг в 20.30 -> next четверг 20:30
+    Важно: точку в HH.MM меняем на двоеточие только если это похоже на ВРЕМЯ (hour <= 23),
+    чтобы не ломать даты вида 29.11.
+    """
+    s = expr_lower.strip()
+
+    # 1) Убираем ведущий "on"
+    if s.startswith("on "):
+        s = s[3:].strip()
+
+    # 2) Убираем " at " как отдельное слово
+    s = re.sub(r"\bat\b", "", s).strip()
+    s = re.sub(r"\s+", " ", s)
+
+    # 3) Русское "в " в начале (в четверг ...)
+    if s.startswith("в "):
+        s = s[2:].strip()
+
+    # 4) Меняем HH.MM -> HH:MM только если это действительно время (hour <= 23)
+    parts = s.split()
+    fixed: List[str] = []
+    for p in parts:
+        m = re.fullmatch(r"(\d{1,2})\.(\d{2})", p)
+        if m:
+            hh = int(m.group(1))
+            mm = int(m.group(2))
+            if 0 <= hh <= 23 and 0 <= mm <= 59:
+                fixed.append(f"{hh}:{m.group(2)}")
+                continue
+        fixed.append(p)
+    s = " ".join(fixed)
+
+    # 5) Если строка начинается с названия дня недели (en/ru) - добавляем "next"
+    tokens = s.split()
+    if tokens:
+        first = tokens[0]
+        if first in WEEKDAY_EN or first in WEEKDAY_RU:
+            s = "next " + s
+
+    return s
+
 def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.lower().strip()
     tokens = s.split()
@@ -922,6 +970,42 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
                 ) from e
         return dt
 
+    # 25 december [20:30]
+    m_name = re.fullmatch(
+        r"(?P<day>\d{1,2})\s+(?P<month_name>[a-zA-Z]+)(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?$",
+        s.lower().strip(),
+    )
+    if m_name:
+        day = int(m_name.group("day"))
+        month_name = m_name.group("month_name")
+        if month_name not in MONTH_EN:
+            raise ValueError("Не знаю такой месяц")
+
+        month = int(MONTH_EN[month_name])
+
+        if m_name.group("hour") is not None:
+            hour = int(m_name.group("hour"))
+            minute = int(m_name.group("minute"))
+        else:
+            hour = 11
+            minute = 0
+
+        year = local.year
+        try:
+            dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+        except ValueError as e:
+            raise ValueError(f"Неверная дата или время: {e}") from e
+
+        if dt < now - timedelta(minutes=1):
+            try:
+                dt = dt.replace(year=year + 1)
+            except ValueError as e:
+                raise ValueError(
+                    f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+                ) from e
+
+        return dt
+
     m2 = re.fullmatch(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})", s)
     if m2:
         hour = int(m2.group("hour"))
@@ -947,6 +1031,7 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     """
     expr, text = _split_expr_and_text(s)
     expr_lower = expr.lower().strip()
+    expr_lower = _normalize_on_at_phrase(expr_lower)
     now = now.astimezone(TZ)
 
     tokens = expr_lower.split()
@@ -966,7 +1051,7 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     if dt is not None:
         return dt, text
 
-    dt = _parse_absolute(expr, now)
+    dt = _parse_absolute(expr_lower, now)
     if dt is not None:
         return dt, text
 
