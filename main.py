@@ -1647,23 +1647,21 @@ async def remind_command(update: Update, context: CTX) -> None:
 
         when_str = first_dt.strftime("%d.%m %H:%M")
 
+        human = format_recurring_human(pattern_type, payload)
+        freq_part = f"\nПовтор: {human}" if human else ""
+
         if used_alias:
             await message.reply_text(
-                f"Ок, создал повторяющееся напоминание в чате '{used_alias}'. "
+                f"Ок, создал повторяющееся напоминание в чате '{used_alias}'.\n"
                 f"Первое напоминание будет {when_str}: {text}"
+                f"{freq_part}"
             )
         else:
-            if target_chat_id != chat.id and chat.type == Chat.PRIVATE:
-                await message.reply_text(
-                    f"Ок, создал повторяющееся напоминание для этого человека. "
-                    f"Первое напоминание будет {when_str}: {text}"
-                )
-            else:
-                await message.reply_text(
-                    f"Ок, создал повторяющееся напоминание. "
-                    f"Первое напоминание будет {when_str}: {text}"
-                )
-
+            await message.reply_text(
+                f"Ок, создал повторяющееся напоминание.\n"
+                f"Первое напоминание будет {when_str}: {text}"
+                f"{freq_part}"
+            )
         return
 
     # Обычное разовое напоминание
