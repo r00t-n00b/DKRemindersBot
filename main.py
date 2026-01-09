@@ -1563,11 +1563,23 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     first, *rest_first = first_line.split(maxsplit=1)
     first_lower = first.lower()
 
+    # DD.MM / DD/MM
     if re.fullmatch(r"\d{1,2}[./]\d{1,2}", first):
         return None, args_text.lstrip()
 
+    # HH:MM
     if re.fullmatch(r"\d{1,2}:\d{2}", first):
         return None, args_text.lstrip()
+
+    # Месяц с названием: "january 25 ..."
+    if first_lower in MONTH_EN:
+        return None, args_text.lstrip()
+
+    # "25 january ..." (или "25 january at 20:30")
+    if first_lower.isdigit() and rest_first:
+        second_token = rest_first[0].lstrip().split(maxsplit=1)[0].lower()
+        if second_token in MONTH_EN:
+            return None, args_text.lstrip()
 
     smart_prefixes = {
         "in",
@@ -1598,10 +1610,10 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         "каждую",
         "каждое",
         "каждые",
-
-        # чтобы "/remind on ..." и "/remind January ..." не воспринимались как alias
+        # важное для новых "человеческих" форм
         "on",
-        *MONTH_EN.keys(),
+        "at",
+        "в",
     }
 
     if first_lower in smart_prefixes:
