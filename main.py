@@ -449,6 +449,227 @@ def restore_deleted_snapshot(snapshot: Dict[str, Any]) -> Optional[int]:
     )
     return new_rid
 
+def delete_single_reminder_row(reminder_id: int, chat_id: int) -> int:
+    """
+    Удаляет ОДИН reminder, не трогая recurring_templates.
+    Возвращает количество удаленных строк (0 или 1).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "DELETE FROM reminders WHERE id = ? AND chat_id = ?",
+        (reminder_id, chat_id),
+    )
+    deleted = c.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def deactivate_recurring_template(template_id: int) -> int:
+    """
+    Ставит active=0 у recurring_templates. Возвращает количество обновленных строк (0 или 1).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE recurring_templates SET active = 0 WHERE id = ?",
+        (template_id,),
+    )
+    updated = c.rowcount
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def activate_recurring_template(template_id: int) -> int:
+    """
+    Ставит active=1 у recurring_templates. Возвращает количество обновленных строк (0 или 1).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE recurring_templates SET active = 1 WHERE id = ?",
+        (template_id,),
+    )
+    updated = c.rowcount
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def get_reminders_by_template_id(template_id: int, chat_id: int) -> List[Dict[str, Any]]:
+    """
+    Возвращает reminders этой серии (для snapshot при удалении серии).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id
+            FROM reminders
+            WHERE chat_id = ? AND template_id = ?
+            ORDER BY remind_at ASC
+            """,
+            (chat_id, template_id),
+        )
+        rows = c.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_recurring_series(template_id: int, chat_id: int) -> int:
+    """
+    Удаляет все reminders серии (template_id) и деактивирует recurring_templates.active=0.
+    Возвращает количество удаленных reminders.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute(
+        "DELETE FROM reminders WHERE chat_id = ? AND template_id = ?",
+        (chat_id, template_id),
+    )
+    deleted = c.rowcount
+
+    c.execute(
+        "UPDATE recurring_templates SET active = 0 WHERE id = ?",
+        (template_id,),
+    )
+
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def delete_reminder_with_snapshot(rid: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Backward-compatible: удаляет один reminder и возвращает snapshot.
+    ВАЖНО: теперь это "single delete" и НЕ останавливает серию.
+    """
+    return delete_single_reminder_with_snapshot(rid, target_chat_id)
+
+
+def delete_single_reminder_with_snapshot(rid: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Удаляет один reminder и возвращает snapshot для undo.
+    Если reminder был recurring (template_id != None), шаблон НЕ деактивируем.
+    """
+    r = get_reminder_row(rid)
+    if not r:
+        return None
+
+    if int(r["chat_id"]) != int(target_chat_id):
+        return None
+
+    tpl = None
+    tpl_id = r.get("template_id")
+    if tpl_id is not None:
+        tpl = get_recurring_template_row(int(tpl_id))
+
+    deleted = delete_single_reminder_row(rid, target_chat_id)
+    if not deleted:
+        return None
+
+    return {
+        "kind": "single",
+        "reminder": r,
+        "template": tpl,
+    }
+
+
+def delete_recurring_series_with_snapshot(template_id: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Удаляет всю серию и возвращает snapshot для undo:
+    - template (как есть, с этим же id)
+    - список reminders, которые были удалены
+    """
+    tpl = get_recurring_template_row(int(template_id))
+    if not tpl:
+        return None
+
+    if int(tpl["chat_id"]) != int(target_chat_id):
+        return None
+
+    reminders = get_reminders_by_template_id(int(template_id), int(target_chat_id))
+    if not reminders:
+        # если по какой-то причине инстансов нет, все равно деактивируем шаблон
+        deactivate_recurring_template(int(template_id))
+        return {
+            "kind": "series",
+            "template": tpl,
+            "reminders": [],
+        }
+
+    deleted = delete_recurring_series(int(template_id), int(target_chat_id))
+    if deleted <= 0:
+        return None
+
+    return {
+        "kind": "series",
+        "template": tpl,
+        "reminders": reminders,
+    }
+
+
+def restore_deleted_snapshot(snapshot: Dict[str, Any]) -> Optional[Any]:
+    """
+    Восстанавливает удаленный reminder или серию.
+    Возвращает:
+    - для single: новый reminder_id (int)
+    - для series: список новых reminder_id (List[int])
+    """
+    kind = snapshot.get("kind") or "single"
+
+    if kind == "single":
+        r = snapshot.get("reminder") or {}
+        if not r:
+            return None
+
+        tpl = snapshot.get("template")
+        tpl_id = None
+        if tpl and tpl.get("id") is not None:
+            # Шаблон должен был остаться активным, но на всякий случай включим обратно.
+            activate_recurring_template(int(tpl["id"]))
+            tpl_id = int(tpl["id"])
+
+        remind_at = datetime.fromisoformat(str(r["remind_at"]))
+        new_rid = add_reminder(
+            chat_id=int(r["chat_id"]),
+            text=str(r["text"]),
+            remind_at=remind_at,
+            created_by=r.get("created_by"),
+            template_id=tpl_id,
+        )
+        return new_rid
+
+    if kind == "series":
+        tpl = snapshot.get("template") or {}
+        tpl_id = tpl.get("id")
+        if tpl_id is None:
+            return None
+
+        activate_recurring_template(int(tpl_id))
+
+        new_ids: List[int] = []
+        for r in (snapshot.get("reminders") or []):
+            remind_at = datetime.fromisoformat(str(r["remind_at"]))
+            new_id = add_reminder(
+                chat_id=int(r["chat_id"]),
+                text=str(r["text"]),
+                remind_at=remind_at,
+                created_by=r.get("created_by"),
+                template_id=int(tpl_id),
+            )
+            new_ids.append(int(new_id))
+
+        return new_ids
+
+    return None
+
 
 def make_undo_token() -> str:
     # короткий токен, чтобы callback_data была маленькой
@@ -2394,92 +2615,124 @@ async def delete_callback(update: Update, context: CTX) -> None:
         await query.answer("Не нашел такое напоминание", show_alert=True)
         return
 
-    rid = ids[idx - 1]
+    rid = int(ids[idx - 1])
 
     # Чат, для которого показывается список (может быть НЕ равен query.message.chat.id в личке)
     target_chat_id = context.user_data.get("list_chat_id")
     if target_chat_id is None:
-        # на всякий случай - старое поведение
         chat = query.message.chat if query.message else None
         if chat is None:
             return
         target_chat_id = chat.id
 
-    snapshot = delete_reminder_with_snapshot(rid, target_chat_id)
+    r = get_reminder_row(rid)
+    if not r:
+        await query.answer("Уже удалено", show_alert=True)
+        return
+
+    # Если recurring - не удаляем сразу, а спрашиваем "как удаляем"
+    tpl_id = r.get("template_id")
+    if tpl_id is not None:
+        tpl = get_recurring_template_row(int(tpl_id)) or {}
+        tpl_pattern_type = tpl.get("pattern_type")
+        tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
+        human = format_recurring_human(tpl_pattern_type, tpl_payload)
+
+        dt = datetime.fromisoformat(str(r["remind_at"]))
+        ts = dt.strftime("%d.%m %H:%M")
+        title = str(r.get("text") or "")
+        suffix = f"  🔁 {human}" if human else "  🔁"
+        preview = f"{ts} - {title}{suffix}"
+
+        kb = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("🗑 Удалить только ближайший", callback_data=f"del_one:{rid}")],
+                [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(tpl_id)}")],
+            ]
+        )
+
+        if query.message:
+            await query.message.reply_text(
+                "Это повторяющееся напоминание. Как удалить?\n\n" + preview,
+                reply_markup=kb,
+            )
+        return
+
+    # Если НЕ recurring - старое поведение: удаляем сразу + undo
+    snapshot = delete_single_reminder_with_snapshot(rid, int(target_chat_id))
     if not snapshot:
         await query.answer("Уже удалено", show_alert=True)
         return
 
+    # убираем из списка
     ids.pop(idx - 1)
     context.user_data["list_ids"] = ids
 
     if not ids:
-        await query.edit_message_text("Напоминаний больше нет.")
-        return
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    qmarks = ",".join("?" for _ in ids)
-    c.execute(
-        f"""
-        SELECT
-            r.id,
-            r.text,
-            r.remind_at,
-            r.template_id,
-            rt.pattern_type,
-            rt.payload
-        FROM reminders r
-        LEFT JOIN recurring_templates rt ON rt.id = r.template_id
-        WHERE r.id IN ({qmarks})
-        ORDER BY r.remind_at ASC
-        """,
-        ids,
-    )
-    rows = c.fetchall()
-    conn.close()
-
-    lines = []
-    for new_idx, (rid2, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
-        dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%M")
-
-        suffix = ""
-        if template_id is not None:
-            tpl_payload: Dict[str, Any] = {}
-            if tpl_payload_json:
-                try:
-                    tpl_payload = json.loads(tpl_payload_json)
-                except Exception:
-                    tpl_payload = {}
-
-            human = format_recurring_human(tpl_pattern_type, tpl_payload)
-            suffix = f"  🔁 {human}" if human else "  🔁"
-
-        lines.append(f"{new_idx}. {ts} - {text}{suffix}")
-
-    reply = "Активные напоминания:\n\n" + "\n".join(lines)
-
-    buttons: List[List[InlineKeyboardButton]] = []
-    row: List[InlineKeyboardButton] = []
-    for new_idx in range(1, len(ids) + 1):
-        row.append(
-            InlineKeyboardButton(
-                text=f"❌{new_idx}",
-                callback_data=f"del:{new_idx}",
-            )
+        if query.message:
+            await query.edit_message_text("Напоминаний больше нет.")
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        qmarks = ",".join("?" for _ in ids)
+        c.execute(
+            f"""
+            SELECT
+                r.id,
+                r.text,
+                r.remind_at,
+                r.template_id,
+                rt.pattern_type,
+                rt.payload
+            FROM reminders r
+            LEFT JOIN recurring_templates rt ON rt.id = r.template_id
+            WHERE r.id IN ({qmarks})
+            ORDER BY r.remind_at ASC
+            """,
+            ids,
         )
-        if len(row) == 5:
+        rows = c.fetchall()
+        conn.close()
+
+        lines = []
+        for new_idx, (rid2, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
+            dt = datetime.fromisoformat(remind_at_str)
+            ts = dt.strftime("%d.%m %H:%M")
+
+            suffix = ""
+            if template_id is not None:
+                tpl_payload: Dict[str, Any] = {}
+                if tpl_payload_json:
+                    try:
+                        tpl_payload = json.loads(tpl_payload_json)
+                    except Exception:
+                        tpl_payload = {}
+                human = format_recurring_human(tpl_pattern_type, tpl_payload)
+                suffix = f"  🔁 {human}" if human else "  🔁"
+
+            lines.append(f"{new_idx}. {ts} - {text}{suffix}")
+
+        reply = "Активные напоминания:\n\n" + "\n".join(lines)
+
+        buttons: List[List[InlineKeyboardButton]] = []
+        row: List[InlineKeyboardButton] = []
+        for new_idx in range(1, len(ids) + 1):
+            row.append(
+                InlineKeyboardButton(
+                    text=f"❌{new_idx}",
+                    callback_data=f"del:{new_idx}",
+                )
+            )
+            if len(row) == 5:
+                buttons.append(row)
+                row = []
+        if row:
             buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
 
-    keyboard = InlineKeyboardMarkup(buttons)
+        if query.message:
+            await query.edit_message_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
 
-    await query.edit_message_text(reply, reply_markup=keyboard)
-
-    # Сообщение "удалено" + Undo
+    # сообщение + undo
     tpl = snapshot.get("template") or {}
     tpl_pattern_type = tpl.get("pattern_type")
     tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
@@ -2501,6 +2754,172 @@ async def delete_callback(update: Update, context: CTX) -> None:
 
     if query.message:
         await query.message.reply_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+
+async def delete_choose_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+
+    await query.answer()
+
+    data = query.data or ""
+    if not (data.startswith("del_one:") or data.startswith("del_series:")):
+        return
+
+    # Чат, для которого показывается список (может быть НЕ равен query.message.chat.id в личке)
+    target_chat_id = context.user_data.get("list_chat_id")
+    if target_chat_id is None:
+        chat = query.message.chat if query.message else None
+        if chat is None:
+            return
+        target_chat_id = chat.id
+
+    ids: List[int] = context.user_data.get("list_ids") or []
+
+    snapshot: Optional[Dict[str, Any]] = None
+    deleted_label = ""
+
+    if data.startswith("del_one:"):
+        try:
+            rid = int(data.split(":", 1)[1])
+        except ValueError:
+            return
+
+        snapshot = delete_single_reminder_with_snapshot(rid, int(target_chat_id))
+        if not snapshot:
+            await query.answer("Уже удалено", show_alert=True)
+            return
+
+        # убираем rid из текущего списка (если он там есть)
+        ids = [x for x in ids if int(x) != int(rid)]
+        context.user_data["list_ids"] = ids
+
+        deleted_label = "Удалил ближайший из серии"
+
+    elif data.startswith("del_series:"):
+        try:
+            tpl_id = int(data.split(":", 1)[1])
+        except ValueError:
+            return
+
+        snapshot = delete_recurring_series_with_snapshot(tpl_id, int(target_chat_id))
+        if not snapshot:
+            await query.answer("Уже удалено", show_alert=True)
+            return
+
+        removed_ids = {int(r["id"]) for r in (snapshot.get("reminders") or []) if r.get("id") is not None}
+        ids = [x for x in ids if int(x) not in removed_ids]
+        context.user_data["list_ids"] = ids
+
+        deleted_label = "Удалил всю серию"
+
+    # Обновляем сообщение со списком (если там еще что-то осталось)
+    if not ids:
+        if query.message:
+            await query.edit_message_text("Напоминаний больше нет.")
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        qmarks = ",".join("?" for _ in ids)
+        c.execute(
+            f"""
+            SELECT
+                r.id,
+                r.text,
+                r.remind_at,
+                r.template_id,
+                rt.pattern_type,
+                rt.payload
+            FROM reminders r
+            LEFT JOIN recurring_templates rt ON rt.id = r.template_id
+            WHERE r.id IN ({qmarks})
+            ORDER BY r.remind_at ASC
+            """,
+            ids,
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        lines = []
+        for new_idx, (rid2, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
+            dt = datetime.fromisoformat(remind_at_str)
+            ts = dt.strftime("%d.%m %H:%M")
+
+            suffix = ""
+            if template_id is not None:
+                tpl_payload: Dict[str, Any] = {}
+                if tpl_payload_json:
+                    try:
+                        tpl_payload = json.loads(tpl_payload_json)
+                    except Exception:
+                        tpl_payload = {}
+                human = format_recurring_human(tpl_pattern_type, tpl_payload)
+                suffix = f"  🔁 {human}" if human else "  🔁"
+
+            lines.append(f"{new_idx}. {ts} - {text}{suffix}")
+
+        reply = "Активные напоминания:\n\n" + "\n".join(lines)
+
+        buttons: List[List[InlineKeyboardButton]] = []
+        row: List[InlineKeyboardButton] = []
+        for new_idx in range(1, len(ids) + 1):
+            row.append(
+                InlineKeyboardButton(
+                    text=f"❌{new_idx}",
+                    callback_data=f"del:{new_idx}",
+                )
+            )
+            if len(row) == 5:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+
+        if query.message:
+            await query.edit_message_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # Сообщение "удалено" + Undo
+    tpl = (snapshot or {}).get("template") or {}
+    tpl_pattern_type = tpl.get("pattern_type")
+    tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
+
+    # Для series возьмем "человекочитаемый" текст по шаблону, для single - по reminder
+    if snapshot and snapshot.get("kind") == "series":
+        # Берем первый remind_at если был, иначе просто текст серии
+        reminders = snapshot.get("reminders") or []
+        if reminders:
+            deleted_text = format_deleted_human(
+                reminders[0]["remind_at"],
+                tpl.get("text") or reminders[0].get("text") or "",
+                tpl_pattern_type,
+                tpl_payload,
+            )
+        else:
+            # fallback
+            deleted_text = str(tpl.get("text") or "серия")
+            human = format_recurring_human(tpl_pattern_type, tpl_payload)
+            if human:
+                deleted_text = f"{deleted_text}  🔁 {human}"
+        btn_text = "↩️ Вернуть серию"
+    else:
+        deleted_text = format_deleted_human(
+            snapshot["reminder"]["remind_at"],
+            snapshot["reminder"]["text"],
+            tpl_pattern_type,
+            tpl_payload,
+        )
+        btn_text = "↩️ Вернуть ближайший"
+
+    token = make_undo_token()
+    context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
+    context.user_data["undo_tokens"][token] = snapshot
+
+    undo_kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(btn_text, callback_data=f"undo:{token}")]]
+    )
+
+    if query.message:
+        await query.message.reply_text(f"{deleted_label}: {deleted_text}", reply_markup=undo_kb)
 
 async def undo_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
@@ -2527,8 +2946,8 @@ async def undo_callback(update: Update, context: CTX) -> None:
     del store[token]
     context.user_data["undo_tokens"] = store
 
-    new_rid = restore_deleted_snapshot(snapshot)
-    if not new_rid:
+    restored = restore_deleted_snapshot(snapshot)
+    if not restored:
         await query.answer("Не смог восстановить", show_alert=True)
         return
 
@@ -2536,6 +2955,20 @@ async def undo_callback(update: Update, context: CTX) -> None:
     tpl_pattern_type = tpl.get("pattern_type")
     tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
 
+    if snapshot.get("kind") == "series":
+        # restored = List[int]
+        human = format_recurring_human(tpl_pattern_type, tpl_payload)
+        series_text = str(tpl.get("text") or "серия")
+        suffix = f"  🔁 {human}" if human else "  🔁"
+        count = len(restored) if isinstance(restored, list) else 0
+
+        if query.message:
+            await query.message.reply_text(
+                f"Вернул серию: {series_text}{suffix} (инстансов: {count})"
+            )
+        return
+
+    # single
     restored_text = format_deleted_human(
         snapshot["reminder"]["remind_at"],
         snapshot["reminder"]["text"],
@@ -2545,7 +2978,6 @@ async def undo_callback(update: Update, context: CTX) -> None:
 
     if query.message:
         await query.message.reply_text(f"Вернул: {restored_text}")
-
 
 # ===== SNOOZE callback =====
 
@@ -2812,6 +3244,7 @@ def main() -> None:
     application.add_handler(CommandHandler("list", list_command))
 
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
+    application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
 
     application.add_handler(
