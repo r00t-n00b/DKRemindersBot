@@ -601,7 +601,7 @@ def get_recurring_template(template_id: int) -> Optional[Dict[str, Any]]:
 
 # ===== Парсинг времени (разовые напоминания) =====
 
-TIME_TOKEN_RE = re.compile(r"^\d{1,2}:\d{2}$")
+TIME_TOKEN_RE = re.compile(r"^\d{1,2}[:.]\d{2}$")
 
 
 def _split_expr_and_text(s: str) -> Tuple[str, str]:
@@ -615,19 +615,31 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
     return expr, text
 
 
-def _extract_time_from_tokens(tokens: List[str], default_hour: int = 11, default_minute: int = 0) -> Tuple[List[str], int, int]:
+def _extract_time_from_tokens(
+    tokens: List[str],
+    default_hour: int = 11,
+    default_minute: int = 0,
+) -> Tuple[List[str], int, int]:
     if tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
-        h_s, m_s = tokens[-1].split(":", 1)
-        hour = int(h_s)
-        minute = int(m_s)
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            raise ValueError("Неверное время")
-        core = tokens[:-1]
-    else:
-        hour = default_hour
-        minute = default_minute
-        core = tokens
-    return core, hour, minute
+        raw = tokens[-1]
+        sep = ":" if ":" in raw else "."
+        h_s, m_s = raw.split(sep, 1)
+
+        # Важно: если это невалидное "время" (например 29.11), не падаем,
+        # а считаем, что времени нет, и оставляем токен как есть.
+        try:
+            hour = int(h_s)
+            minute = int(m_s)
+        except ValueError:
+            return tokens, default_hour, default_minute
+
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            core = tokens[:-1]
+            return core, hour, minute
+
+        return tokens, default_hour, default_minute
+
+    return tokens, default_hour, default_minute
 
 
 def _parse_in_expression(tokens: List[str], now: datetime) -> Optional[datetime]:
@@ -772,12 +784,13 @@ MONTH_EN = {
 
 def _normalize_on_at_phrase(expr_lower: str) -> str:
     """
-    Нормализуем фразы:
-    - on Thursday at 20:30 -> next thursday 20:30
-    - on Thursday 20:30 -> next thursday 20:30
+    Нормализуем:
+    - on Thursday at 20:30 -> thursday 20:30
+    - on Thursday 20:30 -> thursday 20:30
     - on 25 december at 20:30 -> 25 december 20:30
-    - в четверг в 20.30 -> next четверг 20:30 (дальше разберет next-expression + time)
-    - четверг в 20.30 -> next четверг 20:30
+    - в четверг в 20.30 -> четверг 20:30
+    - четверг в 20.30 -> четверг 20:30
+
     Важно: точку в HH.MM меняем на двоеточие только если это похоже на ВРЕМЯ (hour <= 23),
     чтобы не ломать даты вида 29.11.
     """
@@ -791,7 +804,7 @@ def _normalize_on_at_phrase(expr_lower: str) -> str:
     s = re.sub(r"\bat\b", "", s).strip()
     s = re.sub(r"\s+", " ", s)
 
-    # 3) Русское "в " в начале (в четверг ...)
+    # 3) Русское "в " в начале
     if s.startswith("в "):
         s = s[2:].strip()
 
@@ -807,15 +820,9 @@ def _normalize_on_at_phrase(expr_lower: str) -> str:
                 fixed.append(f"{hh}:{m.group(2)}")
                 continue
         fixed.append(p)
+
     s = " ".join(fixed)
-
-    # 5) Если строка начинается с названия дня недели (en/ru) - добавляем "next"
-    tokens = s.split()
-    if tokens:
-        first = tokens[0]
-        if first in WEEKDAY_EN or first in WEEKDAY_RU:
-            s = "next " + s
-
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
@@ -824,43 +831,75 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     if not tokens:
         return None
 
-    # "next ..." / "следующая ..."
-    first = tokens[0]
-    if first not in {"next", "следующий", "следующая", "следующее", "следующие"}:
-        return None
-
-    if len(tokens) == 1:
-        return None
-
-    second = tokens[1]
-
     local = now.astimezone(TZ)
 
+    next_words = {"next", "следующий", "следующая", "следующее", "следующие"}
+    this_words = {"this", "coming", "этот", "эта", "это", "эти", "ближайший", "ближайшая", "ближайшее", "ближайшие"}
+    ru_prefix_v = {"в"}  # "в четверг ..."
+
+    first = tokens[0]
+
+    # Определяем режим:
+    # - "next X" -> строго следующий (не сегодня)
+    # - "this/coming/этот/ближайший X" -> ближайший (может быть сегодня)
+    # - "X" где X weekday -> ближайший (может быть сегодня)
+    mode: Optional[str] = None  # "next" | "this"
+    start_idx = 0
+
+    if first in next_words:
+        mode = "next"
+        start_idx = 1
+    elif first in this_words:
+        mode = "this"
+        start_idx = 1
+    elif first in ru_prefix_v and len(tokens) >= 2 and (tokens[1] in WEEKDAY_RU):
+        # "в четверг ..."
+        mode = "this"
+        start_idx = 1
+    else:
+        # без префикса: попробуем weekday
+        mode = "this"
+        start_idx = 0
+
+    if start_idx >= len(tokens):
+        return None
+
+    second = tokens[start_idx]
+
     # next week / следующая неделя
-    if second in {"week", "неделя", "неделю"}:
+    if mode in {"next", "this"} and second in {"week", "неделя", "неделю"}:
         base = local.date()
         cur_wd = base.weekday()
         days_until_next_monday = (7 - cur_wd) % 7
-        if days_until_next_monday == 0:
-            days_until_next_monday = 7
-        rest_tokens = tokens[2:]
+
+        if mode == "next":
+            if days_until_next_monday == 0:
+                days_until_next_monday = 7
+        else:
+            # this/coming week -> если сегодня пн, то сегодня (delta 0)
+            # иначе ближайший понедельник (может быть через несколько дней)
+            # (то есть фактически то же, что days_until_next_monday, но 0 разрешаем)
+            pass
+
+        rest_tokens = tokens[start_idx + 1 :]
         rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
         target_date = base + timedelta(days=days_until_next_monday)
-        return datetime(
-            target_date.year,
-            target_date.month,
-            target_date.day,
-            hour,
-            minute,
-            tzinfo=TZ,
-        )
+        return datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=TZ)
 
     # next month / следующий месяц
-    if second in {"month", "месяц", "месяца"}:
-        rest_tokens = tokens[2:]
+    if mode in {"next", "this"} and second in {"month", "месяц", "месяца"}:
+        rest_tokens = tokens[start_idx + 1 :]
         rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
         year = local.year
-        month = local.month + 1
+        month = local.month + 1 if mode == "next" else local.month
+
+        if mode == "this":
+            # this month -> сегодня, но час/минуты ставим на сегодня (если время уже прошло - завтра)
+            dt = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if dt <= now:
+                dt = dt + timedelta(days=1)
+            return dt
+
         if month > 12:
             month = 1
             year += 1
@@ -872,32 +911,37 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
                 day -= 1
         return datetime(year, month, day, hour, minute, tzinfo=TZ)
 
-    # next Monday / следующий понедельник
+    # weekday (en/ru)
     target_wd: Optional[int] = None
+    rest_tokens: List[str] = []
+
     if second in WEEKDAY_EN:
         target_wd = WEEKDAY_EN[second]
-        rest_tokens = tokens[2:]
+        rest_tokens = tokens[start_idx + 1 :]
     elif second in WEEKDAY_RU:
         target_wd = WEEKDAY_RU[second]
-        rest_tokens = tokens[2:]
+        rest_tokens = tokens[start_idx + 1 :]
     else:
         return None
 
     rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
-    base = local.date()
-    cur_wd = base.weekday()
+
+    base_date = local.date()
+    cur_wd = base_date.weekday()
     delta = (target_wd - cur_wd + 7) % 7
-    if delta == 0:
-        delta = 7
-    target_date = base + timedelta(days=delta)
-    return datetime(
-        target_date.year,
-        target_date.month,
-        target_date.day,
-        hour,
-        minute,
-        tzinfo=TZ,
-    )
+
+    candidate = datetime(base_date.year, base_date.month, base_date.day, hour, minute, tzinfo=TZ) + timedelta(days=delta)
+
+    if mode == "next":
+        # строго следующий: если попали на сегодня, уходим на +7
+        if delta == 0:
+            candidate = candidate + timedelta(days=7)
+        return candidate
+
+    # this/coming/без префикса: сегодня разрешаем, но только если время впереди
+    if candidate <= now:
+        candidate = candidate + timedelta(days=7)
+    return candidate
 
 
 def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
@@ -969,23 +1013,28 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
     hour = 11
     minute = 0
 
-    if len(tokens) >= 2 and tokens[-2] == "at" and TIME_TOKEN_RE.fullmatch(tokens[-1]):
-        time_token = tokens[-1]
-        tokens = tokens[:-2]
-        h_s, m_s = time_token.split(":", 1)
-        hour = int(h_s)
-        minute = int(m_s)
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            raise ValueError("Неверное время")
-    elif tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
-        time_token = tokens[-1]
-        tokens = tokens[:-1]
-        h_s, m_s = time_token.split(":", 1)
-        hour = int(h_s)
-        minute = int(m_s)
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            raise ValueError("Неверное время")
+    def _try_parse_time_token(tok: str) -> Optional[Tuple[int, int]]:
+        m_time = re.fullmatch(r"(?P<h>\d{1,2})[:.](?P<m>\d{2})", tok)
+        if not m_time:
+            return None
+        h = int(m_time.group("h"))
+        m_ = int(m_time.group("m"))
+        if not (0 <= h < 24 and 0 <= m_ < 60):
+            return None
+        return h, m_
 
+    if len(tokens) >= 2 and tokens[-2] == "at":
+        parsed = _try_parse_time_token(tokens[-1])
+        if parsed is not None:
+            hour, minute = parsed
+            tokens = tokens[:-2]
+    else:
+        parsed = _try_parse_time_token(tokens[-1]) if tokens else None
+        if parsed is not None:
+            hour, minute = parsed
+            tokens = tokens[:-1]
+
+    # Если осталась не дата (а, например, было только "23:59") - это не наш формат
     if len(tokens) < 2:
         return None
 
@@ -993,12 +1042,10 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
     if tokens[0] in MONTH_EN and tokens[1].isdigit():
         month = int(MONTH_EN[tokens[0]])
         day = int(tokens[1])
-
     # Вариант B: "<day> <month>"
-    elif tokens[0].isdigit() and tokens[1] in MONTH_EN:
+    elif tokens[1] in MONTH_EN and tokens[0].isdigit():
         day = int(tokens[0])
         month = int(MONTH_EN[tokens[1]])
-
     else:
         return None
 
@@ -1027,7 +1074,11 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.strip()
     local = now.astimezone(TZ)
 
-    m = re.fullmatch(r"(?P<day>\d{1,2})[./](?P<month>\d{1,2})(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?", s)
+    # 25.01 [11:00] / 25/01 [11:00]
+    m = re.fullmatch(
+        r"(?P<day>\d{1,2})[./](?P<month>\d{1,2})(?:\s+(?P<hour>\d{1,2})[:.](?P<minute>\d{2}))?",
+        s,
+    )
     if m:
         day = int(m.group("day"))
         month = int(m.group("month"))
@@ -1037,11 +1088,13 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
         else:
             hour = 11
             minute = 0
+
         year = local.year
         try:
             dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
         except ValueError as e:
             raise ValueError(f"Неверная дата или время: {e}") from e
+
         if dt < now - timedelta(minutes=1):
             try:
                 dt = dt.replace(year=year + 1)
@@ -1052,21 +1105,21 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
         return dt
 
     # 25 december [20:30]
-    m_name = re.fullmatch(
-        r"(?P<day>\d{1,2})\s+(?P<month_name>[a-zA-Z]+)(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?$",
+    m_name_dm = re.fullmatch(
+        r"(?P<day>\d{1,2})\s+(?P<month_name>[a-zA-Z]+)(?:\s+(?P<hour>\d{1,2})[:.](?P<minute>\d{2}))?$",
         s.lower().strip(),
     )
-    if m_name:
-        day = int(m_name.group("day"))
-        month_name = m_name.group("month_name")
+    if m_name_dm:
+        day = int(m_name_dm.group("day"))
+        month_name = m_name_dm.group("month_name")
         if month_name not in MONTH_EN:
             raise ValueError("Не знаю такой месяц")
 
         month = int(MONTH_EN[month_name])
 
-        if m_name.group("hour") is not None:
-            hour = int(m_name.group("hour"))
-            minute = int(m_name.group("minute"))
+        if m_name_dm.group("hour") is not None:
+            hour = int(m_name_dm.group("hour"))
+            minute = int(m_name_dm.group("minute"))
         else:
             hour = 11
             minute = 0
@@ -1087,7 +1140,44 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
 
         return dt
 
-    m2 = re.fullmatch(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})", s)
+    # january 25 [20:30]
+    m_name_md = re.fullmatch(
+        r"(?P<month_name>[a-zA-Z]+)\s+(?P<day>\d{1,2})(?:\s+(?P<hour>\d{1,2})[:.](?P<minute>\d{2}))?$",
+        s.lower().strip(),
+    )
+    if m_name_md:
+        month_name = m_name_md.group("month_name")
+        if month_name not in MONTH_EN:
+            raise ValueError("Не знаю такой месяц")
+
+        month = int(MONTH_EN[month_name])
+        day = int(m_name_md.group("day"))
+
+        if m_name_md.group("hour") is not None:
+            hour = int(m_name_md.group("hour"))
+            minute = int(m_name_md.group("minute"))
+        else:
+            hour = 11
+            minute = 0
+
+        year = local.year
+        try:
+            dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+        except ValueError as e:
+            raise ValueError(f"Неверная дата или время: {e}") from e
+
+        if dt < now - timedelta(minutes=1):
+            try:
+                dt = dt.replace(year=year + 1)
+            except ValueError as e:
+                raise ValueError(
+                    f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+                ) from e
+
+        return dt
+
+    # только время: 23:59 или 23.59
+    m2 = re.fullmatch(r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})", s)
     if m2:
         hour = int(m2.group("hour"))
         minute = int(m2.group("minute"))
