@@ -941,6 +941,87 @@ def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
                 return candidate
     return None
 
+def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
+    """
+    Понимает:
+    - on January 25
+    - on January 25 at 20:30
+    - January 25
+    - January 25 at 20:30
+    - on 25 January
+    - on 25 January at 20:30
+    """
+    s = expr.lower().strip()
+    local = now.astimezone(TZ)
+
+    # Нормализация: убираем лишний "on" в начале
+    if s.startswith("on "):
+        s = s[3:].strip()
+
+    tokens = s.split()
+    if not tokens:
+        return None
+
+    # Вынесем время, если в конце "at HH:MM" или просто "HH:MM"
+    # Примеры:
+    #   january 25 at 20:30
+    #   january 25 20:30
+    hour = 11
+    minute = 0
+
+    if len(tokens) >= 2 and tokens[-2] == "at" and TIME_TOKEN_RE.fullmatch(tokens[-1]):
+        time_token = tokens[-1]
+        tokens = tokens[:-2]
+        h_s, m_s = time_token.split(":", 1)
+        hour = int(h_s)
+        minute = int(m_s)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError("Неверное время")
+    elif tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
+        time_token = tokens[-1]
+        tokens = tokens[:-1]
+        h_s, m_s = time_token.split(":", 1)
+        hour = int(h_s)
+        minute = int(m_s)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError("Неверное время")
+
+    if len(tokens) < 2:
+        return None
+
+    # Вариант A: "<month> <day>"
+    if tokens[0] in MONTH_EN and tokens[1].isdigit():
+        month = int(MONTH_EN[tokens[0]])
+        day = int(tokens[1])
+
+    # Вариант B: "<day> <month>"
+    elif tokens[0].isdigit() and tokens[1] in MONTH_EN:
+        day = int(tokens[0])
+        month = int(MONTH_EN[tokens[1]])
+
+    else:
+        return None
+
+    if not (1 <= day <= 31):
+        raise ValueError("Неверный день месяца")
+
+    year = local.year
+    try:
+        dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+    except ValueError as e:
+        raise ValueError(f"Неверная дата или время: {e}") from e
+
+    # Если дата уже прошла (с небольшим допуском) - переносим на следующий год
+    if dt < now - timedelta(minutes=1):
+        try:
+            dt = dt.replace(year=year + 1)
+        except ValueError as e:
+            raise ValueError(
+                f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+            ) from e
+
+    return dt
+
 
 def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.strip()
@@ -1048,6 +1129,10 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
         return dt, text
 
     dt = _parse_weekend_weekday(expr_lower, now)
+    if dt is not None:
+        return dt, text
+
+    dt = _parse_month_name_date(expr_lower, now)
     if dt is not None:
         return dt, text
 
