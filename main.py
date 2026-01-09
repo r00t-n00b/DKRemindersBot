@@ -1423,6 +1423,10 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         "каждую",
         "каждое",
         "каждые",
+
+        # чтобы "/remind on ..." и "/remind January ..." не воспринимались как alias
+        "on",
+        *MONTH_EN.keys(),
     }
 
     if first_lower in smart_prefixes:
