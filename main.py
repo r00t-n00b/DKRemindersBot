@@ -2900,204 +2900,6 @@ async def delete_callback(update: Update, context: CTX) -> None:
     if query.message:
         await query.message.reply_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
 
-async def del_one_callback(update: Update, context: CTX) -> None:
-    query = update.callback_query
-    if query is None:
-        return
-
-    data = query.data or ""
-    if not data.startswith("del_one:"):
-        await query.answer()
-        return
-
-    await query.answer()
-
-    try:
-        rid = int(data.split(":", 1)[1])
-    except ValueError:
-        return
-
-    target_chat_id = context.user_data.get("list_chat_id")
-    if target_chat_id is None:
-        chat = query.message.chat if query.message else None
-        if chat is None:
-            return
-        target_chat_id = chat.id
-
-    snapshot = delete_recurring_one_instance_and_reschedule(int(rid), int(target_chat_id))
-    if not snapshot:
-        await query.answer("Не смог удалить", show_alert=True)
-        return
-
-    tpl = snapshot.get("template") or {}
-    tpl_pattern_type = tpl.get("pattern_type")
-    tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
-
-    deleted_text = format_deleted_human(
-        snapshot["reminder"]["remind_at"],
-        snapshot["reminder"]["text"],
-        tpl_pattern_type,
-        tpl_payload,
-    )
-
-    token = make_undo_token()
-    context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
-    context.user_data["undo_tokens"][token] = snapshot
-
-    undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть ближайший", callback_data=f"undo:{token}")]]
-    )
-
-    if query.message:
-        await query.message.reply_text(f"Удалил ближайший из серии: {deleted_text}", reply_markup=undo_kb)
-
-
-async def del_series_callback(update: Update, context: CTX) -> None:
-    query = update.callback_query
-    if query is None:
-        return
-
-    data = query.data or ""
-    if not data.startswith("del_series:"):
-        await query.answer()
-        return
-
-    await query.answer()
-
-    try:
-        tpl_id = int(data.split(":", 1)[1])
-    except ValueError:
-        return
-
-    target_chat_id = context.user_data.get("list_chat_id")
-    if target_chat_id is None:
-        chat = query.message.chat if query.message else None
-        if chat is None:
-            return
-        target_chat_id = chat.id
-
-    snapshot = delete_recurring_series_with_snapshot(int(tpl_id), int(target_chat_id))
-    if not snapshot:
-        await query.answer("Не смог удалить серию", show_alert=True)
-        return
-
-    tpl = snapshot.get("template") or {}
-    human = format_recurring_human(tpl.get("pattern_type"), tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {})
-    title = str(tpl.get("text") or "")
-    suffix = f"  🔁 {human}" if human else "  🔁"
-    preview = f"{title}{suffix}"
-
-    token = make_undo_token()
-    context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
-    context.user_data["undo_tokens"][token] = snapshot
-
-    undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть серию", callback_data=f"undo:{token}")]]
-    )
-
-    if query.message:
-        await query.message.reply_text(f"Удалил всю серию: {preview}", reply_markup=undo_kb)
-
-async def delete_recurring_choice_callback(update: Update, context: CTX) -> None:
-    query = update.callback_query
-    if query is None:
-        return
-
-    data = query.data or ""
-    if not data.startswith("delrec:"):
-        await query.answer()
-        return
-
-    await query.answer()
-
-    # форматы:
-    # delrec:one:<rid>
-    # delrec:series:<tpl_id>:<chat_id>
-    parts = data.split(":")
-    if len(parts) < 3:
-        return
-
-    mode = parts[1].strip()
-
-    target_chat_id = context.user_data.get("list_chat_id")
-    if target_chat_id is None:
-        chat = query.message.chat if query.message else None
-        if chat is None:
-            return
-        target_chat_id = chat.id
-
-    snapshot = None
-
-    if mode == "one":
-        rid = int(parts[2])
-        snapshot = delete_recurring_one_instance_and_reschedule(rid, int(target_chat_id))
-        if not snapshot:
-            await query.answer("Не смог удалить", show_alert=True)
-            return
-
-        tpl = snapshot.get("template") or {}
-        deleted_text = format_deleted_human(
-            snapshot["reminder"]["remind_at"],
-            snapshot["reminder"]["text"],
-            tpl.get("pattern_type"),
-            tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {},
-        )
-
-        token = make_undo_token()
-        context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
-        context.user_data["undo_tokens"][token] = snapshot
-
-        undo_kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("↩️ Вернуть ближайший", callback_data=f"undo:{token}")]]
-        )
-
-        if query.message:
-            await query.message.reply_text(f"Удалил ближайший из серии: {deleted_text}", reply_markup=undo_kb)
-
-        return
-
-    if mode == "series":
-        if len(parts) < 4:
-            return
-        tpl_id = int(parts[2])
-        chat_id = int(parts[3])
-
-        tpl = get_recurring_template_row(tpl_id)
-        deleted_count = delete_recurring_series(tpl_id, chat_id)
-        if deleted_count <= 0 and not tpl:
-            await query.answer("Не нашел серию", show_alert=True)
-            return
-
-        snapshot = {
-            "mode": "series",
-            "reminder": {
-                "chat_id": chat_id,
-                "text": tpl["text"] if tpl else "",
-                "remind_at": datetime.now(TZ).isoformat(),  # просто чтобы было что показать
-                "created_by": tpl.get("created_by") if tpl else None,
-            },
-            "template": tpl,
-        }
-
-        token = make_undo_token()
-        context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
-        context.user_data["undo_tokens"][token] = snapshot
-
-        human = ""
-        if tpl:
-            human = format_recurring_human(tpl.get("pattern_type"), tpl.get("payload") or {})
-        msg = f"Удалил всю серию"
-        if human:
-            msg += f"  🔁 {human}"
-
-        undo_kb = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("↩️ Вернуть серию", callback_data=f"undo:{token}")]]
-        )
-
-        if query.message:
-            await query.message.reply_text(msg, reply_markup=undo_kb)
-
-        return
 
 async def delete_choose_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
@@ -3129,9 +2931,10 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
         except ValueError:
             return
 
-        snapshot = delete_single_reminder_with_snapshot(rid, int(target_chat_id))
+        # ВАЖНО: для recurring "удалить ближайший" = удалить инстанс + пересоздать следующий
+        snapshot = delete_recurring_one_instance_and_reschedule(rid, int(target_chat_id))
         if not snapshot:
-            await query.answer("Уже удалено", show_alert=True)
+            await query.answer("Не смог удалить", show_alert=True)
             return
 
         # убираем rid из текущего списка (если он там есть)
@@ -3148,7 +2951,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
 
         snapshot = delete_recurring_series_with_snapshot(tpl_id, int(target_chat_id))
         if not snapshot:
-            await query.answer("Уже удалено", show_alert=True)
+            await query.answer("Не смог удалить серию", show_alert=True)
             return
 
         removed_ids = {int(r["id"]) for r in (snapshot.get("reminders") or []) if r.get("id") is not None}
@@ -3222,14 +3025,15 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
         if query.message:
             await query.edit_message_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
 
+    if not snapshot:
+        return
+
     # Сообщение "удалено" + Undo
     tpl = (snapshot or {}).get("template") or {}
     tpl_pattern_type = tpl.get("pattern_type")
     tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
 
-    # Для series возьмем "человекочитаемый" текст по шаблону, для single - по reminder
-    if snapshot and snapshot.get("kind") == "series":
-        # Берем первый remind_at если был, иначе просто текст серии
+    if snapshot.get("kind") == "series":
         reminders = snapshot.get("reminders") or []
         if reminders:
             deleted_text = format_deleted_human(
@@ -3239,7 +3043,6 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
                 tpl_payload,
             )
         else:
-            # fallback
             deleted_text = str(tpl.get("text") or "серия")
             human = format_recurring_human(tpl_pattern_type, tpl_payload)
             if human:
@@ -3587,11 +3390,8 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-    application.add_handler(CallbackQueryHandler(del_one_callback, pattern=r"^del_one:\d+$"))
-    application.add_handler(CallbackQueryHandler(del_series_callback, pattern=r"^del_series:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
-    application.add_handler(CallbackQueryHandler(delete_recurring_choice_callback, pattern=r"^delrec:"))
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
