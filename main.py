@@ -75,9 +75,18 @@ class Reminder:
 
 # ===== Работа с БД =====
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    cols = {row[1] for row in cur.fetchall()}
+    if column not in cols:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+        conn.commit()
+
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
     # основная таблица напоминаний (новые БД сразу с template_id)
     c.execute(
         """
@@ -93,12 +102,26 @@ def init_db() -> None:
         )
         """
     )
+
     # миграция старых БД - добавляем template_id при необходимости
     c.execute("PRAGMA table_info(reminders)")
     cols = [row[1] for row in c.fetchall()]
     if "template_id" not in cols:
         c.execute("ALTER TABLE reminders ADD COLUMN template_id INTEGER")
         logger.info("DB migration: added reminders.template_id column")
+
+    # миграция под ACK + sent_at + nudge_sent
+    c.execute("PRAGMA table_info(reminders)")
+    cols = [row[1] for row in c.fetchall()]
+    if "acked" not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN acked INTEGER NOT NULL DEFAULT 0")
+        logger.info("DB migration: added reminders.acked column")
+    if "sent_at" not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN sent_at TEXT")
+        logger.info("DB migration: added reminders.sent_at column")
+    if "nudge_sent" not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN nudge_sent INTEGER NOT NULL DEFAULT 0")
+        logger.info("DB migration: added reminders.nudge_sent column")
 
     # алиасы чатов
     c.execute(
@@ -313,10 +336,35 @@ def get_active_reminders_for_chat(chat_id: int) -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
-def mark_reminder_sent(reminder_id: int) -> None:
+from datetime import datetime
+from typing import Optional
+
+def mark_reminder_sent(reminder_id: int, sent_at: Optional[datetime] = None) -> None:
+    """
+    Помечает напоминание как отправленное:
+    - delivered = 1
+    - sent_at = timestamp
+    - acked = 0 (ждем подтверждения)
+    """
+    if sent_at is None:
+        sent_at = get_now()
+
+    # если вдруг кто-то передал ISO-строку, конвертим
+    if isinstance(sent_at, str):
+        sent_at = datetime.fromisoformat(sent_at)
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE reminders SET delivered = 1 WHERE id = ?", (reminder_id,))
+    c.execute(
+        """
+        UPDATE reminders
+        SET delivered = 1,
+            acked = 0,
+            sent_at = ?
+        WHERE id = ?
+        """,
+        (sent_at.isoformat(), reminder_id),
+    )
     conn.commit()
     conn.close()
 
@@ -827,6 +875,44 @@ def restore_deleted_snapshot(snapshot: Dict[str, Any]) -> Optional[Any]:
 def make_undo_token() -> str:
     # короткий токен, чтобы callback_data была маленькой
     return secrets.token_urlsafe(8)
+
+
+def mark_reminder_acked(reminder_id: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE reminders SET acked = 1 WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+
+def mark_nudge_sent(reminder_id: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE reminders SET nudge_sent = 1 WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_unacked_sent_before(dt: datetime) -> List[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, text, sent_at
+        FROM reminders
+        WHERE delivered = 1
+          AND acked = 0
+          AND nudge_sent = 0
+          AND sent_at IS NOT NULL
+          AND sent_at <= ?
+        ORDER BY sent_at ASC
+        """,
+        (dt.isoformat(),),
+    )
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
 
 
 def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
@@ -3375,6 +3461,9 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 # даже если вдруг id не распарсился, просто пометим сообщение завершенным
                 rid = None
 
+            if rid is not None:
+                mark_reminder_acked(rid)
+
             # исходный текст сообщения
             original_text = query.message.text if query.message and query.message.text else ""
 
@@ -3385,14 +3474,20 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 r = None
 
             base_text = r.text if r else original_text or "Напоминание"
-
             new_text = f"{base_text} (завершено ✅)"
 
-            try:
-                await query.edit_message_text(new_text)
-            except Exception:
-                # fallback: хотя бы уберем клавиатуру
-                await query.edit_message_reply_markup(reply_markup=None)
+            # Пытаемся обновить сообщение, но в тестах этих методов может не быть
+            if hasattr(query, "edit_message_text"):
+                try:
+                    await query.edit_message_text(new_text)
+                except Exception:
+                    pass
+
+            if hasattr(query, "edit_message_reply_markup"):
+                try:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
 
             await query.answer("Отмечено как завершенное")
             return
@@ -3425,6 +3520,9 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 target = base + timedelta(days=delta)
                 new_dt = datetime(target.year, target.month, target.day, 11, 0, tzinfo=TZ)
             elif action == "custom":
+                # ACK на вход в кастомный flow тоже считаем реакцией
+                mark_reminder_acked(rid)
+
                 kb = build_custom_date_keyboard(rid)
                 await query.edit_message_reply_markup(reply_markup=kb)
                 await query.answer("Выбери дату", show_alert=False)
@@ -3432,6 +3530,9 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             else:
                 await query.answer("Неизвестное действие", show_alert=True)
                 return
+
+            # УСПЕШНЫЙ snooze = реакция пользователя
+            mark_reminder_acked(rid)
 
             add_reminder(
                 chat_id=r.chat_id,
@@ -3441,6 +3542,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 template_id=None,
             )
             when_str = new_dt.strftime("%d.%m %H:%M")
+
             # Пытаемся обновить текст сообщения
             try:
                 await query.edit_message_text(f"{r.text}\n\n(Отложено до {when_str})")
@@ -3450,13 +3552,18 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                     await query.edit_message_reply_markup(reply_markup=None)
                 except Exception:
                     pass
+
             await query.answer(f"Отложено до {when_str}")
             return
 
         if data.startswith("snooze_page:"):
             # перелистывание календаря кастом-даты
             _, rid_str, start_str = data.split(":", 2)
-            rid = int(rid_str)  # на будущее, пока не используем
+            rid = int(rid_str)
+
+            # пролистывание - тоже реакция
+            mark_reminder_acked(rid)
+
             start_date = date.fromisoformat(start_str)
             kb = build_custom_date_keyboard(rid, start=start_date)
             await query.edit_message_reply_markup(reply_markup=kb)
@@ -3466,6 +3573,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("snooze_pickdate:"):
             _, rid_str, date_str = data.split(":", 2)
             rid = int(rid_str)
+
+            # выбор даты - реакция
+            mark_reminder_acked(rid)
+
             kb = build_custom_time_keyboard(rid, date_str)
             await query.edit_message_reply_markup(reply_markup=kb)
             await query.answer("Выбери время")
@@ -3478,6 +3589,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             if not r:
                 await query.answer("Напоминание не найдено", show_alert=True)
                 return
+
             try:
                 year, month, day = map(int, date_str.split("-"))
                 hour, minute = map(int, time_str.split(":"))
@@ -3485,6 +3597,9 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             except Exception:
                 await query.answer("Не смог понять дату/время", show_alert=True)
                 return
+
+            # успешный picktime - реакция
+            mark_reminder_acked(rid)
 
             add_reminder(
                 chat_id=r.chat_id,
@@ -3505,6 +3620,15 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("snooze_cancel:"):
+            _, rid_str = data.split(":", 1)
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                rid = None
+
+            if rid is not None:
+                mark_reminder_acked(rid)
+
             await query.answer("Отменено")
             await query.edit_message_reply_markup(reply_markup=None)
             return
@@ -3554,7 +3678,9 @@ async def reminders_worker(app: Application) -> None:
                             text=r.text,
                         )
 
-                    mark_reminder_sent(r.id)
+                    # ВАЖНО: передаем datetime, не строку
+                    mark_reminder_sent(r.id, sent_at=now)
+
                     logger.info(
                         "Отправлено напоминание id=%s в чат %s: %s (время %s, template_id=%s)",
                         r.id,
@@ -3594,10 +3720,47 @@ async def reminders_worker(app: Application) -> None:
 
         await asyncio.sleep(10)
 
+async def reminders_nudge_worker(app: Application) -> None:
+    logger.info("Запущен фоновой nudge worker напоминаний")
+    while True:
+        try:
+            now = get_now()
+            cutoff = now - timedelta(minutes=20)
+
+            rows = get_unacked_sent_before(cutoff)
+            for r in rows:
+                try:
+                    text = (
+                        "Ты никак не отреагировал на напоминание.\n"
+                        "Посмотри и нажми кнопку:\n\n"
+                        f"{r['text']}"
+                    )
+
+                    reply_markup = None
+                    try:
+                        reply_markup = build_snooze_keyboard(r["id"])
+                    except Exception as e:
+                        # если клавиатура не собралась - шлем без нее
+                        logger.warning("Не смог собрать snooze keyboard для reminder id=%s: %s", r["id"], e)
+                        reply_markup = None
+
+                    await app.bot.send_message(
+                        chat_id=r["chat_id"],
+                        text=text,
+                        reply_markup=reply_markup,
+                    )
+                    mark_nudge_sent(r["id"])
+                except Exception:
+                    logger.exception("Ошибка при отправке nudge reminder id=%s", r["id"])
+        except Exception:
+            logger.exception("Ошибка в nudge worker")
+
+        await asyncio.sleep(30)
 
 async def post_init(application: Application) -> None:
     init_db()
     application.create_task(reminders_worker(application))
+    application.create_task(reminders_nudge_worker(application))
     logger.info("Фоновый worker напоминаний запущен из post_init")
 
 
