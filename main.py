@@ -2167,75 +2167,173 @@ def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(buttons)
 
+from calendar import monthrange
+from datetime import date, datetime, timedelta
 
-def build_custom_date_keyboard(reminder_id: int, start: Optional[date] = None) -> InlineKeyboardMarkup:
-    if start is None:
-        start = datetime.now(TZ).date()
-
+def build_custom_date_keyboard(reminder_id: int, year: int | None = None, month: int | None = None):
+    """
+    Красивый календарь на месяц:
+    - Заголовок "Январь 2026"
+    - Ряд дней недели
+    - Сетка дней 7x6
+    - Навигация prev/next месяц
+    - Today и Cancel
+    """
+    # Важно: используем TZ и локальную дату
     today = datetime.now(TZ).date()
-    days = [start + timedelta(days=i) for i in range(0, 14)]
-    rows: List[List[InlineKeyboardButton]] = []
 
-    # Навигация по страницам дат
-    # Левая стрелка - на 14 дней назад, но не раньше сегодняшнего дня
-    prev_start = start - timedelta(days=14)
-    if prev_start < today:
-        prev_cb = "noop"
-    else:
-        prev_cb = f"snooze_page:{reminder_id}:{prev_start.isoformat()}"
+    if year is None or month is None:
+        year = today.year
+        month = today.month
 
-    next_start = start + timedelta(days=14)
-    next_cb = f"snooze_page:{reminder_id}:{next_start.isoformat()}"
+    # Нормализуем границы
+    if month < 1:
+        month = 12
+        year -= 1
+    elif month > 12:
+        month = 1
+        year += 1
 
-    center_label = start.strftime("%d.%m")
-    rows.append(
+    month_names = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+    }
+    title = f"{month_names.get(month, str(month))} {year}"
+
+    first_weekday, days_in_month = monthrange(year, month)
+    # monthrange: 0=Mon .. 6=Sun
+    # Сделаем так, чтобы календарь начинался с Пн
+    start_offset = first_weekday
+
+    def _btn(text: str, cb: str):
+        return InlineKeyboardButton(text=text, callback_data=cb)
+
+    def _noop(text: str):
+        return InlineKeyboardButton(text=text, callback_data="noop")
+
+    # Заголовок
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [_noop(title)],
+        [_noop("Пн"), _noop("Вт"), _noop("Ср"), _noop("Чт"), _noop("Пт"), _noop("Сб"), _noop("Вс")],
+    ]
+
+    # Сетка 7x6
+    cells: list[InlineKeyboardButton] = []
+
+    # Пустые до первого дня
+    for _ in range(start_offset):
+        cells.append(_noop(" "))
+
+    # Дни месяца
+    for day in range(1, days_in_month + 1):
+        d = date(year, month, day)
+        iso = d.isoformat()
+
+        label = str(day)
+
+        # Подсветим сегодня
+        if d == today:
+            label = f"·{day}·"
+
+        # Можно запретить прошлое, если хочешь. Сейчас оставляю разрешенным.
+        cells.append(_btn(label, f"snooze_pickdate:{reminder_id}:{iso}"))
+
+    # Добьем до кратности 7
+    while len(cells) % 7 != 0:
+        cells.append(_noop(" "))
+
+    # Ограничим до 6 недель, Telegram не любит гигантские клавиатуры
+    while len(cells) < 42:
+        cells.append(_noop(" "))
+
+    # Разбиваем на строки по 7
+    for i in range(0, 42, 7):
+        keyboard.append(cells[i:i + 7])
+
+    # Навигация по месяцам
+    prev_year = year
+    prev_month = month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = year
+    next_month = month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    keyboard.append(
         [
-            InlineKeyboardButton("◀", callback_data=prev_cb),
-            InlineKeyboardButton(f"с {center_label}", callback_data="noop"),
-            InlineKeyboardButton("▶", callback_data=next_cb),
+            _btn("◀", f"snooze_cal:{reminder_id}:{prev_year:04d}-{prev_month:02d}"),
+            _btn("Today", f"snooze_caltoday:{reminder_id}"),
+            _btn("▶", f"snooze_cal:{reminder_id}:{next_year:04d}-{next_month:02d}"),
         ]
     )
 
-    # Сетка из 14 дней (2 недели)
-    row: List[InlineKeyboardButton] = []
-    for d in days:
-        label = d.strftime("%d.%m")
-        data = f"snooze_pickdate:{reminder_id}:{d.isoformat()}"
-        row.append(InlineKeyboardButton(text=label, callback_data=data))
-        if len(row) == 7:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
+    # Cancel
+    keyboard.append([_btn("Cancel", f"snooze_cancel:{reminder_id}")])
 
-    rows.append([InlineKeyboardButton("Отмена", callback_data=f"snooze_cancel:{reminder_id}")])
+    return InlineKeyboardMarkup(keyboard)
 
-    return InlineKeyboardMarkup(rows)
+from datetime import datetime, date
 
+def build_custom_time_keyboard(reminder_id: int, date_str: str):
+    """
+    Красивый выбор времени:
+    - Заголовок "Время - 02.02.2026"
+    - Сетка кнопок времени
+    - Back (назад в календарь выбранного месяца)
+    - Cancel
+    """
+    try:
+        y, m, d = map(int, date_str.split("-"))
+        chosen = date(y, m, d)
+    except Exception:
+        # fallback: если вдруг сломался формат
+        chosen = datetime.now(TZ).date()
 
-def build_custom_time_keyboard(reminder_id: int, date_str: str) -> InlineKeyboardMarkup:
-    times = [
-        "09:00", "10:00", "11:00", "12:00",
-        "13:00", "14:00", "15:00", "16:00",
-        "17:00", "18:00", "19:00", "20:00",
-        "21:00",
+    def _btn(text: str, cb: str):
+        return InlineKeyboardButton(text=text, callback_data=cb)
+
+    def _noop(text: str):
+        return InlineKeyboardButton(text=text, callback_data="noop")
+
+    title = chosen.strftime("Время - %d.%m.%Y")
+
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [_noop(title)],
     ]
-    rows: List[List[InlineKeyboardButton]] = []
-    rows.append([InlineKeyboardButton(f"Выбор времени для {date_str}", callback_data="noop")])
 
-    row: List[InlineKeyboardButton] = []
+    # Времена - наиболее полезные варианты
+    # Можно потом легко расширить/изменить
+    times = [
+        "10:00", "10:30", "11:00", "11:30",
+        "12:00", "12:30", "13:00", "13:30",
+        "14:00", "15:00", "16:00", "18:00",
+        "20:00", "21:00", "22:00", "23:00",
+    ]
+
+    # Сетка 4 колонки
+    row: list[InlineKeyboardButton] = []
     for t in times:
-        data = f"snooze_picktime:{reminder_id}:{date_str}:{t}"
-        row.append(InlineKeyboardButton(text=t, callback_data=data))
+        row.append(_btn(t, f"snooze_picktime:{reminder_id}:{chosen.isoformat()}:{t}"))
         if len(row) == 4:
-            rows.append(row)
+            keyboard.append(row)
             row = []
     if row:
-        rows.append(row)
+        keyboard.append(row)
 
-    rows.append([InlineKeyboardButton("Отмена", callback_data=f"snooze_cancel:{reminder_id}")])
+    # Back -> возвращаемся к календарю на месяц выбранной даты
+    keyboard.append(
+        [
+            _btn("◀ Back", f"snooze_cal:{reminder_id}:{chosen.year:04d}-{chosen.month:02d}"),
+            _btn("Cancel", f"snooze_cancel:{reminder_id}"),
+        ]
+    )
 
-    return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup(keyboard)
 
 
 # ===== Хендлеры команд =====
@@ -3556,16 +3654,25 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer(f"Отложено до {when_str}")
             return
 
-        if data.startswith("snooze_page:"):
-            # перелистывание календаря кастом-даты
-            _, rid_str, start_str = data.split(":", 2)
+        if data.startswith("snooze_cal:"):
+            _, rid_str, ym = data.split(":", 2)
             rid = int(rid_str)
 
-            # пролистывание - тоже реакция
-            mark_reminder_acked(rid)
+            year_str, month_str = ym.split("-", 1)
+            year = int(year_str)
+            month = int(month_str)
 
-            start_date = date.fromisoformat(start_str)
-            kb = build_custom_date_keyboard(rid, start=start_date)
+            kb = build_custom_date_keyboard(rid, year=year, month=month)
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer()
+            return
+
+        if data.startswith("snooze_caltoday:"):
+            _, rid_str = data.split(":", 1)
+            rid = int(rid_str)
+
+            today = datetime.now(TZ).date()
+            kb = build_custom_date_keyboard(rid, year=today.year, month=today.month)
             await query.edit_message_reply_markup(reply_markup=kb)
             await query.answer()
             return
