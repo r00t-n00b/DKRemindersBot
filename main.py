@@ -3912,7 +3912,7 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
-            pattern=r"^(snooze:|snooze_page:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
+            pattern=r"^(snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
         )
     )
 
