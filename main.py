@@ -1947,15 +1947,26 @@ def format_deleted_human(remind_at_iso: str, text: str, tpl_pattern_type: Option
 def extract_after_command(text: str) -> str:
     if not text:
         return ""
-    stripped = text.strip()
-    parts = stripped.split(maxsplit=1)
-    if not parts:
+
+    t = text.lstrip()
+    if not t:
         return ""
-    if not parts[0].startswith("/"):
-        return stripped
-    if len(parts) == 1:
+
+    # Если это не команда - просто вернем строку как есть (без внешних пробелов)
+    if not t.startswith("/"):
+        return t.strip()
+
+    # Команда - это первый "токен" до любого whitespace
+    i = 0
+    while i < len(t) and not t[i].isspace():
+        i += 1
+
+    rest = t[i:]  # тут важно сохранить переносы строк для bulk-режима
+    if not rest:
         return ""
-    return parts[1]
+
+    # Убираем только пробелы/табы после команды, но НЕ убираем \n
+    return rest.lstrip(" \t")
 
 
 def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
@@ -2158,14 +2169,17 @@ async def start(update: Update, context: CTX) -> None:
     if chat is None or user is None:
         return
 
-    if chat.type == Chat.PRIVATE:
-        upsert_user_chat(
-            user_id=user.id,
-            chat_id=chat.id,
-            username=user.username,
-            first_name=user.first_name,
-            last_name=user.last_name,
-        )
+    # В группах /start молчит (чтобы не спамить)
+    if chat.type != Chat.PRIVATE:
+        return
+
+    upsert_user_chat(
+        user_id=user.id,
+        chat_id=chat.id,
+        username=getattr(user, "username", None),
+        first_name=getattr(user, "first_name", None),
+        last_name=getattr(user, "last_name", None),
+    )
 
     text = dedent("""
         Привет. Я бот для напоминаний.
@@ -2186,8 +2200,14 @@ async def start(update: Update, context: CTX) -> None:
         Подробности и все форматы: /help
     """).strip()
 
-    await update.message.reply_text(text)
+    msg = update.effective_message
+    if msg and hasattr(msg, "reply_text"):
+        res = msg.reply_text(text)
+        if inspect.isawaitable(res):
+            await res
 
+async def start_command(update: Update, context: CTX) -> None:
+    await start(update, context)
 
 async def help_command(update: Update, context: CTX) -> None:
     message = update.effective_message
@@ -2330,7 +2350,12 @@ async def linkchat_command(update: Update, context: CTX) -> None:
         return
 
     title = chat.title or chat.username or str(chat.id)
-    set_chat_alias(alias, chat.id, title)
+
+    set_chat_alias(
+        chat_id=chat.id,
+        alias=alias,
+        title=title,
+    )
 
     await safe_reply(
         message,
@@ -2338,6 +2363,68 @@ async def linkchat_command(update: Update, context: CTX) -> None:
         f"Теперь в личке можно писать:\n"
         f"/remind {alias} 28.11 12:00 - завтра футбол"
     )
+
+import re
+from typing import Tuple
+
+
+def _rest_starts_like_datetime(s: str) -> bool:
+    """
+    True если строка начинается похоже на дату/время/относительное выражение.
+    Достаточно для кейсов типа: "02.02 - hi", "02.02 12:00 - hi", "23:40 - hi", "tomorrow 10:00 - hi".
+    """
+    s = s.strip().lower()
+    if not s:
+        return False
+
+    # DD.MM / DD/MM / DD-MM
+    if re.match(r"^\d{1,2}[./-]\d{1,2}(\s|$)", s):
+        return True
+
+    # HH:MM / HH.MM
+    if re.match(r"^\d{1,2}[:.]\d{2}(\s|$)", s):
+        return True
+
+    # дружественные фразы
+    if re.match(r"^(today|tomorrow|day\s+after\s+tomorrow|сегодня|завтра|послезавтра)\b", s):
+        return True
+
+    # in/через
+    if re.match(r"^(in|через)\b", s):
+        return True
+
+    return False
+
+
+def _strip_leading_token_in_group(raw_args: str) -> Tuple[str, bool]:
+    """
+    В group-чате игнорируем возможные 'роутинг-токены' в начале:
+    /remind TeamA 02.02 - hi
+    /remind @someone 02.02 - hi
+
+    Возвращает (новая_строка, изменилось_ли).
+    """
+    s = raw_args.strip()
+    if not s:
+        return raw_args, False
+
+    # bulk не трогаем
+    if "\n" in s:
+        return raw_args, False
+
+    parts = s.split(maxsplit=1)
+    if len(parts) != 2:
+        return raw_args, False
+
+    first = parts[0].strip()
+    rest = parts[1].strip()
+    if not first or not rest:
+        return raw_args, False
+
+    if _rest_starts_like_datetime(rest):
+        return rest, True
+
+    return raw_args, False
 
 
 async def remind_command(update: Update, context: CTX) -> None:
@@ -2350,6 +2437,8 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     now = get_now()
     raw_args = extract_after_command(message.text or "")
+    if (not raw_args.strip()) and message.text and ("\n" in message.text):
+        raw_args = message.text.split("\n", 1)[1].strip("\n")
 
     if not raw_args.strip():
         await safe_reply(
@@ -2371,6 +2460,65 @@ async def remind_command(update: Update, context: CTX) -> None:
         return
 
     is_private = chat.type == Chat.PRIVATE
+
+    if not is_private:
+        raw_args = raw_args.strip()
+
+        if raw_args and "\n" not in raw_args:
+            parts = raw_args.split(maxsplit=1)
+
+            if len(parts) == 2:
+                first_token = parts[0]
+                rest = parts[1]
+
+                # alias или @username в group-чате игнорируем,
+                # если дальше реально идет дата/время
+                if (
+                    first_token.startswith("@")
+                    or first_token.isidentifier()
+                ):
+                    try:
+                        # проверяем, что remainder реально парсится как дата
+                        parse_date_time_smart(rest, now)
+                        raw_args = rest
+                    except Exception:
+                        pass
+
+    # В группах запрещаем "переключатели" в начале команды:
+    # - alias (TeamA)
+    # - @username
+    # При этом bulk (/remind\n- ...) не трогаем.
+    if not is_private:
+        # берём первую НЕпустую строку аргументов
+        first_nonempty = next((ln.strip() for ln in raw_args.splitlines() if ln.strip()), "")
+
+        # bulk-строки начинаются с "-", их не блокируем
+        if first_nonempty and not first_nonempty.startswith("-"):
+            first_token = first_nonempty.split(maxsplit=1)[0].strip()
+
+            # @username в начале в группе запрещаем
+            if first_token.startswith("@") and len(first_token) > 1:
+                await safe_reply(
+                    message,
+                    "В групповом чате нельзя начинать команду с @username.\n"
+                    "Напиши так: /remind 02.02 - текст @someone\n"
+                    "Или в личку боту: /remind @someone 02.02 - текст"
+                )
+                return
+
+            # alias в начале в группе запрещаем
+            try:
+                alias_chat_id = get_chat_id_by_alias(first_token)
+            except Exception:
+                alias_chat_id = None
+
+            if alias_chat_id is not None:
+                await safe_reply(
+                    message,
+                    "В групповом чате нельзя использовать alias в начале команды.\n"
+                    "Напиши боту в личку: /remind <alias> 02.02 - текст"
+                )
+                return
 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
@@ -2450,21 +2598,33 @@ async def remind_command(update: Update, context: CTX) -> None:
         upsert_user_chat(
             user_id=user.id,
             chat_id=chat.id,
-            username=user.username,
-            first_name=user.first_name,
-            last_name=user.last_name,
+            username=getattr(user, "username", None),
+            first_name=getattr(user, "first_name", None),
+            last_name=getattr(user, "last_name", None),
         )
+    
+    # В group-чате запрещаем alias и @username как переключатели чата
+    if not is_private:
+        first = raw_args.split(maxsplit=1)
+        if first:
+            token = first[0]
+            if token.startswith("@") or get_chat_id_by_alias(token) is not None:
+                raw_args = raw_args[len(token):].lstrip()
 
     # Bulk или одиночный?
     if "\n" in raw_args:
-        lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
+        lines = [
+            ln[2:].strip()
+            for ln in raw_args.splitlines()
+            if ln.strip().startswith("- ")
+        ]
         created = 0
         failed = 0
         error_lines: List[str] = []
 
         for line in lines:
-            if line.startswith("- "):
-                line = line[2:].strip()
+            if line.startswith("-"):
+                line = line[1:].lstrip()
             try:
                 # поддержка recurring и в bulk
                 if looks_like_recurring(line):
