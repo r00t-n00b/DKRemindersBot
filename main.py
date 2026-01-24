@@ -6,6 +6,7 @@ import sqlite3
 import json
 import secrets
 import calendar
+import inspect
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
@@ -56,6 +57,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+def get_now() -> datetime:
+    return datetime.now(TZ)
 
 # ===== Модель данных =====
 
@@ -974,15 +978,21 @@ TIME_TOKEN_RE = re.compile(r"^\d{1,2}[:.]\d{2}$")
 
 
 def _split_expr_and_text(s: str) -> Tuple[str, str]:
-    m = re.match(r"^(?P<expr>.+?)\s*[-–—]\s*(?P<text>.+)$", s.strip())
+    s = (s or "").strip()
+
+    # разделитель: пробелы + один из дефисов + пробелы
+    # важно: не просто '-' потому что в тексте он может быть частью слова
+    m = re.match(r"^(?P<expr>.+?)\s*[-–—]\s*(?P<text>.+)$", s)
     if not m:
         raise ValueError("Ожидаю формат 'дата/время - текст'")
+
     expr = m.group("expr").strip()
     text = m.group("text").strip()
+
     if not expr or not text:
         raise ValueError("Ожидаю непустые дату/время и текст")
-    return expr, text
 
+    return expr, text
 
 def _extract_time_from_tokens(
     tokens: List[str],
@@ -1197,17 +1207,30 @@ def _normalize_on_at_phrase(expr_lower: str) -> str:
     if s.startswith("в "):
         s = s[2:].strip()
 
-    # 4) Меняем HH.MM -> HH:MM только если это действительно время (hour <= 23)
+    # 4) Меняем HH.MM -> HH:MM только если это действительно время.
+    # ВАЖНО: если токен выглядит как дата DD.MM, не трогаем его.
     parts = s.split()
     fixed: List[str] = []
-    for p in parts:
+    for i, p in enumerate(parts):
         m = re.fullmatch(r"(\d{1,2})\.(\d{2})", p)
-        if m:
-            hh = int(m.group(1))
-            mm = int(m.group(2))
-            if 0 <= hh <= 23 and 0 <= mm <= 59:
-                fixed.append(f"{hh}:{m.group(2)}")
-                continue
+        if not m:
+            fixed.append(p)
+            continue
+
+        a = int(m.group(1))
+        b = int(m.group(2))
+
+        # Если это похоже на дату (DD.MM): 1-31 и 1-12 - НЕ конвертируем.
+        # Это чинит "02.02 12:00" и не ломает "29.11".
+        if 1 <= a <= 31 and 1 <= b <= 12:
+            fixed.append(p)
+            continue
+
+        # Иначе - это может быть время HH.MM
+        if 0 <= a <= 23 and 0 <= b <= 59:
+            fixed.append(f"{a}:{m.group(2)}")
+            continue
+
         fixed.append(p)
 
     s = " ".join(fixed)
@@ -1448,7 +1471,8 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
         raise ValueError(f"Неверная дата или время: {e}") from e
 
     # Если дата уже прошла (с небольшим допуском) - переносим на следующий год
-    if dt < now - timedelta(minutes=1):
+    if (month, day) < (local.month, local.day):
+        dt = dt.replace(year=year + 1)
         try:
             dt = dt.replace(year=year + 1)
         except ValueError as e:
@@ -1462,6 +1486,20 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
 def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.strip()
     local = now.astimezone(TZ)
+
+    # только время: 23:59 или 23.59
+    # (важно проверять ДО DD.MM, иначе "23.59" попытается стать датой 23.59)
+    m2 = re.fullmatch(r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})", s)
+    if m2:
+        hour = int(m2.group("hour"))
+        minute = int(m2.group("minute"))
+
+        # защита: "29.11" - это дата, а не время
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            dt = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if dt < now - timedelta(minutes=1):
+                dt = dt + timedelta(days=1)
+            return dt
 
     # 25.01 [11:00] / 25/01 [11:00]
     m = re.fullmatch(
@@ -1565,18 +1603,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
 
         return dt
 
-    # только время: 23:59 или 23.59
-    m2 = re.fullmatch(r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})", s)
-    if m2:
-        hour = int(m2.group("hour"))
-        minute = int(m2.group("minute"))
-        dt = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if dt < now - timedelta(minutes=1):
-            dt = dt + timedelta(days=1)
-        return dt
-
     return None
-
 
 def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     """
@@ -2116,6 +2143,14 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str) -> InlineKeyboar
 
 # ===== Хендлеры команд =====
 
+async def safe_reply(message, text: str, **kwargs):
+    if not message or not hasattr(message, "reply_text"):
+        return
+
+    res = message.reply_text(text, **kwargs)
+    if inspect.isawaitable(res):
+        await res
+
 async def start(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     user = update.effective_user
@@ -2271,7 +2306,8 @@ async def help_command(update: Update, context: CTX) -> None:
         либо кастомная дата и время.
     """).strip()
 
-    await message.reply_text(text)
+    await safe_reply(message,text)
+
 
 async def linkchat_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
@@ -2281,22 +2317,23 @@ async def linkchat_command(update: Update, context: CTX) -> None:
         return
 
     if chat.type == Chat.PRIVATE:
-        await message.reply_text("Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать.")
+        await safe_reply(message,"Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать.")
         return
 
     if not context.args:
-        await message.reply_text("Формат: /linkchat alias\nНапример: /linkchat football")
+        await safe_reply(message,"Формат: /linkchat alias\nНапример: /linkchat football")
         return
 
     alias = context.args[0].strip()
     if not alias:
-        await message.reply_text("Alias не должен быть пустым.")
+        await safe_reply(message,"Alias не должен быть пустым.")
         return
 
     title = chat.title or chat.username or str(chat.id)
     set_chat_alias(alias, chat.id, title)
 
-    await message.reply_text(
+    await safe_reply(
+        message,
         f"Ок, запомнил этот чат как '{alias}'.\n"
         f"Теперь в личке можно писать:\n"
         f"/remind {alias} 28.11 12:00 - завтра футбол"
@@ -2311,11 +2348,12 @@ async def remind_command(update: Update, context: CTX) -> None:
     if chat is None or message is None or user is None:
         return
 
-    now = datetime.now(TZ)
+    now = get_now()
     raw_args = extract_after_command(message.text or "")
 
     if not raw_args.strip():
-        await message.reply_text(
+        await safe_reply(
+            message,
             "Формат:\n"
             "/remind DD.MM HH:MM - текст\n"
             "или без времени:\n"
@@ -2345,7 +2383,8 @@ async def remind_command(update: Update, context: CTX) -> None:
             if first_token.startswith("@") and len(first_token) > 1:
                 target = get_user_chat_id_by_username(first_token)
                 if target is None:
-                    await message.reply_text(
+                    await safe_reply(
+                        message,
                         f"Я пока не могу написать {first_token} в личку, потому что он/она не нажимал(а) Start у бота.\n"
                         f"Пусть откроет бота и нажмет Start, потом повтори команду."
                     )
@@ -2362,7 +2401,8 @@ async def remind_command(update: Update, context: CTX) -> None:
                 raw_args = "\n".join(parts).strip()
 
                 if not raw_args:
-                    await message.reply_text(
+                    await safe_reply(
+                        message,
                         f"После {first_token} нужно указать дату и текст.\n"
                         f"Пример: /remind {first_token} tomorrow 10:00 - привет"
                     )
@@ -2373,35 +2413,37 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     # В личке допускаем alias первым словом / первой строкой
     if is_private:
-        maybe_alias, rest = maybe_split_alias_first_token(raw_args)
-        if maybe_alias is not None:
-            alias_chat_id = get_chat_id_by_alias(maybe_alias)
-            if alias_chat_id is None:
-                aliases = get_all_aliases()
-                if not aliases:
-                    await message.reply_text(
-                        f"Alias '{maybe_alias}' не найден.\n"
-                        f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
-                    )
-                else:
-                    known = ", ".join(a for a, _, _ in aliases)
-                    await message.reply_text(
-                        f"Alias '{maybe_alias}' не найден.\n"
-                        f"Из известных: {known}"
-                    )
-                return
+        first_line = raw_args.splitlines()[0].lstrip()
+        if first_line and not first_line.startswith("-"):
+            first_token = first_line.split(maxsplit=1)[0].strip()
 
-            target_chat_id = alias_chat_id
-            used_alias = maybe_alias
-            raw_args = rest.strip()
+            # alias != @username (этот кейс обработан выше)
+            if first_token and not first_token.startswith("@"):
+                alias_chat_id = get_chat_id_by_alias(first_token)
+                if alias_chat_id is not None:
+                    # убираем alias из raw_args (и single, и bulk)
+                    rest_first_line = first_line[len(first_token):].lstrip()
+                    rest_lines = "\n".join(raw_args.splitlines()[1:])
 
-            if not raw_args:
-                await message.reply_text(
-                    "После alias нужно указать дату и текст.\n"
-                    "Пример:\n"
-                    f"/remind {used_alias} 28.11 12:00 - завтра футбол"
-                )
-                return
+                    parts = []
+                    if rest_first_line:
+                        parts.append(rest_first_line)
+                    if rest_lines.strip():
+                        parts.append(rest_lines)
+
+                    raw_args = "\n".join(parts).strip()
+
+                    target_chat_id = alias_chat_id
+                    used_alias = first_token
+
+                    if not raw_args:
+                        await safe_reply(
+                            message,
+                            "После alias нужно указать дату и текст.\n"
+                            "Пример:\n"
+                            f"/remind {used_alias} 28.11 12:00 - завтра футбол"
+                        )
+                        return
 
     # если человек пишет боту в личке - запомним его chat_id
     if is_private:
@@ -2479,7 +2521,7 @@ async def remind_command(update: Update, context: CTX) -> None:
         if error_lines:
             reply += "\n\nПроблемные строки (до 5):\n" + "\n".join(error_lines[:5])
 
-        await message.reply_text(reply)
+        await safe_reply(message,reply)
         return
 
     # Одиночная строка
@@ -2490,7 +2532,7 @@ async def remind_command(update: Update, context: CTX) -> None:
         try:
             first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
         except ValueError as e:
-            await message.reply_text(f"Не смог понять повторяющийся формат: {e}")
+            await safe_reply(message,f"Не смог понять повторяющийся формат: {e}")
             return
 
         tpl_id = create_recurring_template(
@@ -2527,13 +2569,15 @@ async def remind_command(update: Update, context: CTX) -> None:
         freq_part = f"\nПовтор: {human}" if human else ""
 
         if used_alias:
-            await message.reply_text(
+            await safe_reply(
+                message,
                 f"Ок, создал повторяющееся напоминание в чате '{used_alias}'.\n"
                 f"Первое напоминание будет {when_str}: {text}"
                 f"{freq_part}"
             )
         else:
-            await message.reply_text(
+            await safe_reply(
+                message,
                 f"Ок, создал повторяющееся напоминание.\n"
                 f"Первое напоминание будет {when_str}: {text}"
                 f"{freq_part}"
@@ -2544,7 +2588,7 @@ async def remind_command(update: Update, context: CTX) -> None:
     try:
         remind_at, text = parse_date_time_smart(raw_single, now)
     except ValueError as e:
-        await message.reply_text(f"Не смог понять дату и текст: {e}")
+        await safe_reply(message,f"Не смог понять дату и текст: {e}")
         return
 
     reminder_id = add_reminder(
@@ -2566,16 +2610,19 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     when_str = remind_at.strftime("%d.%m %H:%M")
     if used_alias:
-        await message.reply_text(
+        await safe_reply(
+            message,
             f"Ок, напомню в чате '{used_alias}' {when_str}: {text}"
         )
     else:
         if target_chat_id != chat.id and chat.type == Chat.PRIVATE:
-            await message.reply_text(
+            await safe_reply(
+                message,
                 f"Ок, напомню этому человеку {when_str}: {text}"
             )
         else:
-            await message.reply_text(
+            await safe_reply(
+                message,
                 f"Ок, напомню {when_str}: {text}"
             )
 
@@ -2600,7 +2647,8 @@ async def list_command(update: Update, context: CTX) -> None:
             owner_chat_id = get_private_chat_id_by_username(first_arg)
 
             if owner_chat_id is None:
-                await message.reply_text(
+                await safe_reply(
+                    message,
                     f"Пользователь {first_arg} еще не писал боту.\n"
                     f"Он должен сначала нажать Start или поставить любой ремайндер."
                 )
@@ -2612,7 +2660,8 @@ async def list_command(update: Update, context: CTX) -> None:
             )
 
             if not rows:
-                await message.reply_text(
+                await safe_reply(
+                    message,
                     f"Ты не ставил напоминаний пользователю {first_arg}."
                 )
                 return
@@ -2663,7 +2712,7 @@ async def list_command(update: Update, context: CTX) -> None:
             if row:
                 buttons.append(row)
 
-            await message.reply_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
+            await safe_reply(message,reply, reply_markup=InlineKeyboardMarkup(buttons))
             return
 
     # ===== СТАРАЯ ЛОГИКА: /list alias =====
@@ -2674,13 +2723,15 @@ async def list_command(update: Update, context: CTX) -> None:
             if alias_chat_id is None:
                 aliases = get_all_aliases()
                 if not aliases:
-                    await message.reply_text(
+                    await safe_reply(
+                        message,
                         f"Alias '{alias}' не найден.\n"
                         f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
                     )
                 else:
                     known = ", ".join(a for a, _, _ in aliases)
-                    await message.reply_text(
+                    await safe_reply(
+                        message,
                         f"Alias '{alias}' не найден.\n"
                         f"Из известных: {known}"
                     )
@@ -2711,9 +2762,9 @@ async def list_command(update: Update, context: CTX) -> None:
 
     if not rows:
         if used_alias:
-            await message.reply_text(f"В чате '{used_alias}' напоминаний нет.")
+            await safe_reply(message,f"В чате '{used_alias}' напоминаний нет.")
         else:
-            await message.reply_text("Напоминаний нет.")
+            await safe_reply(message,"Напоминаний нет.")
         return
 
     lines = []
@@ -2760,7 +2811,7 @@ async def list_command(update: Update, context: CTX) -> None:
         buttons.append(row)
 
     keyboard = InlineKeyboardMarkup(buttons)
-    await message.reply_text(reply, reply_markup=keyboard)
+    await safe_reply(message,reply, reply_markup=keyboard)
 
 async def delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
