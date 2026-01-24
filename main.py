@@ -3730,6 +3730,24 @@ async def reminders_nudge_worker(app: Application) -> None:
             rows = get_unacked_sent_before(cutoff)
             for r in rows:
                 try:
+                    chat_type = None
+                    try:
+                        chat = await app.bot.get_chat(r["chat_id"])
+                        chat_type = getattr(chat, "type", None)
+                    except Exception:
+                        chat_type = None
+
+                    # Nudge допускаем только в личке
+                    if chat_type != Chat.PRIVATE:
+                        mark_nudge_sent(r["id"])
+                        logger.info(
+                            "Пропущен nudge для chat_id=%s (type=%s), reminder_id=%s",
+                            r["chat_id"],
+                            chat_type,
+                            r["id"],
+                        )
+                        continue
+
                     text = (
                         "Ты никак не отреагировал на напоминание.\n"
                         "Посмотри и нажми кнопку:\n\n"
@@ -3739,9 +3757,7 @@ async def reminders_nudge_worker(app: Application) -> None:
                     reply_markup = None
                     try:
                         reply_markup = build_snooze_keyboard(r["id"])
-                    except Exception as e:
-                        # если клавиатура не собралась - шлем без нее
-                        logger.warning("Не смог собрать snooze keyboard для reminder id=%s: %s", r["id"], e)
+                    except Exception:
                         reply_markup = None
 
                     await app.bot.send_message(
