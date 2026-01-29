@@ -1070,13 +1070,13 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
     # важно: не просто '-' потому что в тексте он может быть частью слова
     m = re.match(r"^(?P<expr>.+?)\s*[-–—]\s*(?P<text>.+)$", s)
     if not m:
-        raise ValueError("Ожидаю формат 'дата/время - текст'")
+        raise ValueError("Ожидаю формат 'дата время - текст'. Обрати внимание, что нужен - перед текстом")
 
     expr = m.group("expr").strip()
     text = m.group("text").strip()
 
     if not expr or not text:
-        raise ValueError("Ожидаю непустые дату/время и текст")
+        raise ValueError("Ожидаю непустые дату время и текст")
 
     return expr, text
 
