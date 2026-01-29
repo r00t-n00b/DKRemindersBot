@@ -1063,22 +1063,100 @@ def get_recurring_template(template_id: int) -> Optional[Dict[str, Any]]:
 TIME_TOKEN_RE = re.compile(r"^\d{1,2}[:.]\d{2}$")
 
 
+import re
+from typing import Tuple
+
+
 def _split_expr_and_text(s: str) -> Tuple[str, str]:
-    s = (s or "").strip()
+    raw = (s or "").strip()
 
-    # разделитель: пробелы + один из дефисов + пробелы
-    # важно: не просто '-' потому что в тексте он может быть частью слова
-    m = re.match(r"^(?P<expr>.+?)\s*[-–—]\s*(?P<text>.+)$", s)
-    if not m:
-        raise ValueError("Ожидаю формат 'дата время - текст'. Обрати внимание, что нужен - перед текстом")
+    # Нормальный путь: есть дефис-разделитель
+    m = re.search(r"\s-\s", raw)
+    if m:
+        expr = raw[: m.start()].strip()
+        text = raw[m.end() :].strip()
+        if not expr or not text:
+            raise ValueError("Не понял дату/время или текст. Нужен формат 'дата время - текст'.")
+        return expr, text
 
-    expr = m.group("expr").strip()
-    text = m.group("text").strip()
+    # Фоллбек: люди забыли дефис. Разрешаем только single-line режим
+    # (bulk уже режется выше и там дефисы внутри строк важны).
+    # Поддерживаем безопасные форматы:
+    # - DD.MM.YYYY HH:MM <text>
+    # - D.M.YYYY H:MM <text>
+    # - DD.MM HH:MM <text>
+    # - DD.MM.YYYY <text>
+    # - DD.MM <text>
+    # - HH:MM <text>
+    # - today/tomorrow/сегодня/завтра (+ optional HH:MM) <text>
+    # - in/через N units <text>
 
-    if not expr or not text:
-        raise ValueError("Ожидаю непустые дату время и текст")
+    # 1) Абсолютная дата + время
+    m = re.match(
+        r"^\s*(\d{1,2}\.\d{1,2}(?:\.\d{2,4})?\s+\d{1,2}:\d{2})\s+(.+)\s*$",
+        raw,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
 
-    return expr, text
+    # 2) Абсолютная дата без времени
+    m = re.match(r"^\s*(\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)\s+(.+)\s*$", raw)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+    # 3) Только время
+    m = re.match(r"^\s*(\d{1,2}:\d{2})\s+(.+)\s*$", raw)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+    # 4) today/tomorrow и т.п. (+ optional HH:MM)
+    m = re.match(
+        r"^\s*((?:today|tomorrow|day\s+after\s+tomorrow|сегодня|завтра|послезавтра)(?:\s+\d{1,2}:\d{2})?)\s+(.+)\s*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+    # 5) in/через N units
+    m = re.match(
+        r"^\s*((?:in|через)\s+\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|минут|минуты|час|часа|часов|день|дня|дней|неделю|недели|недель))\s+(.+)\s*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+    raise ValueError(
+        "Не смог понять дату и текст: ожидаю формат 'дата время - текст'. "
+        "Можно и без '-', но тогда нужно: 'дата время текст' (с пробелом)."
+    )
+
+def _extract_time_from_tokens(
+    tokens: List[str],
+    default_hour: int = 11,
+    default_minute: int = 0,
+) -> Tuple[List[str], int, int]:
+    if tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
+        raw = tokens[-1]
+        sep = ":" if ":" in raw else "."
+        h_s, m_s = raw.split(sep, 1)
+
+        # Важно: если это невалидное "время" (например 29.11), не падаем,
+        # а считаем, что времени нет, и оставляем токен как есть.
+        try:
+            hour = int(h_s)
+            minute = int(m_s)
+        except ValueError:
+            return tokens, default_hour, default_minute
+
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            core = tokens[:-1]
+            return core, hour, minute
+
+        return tokens, default_hour, default_minute
+
+    return tokens, default_hour, default_minute
 
 def _extract_time_from_tokens(
     tokens: List[str],
