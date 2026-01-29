@@ -1572,6 +1572,26 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
 def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.strip()
     local = now.astimezone(TZ)
+    
+    # DD.MM.YYYY HH:MM
+    m = re.match(
+        r"^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})$",
+        expr,
+    )
+    if m:
+        day, month, year, hour, minute = map(int, m.groups())
+        try:
+            return datetime(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                tzinfo=TZ,
+            )
+        except ValueError:
+            return None
+
 
     # только время: 23:59 или 23.59
     # (важно проверять ДО DD.MM, иначе "23.59" попытается стать датой 23.59)
