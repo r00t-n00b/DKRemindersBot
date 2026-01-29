@@ -1732,7 +1732,7 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     if dt is not None:
         return dt, text
 
-    raise ValueError("Не понял дату/время")
+    raise ValueError("Не понял дату/время. Ожидаю формат 'дата время - текст'. Обрати внимание, что нужен - перед текстом")
 
 
 # ===== Парсинг recurring-форматов =====
