@@ -2629,6 +2629,28 @@ def _create_single_reminder_from_line(
             text,
         )
 
+def _format_bulk_result(
+    *,
+    created: int,
+    failed: int,
+    error_lines,
+):
+    parts = []
+
+    parts.append(f"Готово. Создано напоминаний: {created}.")
+
+    if failed:
+        parts.append(f"Не удалось разобрать строк: {failed}.")
+
+        preview = error_lines[:5]
+        lines = ["", "Проблемные строки (до 5):"]
+        for idx, original, error in preview:
+            lines.append(f"{idx}) '{original}': {error}")
+
+        parts.append("\n".join(lines))
+
+    return " ".join(parts)
+
 async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -2871,16 +2893,13 @@ async def remind_command(update: Update, context: CTX) -> None:
                 failed += 1
                 error_lines.append((idx, original_line, str(e)))
 
-        reply = f"Готово. Создано напоминаний: {created}."
-        if failed:
-            reply += f" Не удалось разобрать строк: {failed}."
-        if error_lines:
-            reply += "\n\nПроблемные строки (до 5):\n"
-            reply += "\n".join(
-                [f"{idx}) '{line}': {err}" for idx, line, err in error_lines[:5]]
-            )
+        reply = _format_bulk_result(
+            created=created,
+            failed=failed,
+            error_lines=error_lines,
+        )
 
-        await safe_reply(message,reply)
+        await safe_reply(message, reply)
         return
 
     # Одиночная строка
