@@ -2570,6 +2570,64 @@ def _strip_leading_token_in_group(raw_args: str) -> Tuple[str, bool]:
 
     return raw_args, False
 
+def _create_single_reminder_from_line(
+    *,
+    line: str,
+    now,
+    target_chat_id: int,
+    user,
+):
+    """
+    Создает одно напоминание (oneoff или recurring) из строки.
+    Бросает исключение при ошибке.
+    """
+
+    if looks_like_recurring(line):
+        first_dt, text, pattern_type, payload, hour, minute = parse_recurring(line, now)
+
+        tpl_id = create_recurring_template(
+            chat_id=target_chat_id,
+            text=text,
+            pattern_type=pattern_type,
+            payload=payload,
+            time_hour=hour,
+            time_minute=minute,
+            created_by=user.id,
+        )
+
+        reminder_id = add_reminder(
+            chat_id=target_chat_id,
+            text=text,
+            remind_at=first_dt,
+            created_by=user.id,
+            template_id=tpl_id,
+        )
+
+        logger.info(
+            "Создан bulk recurring reminder id=%s tpl_id=%s chat_id=%s at=%s text=%s",
+            reminder_id,
+            tpl_id,
+            target_chat_id,
+            first_dt.isoformat(),
+            text,
+        )
+    else:
+        remind_at, text = parse_date_time_smart(line, now)
+
+        reminder_id = add_reminder(
+            chat_id=target_chat_id,
+            text=text,
+            remind_at=remind_at,
+            created_by=user.id,
+        )
+
+        logger.info(
+            "Создан bulk reminder id=%s chat_id=%s at=%s text=%s",
+            reminder_id,
+            target_chat_id,
+            remind_at.isoformat(),
+            text,
+        )
 
 async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
@@ -2802,50 +2860,12 @@ async def remind_command(update: Update, context: CTX) -> None:
                 line = line[1:].lstrip()
 
             try:
-                # поддержка recurring и в bulk
-                if looks_like_recurring(line):
-                    first_dt, text, pattern_type, payload, hour, minute = parse_recurring(line, now)
-
-                    tpl_id = create_recurring_template(
-                        chat_id=target_chat_id,
-                        text=text,
-                        pattern_type=pattern_type,
-                        payload=payload,
-                        time_hour=hour,
-                        time_minute=minute,
-                        created_by=user.id,
-                    )
-                    reminder_id = add_reminder(
-                        chat_id=target_chat_id,
-                        text=text,
-                        remind_at=first_dt,
-                        created_by=user.id,
-                        template_id=tpl_id,
-                    )
-                    logger.info(
-                        "Создан bulk recurring reminder id=%s tpl_id=%s chat_id=%s at=%s text=%s",
-                        reminder_id,
-                        tpl_id,
-                        target_chat_id,
-                        first_dt.isoformat(),
-                        text,
-                    )
-                else:
-                    remind_at, text = parse_date_time_smart(line, now)
-
-                    reminder_id = add_reminder(
-                        chat_id=target_chat_id,
-                        text=text,
-                        remind_at=remind_at,
-                        created_by=user.id,
-                    )
-                    logger.info(
-                        "Создан bulk reminder id=%s chat_id=%s at=%s text=%s",
-                        reminder_id,
-                        target_chat_id,
-                        remind_at.isoformat(),
-                        text,
-                    )
+                _create_single_reminder_from_line(
+                    line=line,
+                    now=now,
+                    target_chat_id=target_chat_id,
+                    user=user,
+                )
                 created += 1
             except Exception as e:
                 failed += 1
