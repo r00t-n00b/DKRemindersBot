@@ -2727,9 +2727,20 @@ async def remind_command(update: Update, context: CTX) -> None:
         return
 
     now = get_now()
-    raw_args = extract_after_command(message.text or "")
-    if (not raw_args.strip()) and message.text and ("\n" in message.text):
-        raw_args = message.text.split("\n", 1)[1].strip("\n")
+
+    raw_text = message.text or ""
+    had_newline = "\n" in raw_text
+
+    if had_newline:
+        first_line, rest = raw_text.split("\n", 1)
+
+        parts = first_line.split(maxsplit=1)
+        first_line_args = parts[1] if len(parts) == 2 else ""
+
+        # НЕ удаляем факт многострочности: bulk должен сработать даже если строка одна
+        raw_args = (first_line_args + "\n" + rest).strip("\n")
+    else:
+        raw_args = extract_after_command(raw_text)
 
     if not raw_args.strip():
         await safe_reply(
@@ -2903,12 +2914,30 @@ async def remind_command(update: Update, context: CTX) -> None:
                 raw_args = raw_args[len(token):].lstrip()
 
     # Bulk или одиночный?
-    if "\n" in raw_args:
-        lines = [
-            ln[2:].strip()
-            for ln in raw_args.splitlines()
-            if ln.strip().startswith("- ")
-        ]
+    if had_newline:
+        raw_lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
+
+        # Поддержка bulk без "- ":
+        # - если первая строка не похожа на напоминание и есть другие строки,
+        #   считаем ее "заголовком" и пропускаем (пример: "Каталония")
+        lines = []
+        if raw_lines:
+            first = raw_lines[0].lstrip("-").strip()
+            if len(raw_lines) > 1 and not looks_like_recurring(first):
+                # Если первая строка НЕ похожа на дату/время - считаем ее заголовком (например "Каталония")
+                # и пропускаем
+                if not re.match(
+                    r"^\d{1,2}\.\d{1,2}(\.\d{2,4})?(\s+\d{1,2}:\d{2})?\b",
+                    first,
+                ):
+                    raw_lines = raw_lines[1:]
+
+            for ln in raw_lines:
+                ln2 = ln
+                if ln2.startswith("-"):
+                    ln2 = ln2[1:].lstrip()
+                lines.append(ln2)
+
         created = 0
         failed = 0
         error_lines: List[str] = []
