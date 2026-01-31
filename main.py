@@ -2940,11 +2940,14 @@ async def remind_command(update: Update, context: CTX) -> None:
 
         created = 0
         failed = 0
-        error_lines: List[str] = []
+        error_lines: List[tuple[int, str, str]] = []
 
-        for line in lines:
+        for idx, line in enumerate(lines, start=1):
+            original_line = line
+
             if line.startswith("-"):
                 line = line[1:].lstrip()
+
             try:
                 # поддержка recurring и в bulk
                 if looks_like_recurring(line):
@@ -2993,13 +2996,16 @@ async def remind_command(update: Update, context: CTX) -> None:
                 created += 1
             except Exception as e:
                 failed += 1
-                error_lines.append(f"'{line}': {e}")
+                error_lines.append((idx, original_line, str(e)))
 
         reply = f"Готово. Создано напоминаний: {created}."
         if failed:
             reply += f" Не удалось разобрать строк: {failed}."
         if error_lines:
-            reply += "\n\nПроблемные строки (до 5):\n" + "\n".join(error_lines[:5])
+            reply += "\n\nПроблемные строки (до 5):\n"
+            reply += "\n".join(
+                [f"{idx}) '{line}': {err}" for idx, line, err in error_lines[:5]]
+            )
 
         await safe_reply(message,reply)
         return
