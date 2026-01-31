@@ -487,31 +487,6 @@ def delete_recurring_one_instance_and_reschedule(rid: int, chat_id: int) -> Opti
 
     return snapshot
 
-def delete_recurring_series(template_id: int, chat_id: int) -> int:
-    """
-    Удаляет всю серию:
-    - recurring_templates.active = 0
-    - удаляет все reminders с этим template_id в этом чате
-    Возвращает кол-во удаленных reminders.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    c.execute(
-        "UPDATE recurring_templates SET active = 0 WHERE id = ? AND chat_id = ?",
-        (template_id, chat_id),
-    )
-
-    c.execute(
-        "DELETE FROM reminders WHERE template_id = ? AND chat_id = ?",
-        (template_id, chat_id),
-    )
-    deleted = c.rowcount
-
-    conn.commit()
-    conn.close()
-    return deleted
-
 def get_reminder_row(rid: int) -> Optional[Dict[str, Any]]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -558,102 +533,6 @@ def get_recurring_template_row(tpl_id: int) -> Optional[Dict[str, Any]]:
         return d
     finally:
         conn.close()
-
-
-def delete_reminder_with_snapshot(rid: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Удаляет один reminder и возвращает снепшот для undo.
-    Снепшот не зависит от телеграма, чисто данные.
-    """
-    r = get_reminder_row(rid)
-    if not r:
-        return None
-
-    if int(r["chat_id"]) != int(target_chat_id):
-        # защита: не даем удалить "чужой" rid через подмену индекса/контекста
-        return None
-
-    snapshot: Dict[str, Any] = {
-        "reminder": r,
-        "template": None,
-    }
-
-    tpl_id = r.get("template_id")
-    if tpl_id is not None:
-        tpl = get_recurring_template_row(int(tpl_id))
-        snapshot["template"] = tpl
-
-    deleted = delete_reminders([rid], target_chat_id)
-    if not deleted:
-        return None
-
-    return snapshot
-
-
-def restore_deleted_snapshot(snapshot: Dict[str, Any]) -> Optional[int]:
-    """
-    Восстанавливает удаленное.
-    mode:
-      - one: вернуть ближайший инстанс (и убрать созданный "следующий")
-      - series: восстановить серию (создать новый template) и вернуть ближайший инстанс
-    """
-    r = snapshot.get("reminder") or {}
-    if not r:
-        return None
-
-    mode = snapshot.get("mode") or "one"
-    tpl = snapshot.get("template")
-
-    # ===== MODE: one =====
-    if mode == "one":
-        # убираем автосозданный "следующий"
-        next_id = snapshot.get("next_created_id")
-        if next_id:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute(
-                "DELETE FROM reminders WHERE id = ? AND chat_id = ?",
-                (int(next_id), int(r["chat_id"])),
-            )
-            conn.commit()
-            conn.close()
-
-        tpl_id = r.get("template_id")
-        if tpl_id is None:
-            return None
-
-        remind_at = datetime.fromisoformat(str(r["remind_at"]))
-        new_rid = add_reminder(
-            chat_id=int(r["chat_id"]),
-            text=str(r["text"]),
-            remind_at=remind_at,
-            created_by=r.get("created_by"),
-            template_id=int(tpl_id),
-        )
-        return new_rid
-
-    # ===== MODE: series =====
-    new_tpl_id: Optional[int] = None
-    if tpl:
-        new_tpl_id = create_recurring_template(
-            chat_id=int(tpl["chat_id"]),
-            text=str(tpl["text"]),
-            pattern_type=str(tpl["pattern_type"]),
-            payload=dict(tpl.get("payload") or {}),
-            time_hour=int(tpl["time_hour"]),
-            time_minute=int(tpl["time_minute"]),
-            created_by=tpl.get("created_by"),
-        )
-
-    remind_at = datetime.fromisoformat(str(r["remind_at"]))
-    new_rid = add_reminder(
-        chat_id=int(r["chat_id"]),
-        text=str(r["text"]),
-        remind_at=remind_at,
-        created_by=r.get("created_by"),
-        template_id=new_tpl_id,
-    )
-    return new_rid
 
 def delete_single_reminder_row(reminder_id: int, chat_id: int) -> int:
     """
@@ -1140,32 +1019,6 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
         "Не смог понять дату и текст: ожидаю формат 'дата время - текст'. "
         "Можно и без '-', но тогда нужно: 'дата время текст' (с пробелом)."
     )
-
-def _extract_time_from_tokens(
-    tokens: List[str],
-    default_hour: int = 11,
-    default_minute: int = 0,
-) -> Tuple[List[str], int, int]:
-    if tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
-        raw = tokens[-1]
-        sep = ":" if ":" in raw else "."
-        h_s, m_s = raw.split(sep, 1)
-
-        # Важно: если это невалидное "время" (например 29.11), не падаем,
-        # а считаем, что времени нет, и оставляем токен как есть.
-        try:
-            hour = int(h_s)
-            minute = int(m_s)
-        except ValueError:
-            return tokens, default_hour, default_minute
-
-        if 0 <= hour < 24 and 0 <= minute < 60:
-            core = tokens[:-1]
-            return core, hour, minute
-
-        return tokens, default_hour, default_minute
-
-    return tokens, default_hour, default_minute
 
 def _extract_time_from_tokens(
     tokens: List[str],
