@@ -110,18 +110,33 @@ def init_db() -> None:
         c.execute("ALTER TABLE reminders ADD COLUMN template_id INTEGER")
         logger.info("DB migration: added reminders.template_id column")
 
-    # миграция под ACK + sent_at + nudge_sent
+    # миграция старых БД - добавляем отсутствующие колонки
     c.execute("PRAGMA table_info(reminders)")
     cols = [row[1] for row in c.fetchall()]
+
+    if "template_id" not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN template_id INTEGER")
+        logger.info("DB migration: added reminders.template_id column")
+
     if "acked" not in cols:
         c.execute("ALTER TABLE reminders ADD COLUMN acked INTEGER NOT NULL DEFAULT 0")
         logger.info("DB migration: added reminders.acked column")
+
     if "sent_at" not in cols:
         c.execute("ALTER TABLE reminders ADD COLUMN sent_at TEXT")
         logger.info("DB migration: added reminders.sent_at column")
-    if "nudge_sent" not in cols:
-        c.execute("ALTER TABLE reminders ADD COLUMN nudge_sent INTEGER NOT NULL DEFAULT 0")
-        logger.info("DB migration: added reminders.nudge_sent column")
+
+    if "nudge_count" not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN nudge_count INTEGER NOT NULL DEFAULT 0")
+        logger.info("DB migration: added reminders.nudge_count column")
+
+    # индексы под worker-ы (идемпотентно)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(delivered, remind_at)"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reminders_nudge ON reminders(delivered, acked, nudge_count, sent_at)"
+    )
 
     # алиасы чатов
     c.execute(
@@ -340,34 +355,28 @@ from datetime import datetime
 from typing import Optional
 
 def mark_reminder_sent(reminder_id: int, sent_at: Optional[datetime] = None) -> None:
-    """
-    Помечает напоминание как отправленное:
-    - delivered = 1
-    - sent_at = timestamp
-    - acked = 0 (ждем подтверждения)
-    """
     if sent_at is None:
         sent_at = get_now()
 
-    # если вдруг кто-то передал ISO-строку, конвертим
+    # на всякий случай, если кто-то передал строку
     if isinstance(sent_at, str):
         sent_at = datetime.fromisoformat(sent_at)
 
     conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        UPDATE reminders
-        SET delivered = 1,
-            acked = 0,
-            sent_at = ?
-        WHERE id = ?
-        """,
-        (sent_at.isoformat(), reminder_id),
-    )
-    conn.commit()
-    conn.close()
-
+    try:
+        conn.execute(
+            """
+            UPDATE reminders
+            SET delivered = 1,
+                sent_at = ?,
+                acked = 0
+            WHERE id = ?
+            """,
+            (sent_at.isoformat(), reminder_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 def delete_reminders(reminder_ids: List[int], chat_id: int) -> int:
     """
@@ -3930,11 +3939,11 @@ async def reminders_nudge_worker(app: Application) -> None:
     while True:
         try:
             now = get_now()
-            cutoff = now - timedelta(minutes=20)
 
-            rows = get_unacked_sent_before(cutoff)
+            rows = get_due_nudges(now)
             for r in rows:
                 try:
+                    # строго: nudges только в личке
                     chat_type = None
                     try:
                         chat = await app.bot.get_chat(r["chat_id"])
@@ -3942,15 +3951,7 @@ async def reminders_nudge_worker(app: Application) -> None:
                     except Exception:
                         chat_type = None
 
-                    # Nudge допускаем только в личке
                     if chat_type != Chat.PRIVATE:
-                        mark_nudge_sent(r["id"])
-                        logger.info(
-                            "Пропущен nudge для chat_id=%s (type=%s), reminder_id=%s",
-                            r["chat_id"],
-                            chat_type,
-                            r["id"],
-                        )
                         continue
 
                     text = (
@@ -3970,7 +3971,8 @@ async def reminders_nudge_worker(app: Application) -> None:
                         text=text,
                         reply_markup=reply_markup,
                     )
-                    mark_nudge_sent(r["id"])
+
+                    increment_nudge_count(r["id"])
                 except Exception:
                     logger.exception("Ошибка при отправке nudge reminder id=%s", r["id"])
         except Exception:
@@ -3983,6 +3985,74 @@ async def post_init(application: Application) -> None:
     application.create_task(reminders_worker(application))
     application.create_task(reminders_nudge_worker(application))
     logger.info("Фоновый worker напоминаний запущен из post_init")
+
+def _nudge_threshold_minutes(nudge_count: int) -> Optional[int]:
+    # кумулятивно от sent_at:
+    # 1) +20m
+    # 2) +20m +60m = 80m
+    # 3) +80m +240m = 320m
+    # 4) +320m +720m = 1040m
+    thresholds = [20, 80, 320, 1040]
+    if 0 <= nudge_count < len(thresholds):
+        return thresholds[nudge_count]
+    return None
+
+
+def get_due_nudges(now: datetime) -> List[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, chat_id, text, sent_at, nudge_count
+            FROM reminders
+            WHERE delivered = 1
+              AND acked = 0
+              AND nudge_count < 4
+              AND sent_at IS NOT NULL
+            """,
+        ).fetchall()
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            try:
+                sent_at = datetime.fromisoformat(r["sent_at"])
+            except Exception:
+                continue
+
+            threshold = _nudge_threshold_minutes(int(r["nudge_count"]))
+            if threshold is None:
+                continue
+
+            if now >= sent_at + timedelta(minutes=threshold):
+                out.append(dict(r))
+        return out
+    finally:
+        conn.close()
+
+
+def increment_nudge_count(reminder_id: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE reminders SET nudge_count = nudge_count + 1 WHERE id = ?",
+            (reminder_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def exhaust_nudges(reminder_id: int) -> None:
+    # чтобы никогда не пытаться нуджить в group/channel
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE reminders SET nudge_count = 4 WHERE id = ?",
+            (reminder_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ===== main =====
