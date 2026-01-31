@@ -417,6 +417,7 @@ def delete_reminders(reminder_ids: List[int], chat_id: int) -> int:
     conn.close()
     return deleted
 
+
 def delete_recurring_one_instance_and_reschedule(rid: int, chat_id: int) -> Optional[Dict[str, Any]]:
     """
     Удаляет ОДИН инстанс recurring-ремайндера и сразу создает следующий инстанс,
@@ -3788,38 +3789,40 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
 # ===== Фоновый worker =====
 
+async def _safe_get_chat_type(app: Application, chat_id: int) -> Optional[str]:
+    try:
+        chat = await app.bot.get_chat(chat_id)
+        return getattr(chat, "type", None)
+    except Exception:
+        return None
+
 async def reminders_worker(app: Application) -> None:
     logger.info("Запущен фоновой worker напоминаний")
+
     while True:
         try:
             now = datetime.now(TZ)
             due = get_due_reminders(now)
+
             if due:
                 logger.info("Нашел %s напоминаний к отправке", len(due))
+
             for r in due:
                 try:
-                    # определяем тип чата, чтобы решать, показывать ли snooze-кнопки
-                    try:
-                        chat = await app.bot.get_chat(r.chat_id)
-                        chat_type = chat.type
-                    except Exception:
-                        chat_type = None
+                    chat_type = await _safe_get_chat_type(app, r.chat_id)
 
-                    if chat_type == Chat.PRIVATE:
-                        # только в личке показываем snooze-кнопки
-                        await app.bot.send_message(
-                            chat_id=r.chat_id,
-                            text=r.text,
-                            reply_markup=build_snooze_keyboard(r.id),
-                        )
-                    else:
-                        # в группах/каналах - только текст
-                        await app.bot.send_message(
-                            chat_id=r.chat_id,
-                            text=r.text,
-                        )
+                    reply_markup = (
+                        build_snooze_keyboard(r.id)
+                        if chat_type == Chat.PRIVATE
+                        else None
+                    )
 
-                    # ВАЖНО: передаем datetime, не строку
+                    await app.bot.send_message(
+                        chat_id=r.chat_id,
+                        text=r.text,
+                        reply_markup=reply_markup,
+                    )
+
                     mark_reminder_sent(r.id, sent_at=now)
 
                     logger.info(
@@ -3854,8 +3857,13 @@ async def reminders_worker(app: Application) -> None:
                                     tpl["id"],
                                     next_dt.isoformat(),
                                 )
+
                 except Exception:
-                    logger.exception("Ошибка при отправке напоминания id=%s", r.id)
+                    logger.exception(
+                        "Ошибка при отправке напоминания id=%s",
+                        r.id,
+                    )
+
         except Exception:
             logger.exception("Ошибка в worker напоминаний")
 
@@ -3871,12 +3879,7 @@ async def reminders_nudge_worker(app: Application) -> None:
             for r in rows:
                 try:
                     # строго: nudges только в личке
-                    chat_type = None
-                    try:
-                        chat = await app.bot.get_chat(r["chat_id"])
-                        chat_type = getattr(chat, "type", None)
-                    except Exception:
-                        chat_type = None
+                    chat_type = await _safe_get_chat_type(app, r["chat_id"])
 
                     if chat_type != Chat.PRIVATE:
                         continue
@@ -3887,11 +3890,7 @@ async def reminders_nudge_worker(app: Application) -> None:
                         f"{r['text']}"
                     )
 
-                    reply_markup = None
-                    try:
-                        reply_markup = build_snooze_keyboard(r["id"])
-                    except Exception:
-                        reply_markup = None
+                    reply_markup = build_snooze_keyboard(r["id"])
 
                     await app.bot.send_message(
                         chat_id=r["chat_id"],
