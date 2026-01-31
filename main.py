@@ -2838,14 +2838,7 @@ async def remind_command(update: Update, context: CTX) -> None:
             first_name=getattr(user, "first_name", None),
             last_name=getattr(user, "last_name", None),
         )
-    
-    # В group-чате запрещаем alias и @username как переключатели чата
-    if not is_private:
-        first = raw_args.split(maxsplit=1)
-        if first:
-            token = first[0]
-            if token.startswith("@") or get_chat_id_by_alias(token) is not None:
-                raw_args = raw_args[len(token):].lstrip()
+
 
     # Bulk или одиночный?
     if had_newline:
