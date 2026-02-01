@@ -2697,64 +2697,42 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     is_private = chat.type == Chat.PRIVATE
 
+    # В group-чате запрещаем "переключатели" в начале команды:
+    # - @username
+    # - alias
+    # Bulk (/remind\n- ...) не трогаем.
     if not is_private:
         raw_args = raw_args.strip()
 
+        # Запрет только для single-line: bulk оставляем как есть
         if raw_args and "\n" not in raw_args:
             parts = raw_args.split(maxsplit=1)
+            if parts:
+                first_token = parts[0].strip()
 
-            if len(parts) == 2:
-                first_token = parts[0]
-                rest = parts[1]
+                # @username в начале в группе запрещаем
+                if first_token.startswith("@") and len(first_token) > 1:
+                    await safe_reply(
+                        message,
+                        "В групповом чате нельзя начинать команду с @username.\n"
+                        "Напиши так: /remind 02.02 - текст @someone\n"
+                        "Или в личку боту: /remind @someone 02.02 - текст",
+                    )
+                    return
 
-                # alias или @username в group-чате игнорируем,
-                # если дальше реально идет дата/время
-                if (
-                    first_token.startswith("@")
-                    or first_token.isidentifier()
-                ):
-                    try:
-                        # проверяем, что remainder реально парсится как дата
-                        parse_date_time_smart(rest, now)
-                        raw_args = rest
-                    except Exception:
-                        pass
+                # alias в начале в группе запрещаем
+                try:
+                    alias_chat_id = get_chat_id_by_alias(first_token)
+                except Exception:
+                    alias_chat_id = None
 
-    # В группах запрещаем "переключатели" в начале команды:
-    # - alias (TeamA)
-    # - @username
-    # При этом bulk (/remind\n- ...) не трогаем.
-    if not is_private:
-        # берём первую НЕпустую строку аргументов
-        first_nonempty = next((ln.strip() for ln in raw_args.splitlines() if ln.strip()), "")
-
-        # bulk-строки начинаются с "-", их не блокируем
-        if first_nonempty and not first_nonempty.startswith("-"):
-            first_token = first_nonempty.split(maxsplit=1)[0].strip()
-
-            # @username в начале в группе запрещаем
-            if first_token.startswith("@") and len(first_token) > 1:
-                await safe_reply(
-                    message,
-                    "В групповом чате нельзя начинать команду с @username.\n"
-                    "Напиши так: /remind 02.02 - текст @someone\n"
-                    "Или в личку боту: /remind @someone 02.02 - текст"
-                )
-                return
-
-            # alias в начале в группе запрещаем
-            try:
-                alias_chat_id = get_chat_id_by_alias(first_token)
-            except Exception:
-                alias_chat_id = None
-
-            if alias_chat_id is not None:
-                await safe_reply(
-                    message,
-                    "В групповом чате нельзя использовать alias в начале команды.\n"
-                    "Напиши боту в личку: /remind <alias> 02.02 - текст"
-                )
-                return
+                if alias_chat_id is not None:
+                    await safe_reply(
+                        message,
+                        "В групповом чате нельзя использовать alias в начале команды.\n"
+                        "Напиши боту в личку: /remind <alias> 02.02 - текст",
+                    )
+                    return
 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
@@ -2838,7 +2816,6 @@ async def remind_command(update: Update, context: CTX) -> None:
             first_name=getattr(user, "first_name", None),
             last_name=getattr(user, "last_name", None),
         )
-
 
     # Bulk или одиночный?
     if had_newline:
