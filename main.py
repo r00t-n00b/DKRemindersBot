@@ -1016,9 +1016,32 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
     if m:
         return m.group(1).strip(), m.group(2).strip()
 
+    # 6) month name date without dash:
+    # "on March 14 отменить принтер"
+    # "March 14 10:30 отменить принтер"
+    # (time optional; text required)
+    m = re.match(
+        r"^\s*((?:on\s+)?[A-Za-z]{3,9}\s+\d{1,2}(?:\s+\d{4})?(?:\s+\d{1,2}[:.]\d{2})?)\s+(.+)\s*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        expr = m.group(1).strip()
+        text = m.group(2).strip()
+
+        # validate month token (avoid treating random words as a month-date)
+        tokens = expr.split()
+        if tokens and tokens[0].lower() == "on":
+            month_token = tokens[1].lower() if len(tokens) > 1 else ""
+        else:
+            month_token = tokens[0].lower() if tokens else ""
+
+        if month_token in MONTH_EN:
+            return expr, text
+
     raise ValueError(
         "Не смог понять дату и текст: ожидаю формат 'дата время - текст'. "
-        "Можно и без '-', но тогда нужно: 'дата время текст' (с пробелом)."
+        "Можно и без '-', но тогда нужно: 'дата [время] текст' (с пробелом)."
     )
 
 def _extract_time_from_tokens(
