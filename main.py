@@ -2850,13 +2850,36 @@ async def remind_command(update: Update, context: CTX) -> None:
         lines = []
         if raw_lines:
             first = raw_lines[0].lstrip("-").strip()
-            if len(raw_lines) > 1 and not looks_like_recurring(first):
-                # Если первая строка НЕ похожа на дату/время - считаем ее заголовком (например "Каталония")
-                # и пропускаем
-                if not re.match(
-                    r"^\d{1,2}\.\d{1,2}(\.\d{2,4})?(\s+\d{1,2}:\d{2})?\b",
-                    first,
-                ):
+
+            if len(raw_lines) > 1:
+                # Заголовок пропускаем ТОЛЬКО если первая строка явно не похожа на напоминание.
+                # Важно: НЕ дергаем parse_date_time_smart здесь, чтобы не было двойного парсинга
+                # (и чтобы тесты с monkeypatch на parse_date_time_smart не ловили лишние вызовы).
+                is_reminder_like = False
+
+                if looks_like_recurring(first):
+                    is_reminder_like = True
+                else:
+                    # Heuristic: строка похожа на одноразовое напоминание, если начинается с "даты/времени"
+                    # или с month-name формата ("On March 1 ...", "March 1 ..."), или с relative ("in 2 hours ...").
+                    if re.match(
+                        r"^(?:"
+                        r"\d{1,2}\.\d{1,2}(?:\.\d{2,4})?(?:\s+\d{1,2}[:.]\d{2})?"
+                        r"|"
+                        r"\d{1,2}[:.]\d{2}"
+                        r"|"
+                        r"(?:today|tomorrow|day\s+after\s+tomorrow|сегодня|завтра|послезавтра)(?:\s+\d{1,2}[:.]\d{2})?"
+                        r"|"
+                        r"(?:in|через)\s+\d+\s+\w+"
+                        r"|"
+                        r"(?:on\s+)?[A-Za-z]{3,9}\s+\d{1,2}(?:\s+\d{4})?(?:\s+\d{1,2}[:.]\d{2})?"
+                        r")\b",
+                        first,
+                        flags=re.IGNORECASE,
+                    ):
+                        is_reminder_like = True
+
+                if not is_reminder_like:
                     raw_lines = raw_lines[1:]
 
             for ln in raw_lines:
