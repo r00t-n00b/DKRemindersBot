@@ -2183,12 +2183,16 @@ def build_group_reminder_keyboard(reminder_id: int) -> Optional[InlineKeyboardMa
 def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton("20 минут", callback_data=f"selfremind:set:{reminder_id}:20m"),
-            InlineKeyboardButton("1 час", callback_data=f"selfremind:set:{reminder_id}:1h"),
+            InlineKeyboardButton("⏰ +20 минут", callback_data=f"selfremind:set:{reminder_id}:20m"),
+            InlineKeyboardButton("⏰ +1 час", callback_data=f"selfremind:set:{reminder_id}:1h"),
         ],
         [
-            InlineKeyboardButton("3 часа", callback_data=f"selfremind:set:{reminder_id}:3h"),
-            InlineKeyboardButton("завтра в 11:00", callback_data=f"selfremind:set:{reminder_id}:tomorrow11"),
+            InlineKeyboardButton("⏰ +3 часа", callback_data=f"selfremind:set:{reminder_id}:3h"),
+            InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"selfremind:set:{reminder_id}:tomorrow11"),
+        ],
+        [
+            InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"selfremind:set:{reminder_id}:nextmon"),
+            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
@@ -2216,12 +2220,33 @@ def compute_self_remind_time(option: str, now: datetime) -> datetime:
             tzinfo=TZ,
         )
 
+    if option == "nextmon":
+        base = now.date()
+        cur_wd = base.weekday()
+        delta = (0 - cur_wd + 7) % 7
+        if delta == 0:
+            delta = 7
+        target = base + timedelta(days=delta)
+        return datetime(
+            target.year,
+            target.month,
+            target.day,
+            11,
+            0,
+            tzinfo=TZ,
+        )
+
     raise ValueError(f"Unknown self reminder option: {option}")
 
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 
-def build_custom_date_keyboard(reminder_id: int, year: int | None = None, month: int | None = None):
+def build_custom_date_keyboard(
+    reminder_id: int,
+    year: int | None = None,
+    month: int | None = None,
+    callback_prefix: str = "snooze",
+):
     """
     Красивый календарь на месяц:
     - Заголовок "Январь 2026"
@@ -2230,14 +2255,12 @@ def build_custom_date_keyboard(reminder_id: int, year: int | None = None, month:
     - Навигация prev/next месяц
     - Today и Cancel
     """
-    # Важно: используем TZ и локальную дату
     today = datetime.now(TZ).date()
 
     if year is None or month is None:
         year = today.year
         month = today.month
 
-    # Нормализуем границы
     if month < 1:
         month = 12
         year -= 1
@@ -2253,8 +2276,6 @@ def build_custom_date_keyboard(reminder_id: int, year: int | None = None, month:
     title = f"{month_names.get(month, str(month))} {year}"
 
     first_weekday, days_in_month = monthrange(year, month)
-    # monthrange: 0=Mon .. 6=Sun
-    # Сделаем так, чтобы календарь начинался с Пн
     start_offset = first_weekday
 
     def _btn(text: str, cb: str):
@@ -2263,46 +2284,35 @@ def build_custom_date_keyboard(reminder_id: int, year: int | None = None, month:
     def _noop(text: str):
         return InlineKeyboardButton(text=text, callback_data="noop")
 
-    # Заголовок
     keyboard: list[list[InlineKeyboardButton]] = [
         [_noop(title)],
         [_noop("Пн"), _noop("Вт"), _noop("Ср"), _noop("Чт"), _noop("Пт"), _noop("Сб"), _noop("Вс")],
     ]
 
-    # Сетка 7x6
     cells: list[InlineKeyboardButton] = []
 
-    # Пустые до первого дня
     for _ in range(start_offset):
         cells.append(_noop(" "))
 
-    # Дни месяца
     for day in range(1, days_in_month + 1):
         d = date(year, month, day)
         iso = d.isoformat()
 
         label = str(day)
-
-        # Подсветим сегодня
         if d == today:
             label = f"·{day}·"
 
-        # Можно запретить прошлое, если хочешь. Сейчас оставляю разрешенным.
-        cells.append(_btn(label, f"snooze_pickdate:{reminder_id}:{iso}"))
+        cells.append(_btn(label, f"{callback_prefix}_pickdate:{reminder_id}:{iso}"))
 
-    # Добьем до кратности 7
     while len(cells) % 7 != 0:
         cells.append(_noop(" "))
 
-    # Ограничим до 6 недель, Telegram не любит гигантские клавиатуры
     while len(cells) < 42:
         cells.append(_noop(" "))
 
-    # Разбиваем на строки по 7
     for i in range(0, 42, 7):
         keyboard.append(cells[i:i + 7])
 
-    # Навигация по месяцам
     prev_year = year
     prev_month = month - 1
     if prev_month == 0:
@@ -2317,20 +2327,19 @@ def build_custom_date_keyboard(reminder_id: int, year: int | None = None, month:
 
     keyboard.append(
         [
-            _btn("◀", f"snooze_cal:{reminder_id}:{prev_year:04d}-{prev_month:02d}"),
-            _btn("Today", f"snooze_caltoday:{reminder_id}"),
-            _btn("▶", f"snooze_cal:{reminder_id}:{next_year:04d}-{next_month:02d}"),
+            _btn("◀", f"{callback_prefix}_cal:{reminder_id}:{prev_year:04d}-{prev_month:02d}"),
+            _btn("Today", f"{callback_prefix}_caltoday:{reminder_id}"),
+            _btn("▶", f"{callback_prefix}_cal:{reminder_id}:{next_year:04d}-{next_month:02d}"),
         ]
     )
 
-    # Cancel
-    keyboard.append([_btn("Cancel", f"snooze_cancel:{reminder_id}")])
+    keyboard.append([_btn("Cancel", f"{callback_prefix}_cancel:{reminder_id}")])
 
     return InlineKeyboardMarkup(keyboard)
 
 from datetime import datetime, date
 
-def build_custom_time_keyboard(reminder_id: int, date_str: str):
+def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix: str = "snooze"):
     """
     Красивый выбор времени:
     - Заголовок "Время - 02.02.2026"
@@ -2342,7 +2351,6 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str):
         y, m, d = map(int, date_str.split("-"))
         chosen = date(y, m, d)
     except Exception:
-        # fallback: если вдруг сломался формат
         chosen = datetime.now(TZ).date()
 
     def _btn(text: str, cb: str):
@@ -2357,8 +2365,6 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str):
         [_noop(title)],
     ]
 
-    # Времена - наиболее полезные варианты
-    # Можно потом легко расширить/изменить
     times = [
         "10:00", "10:30", "11:00", "11:30",
         "12:00", "12:30", "13:00", "13:30",
@@ -2366,21 +2372,19 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str):
         "20:00", "21:00", "22:00", "23:00",
     ]
 
-    # Сетка 4 колонки
     row: list[InlineKeyboardButton] = []
     for t in times:
-        row.append(_btn(t, f"snooze_picktime:{reminder_id}:{chosen.isoformat()}:{t}"))
+        row.append(_btn(t, f"{callback_prefix}_picktime:{reminder_id}:{chosen.isoformat()}:{t}"))
         if len(row) == 4:
             keyboard.append(row)
             row = []
     if row:
         keyboard.append(row)
 
-    # Back -> возвращаемся к календарю на месяц выбранной даты
     keyboard.append(
         [
-            _btn("◀ Back", f"snooze_cal:{reminder_id}:{chosen.year:04d}-{chosen.month:02d}"),
-            _btn("Cancel", f"snooze_cancel:{reminder_id}"),
+            _btn("◀ Back", f"{callback_prefix}_cal:{reminder_id}:{chosen.year:04d}-{chosen.month:02d}"),
+            _btn("Cancel", f"{callback_prefix}_cancel:{reminder_id}"),
         ]
     )
 
@@ -3687,9 +3691,24 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Открой бота в личке и нажми /start", show_alert=True)
                 return
 
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            source_chat_title = "этого чата"
+            if getattr(query, "message", None) is not None:
+                chat_obj = getattr(query.message, "chat", None)
+                if chat_obj is not None:
+                    source_chat_title = (
+                        getattr(chat_obj, "title", None)
+                        or getattr(chat_obj, "full_name", None)
+                        or "этого чата"
+                    )
+
             await context.bot.send_message(
                 chat_id=target_chat_id,
-                text="Когда напомнить тебе об этом?",
+                text=f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?',
                 reply_markup=build_self_remind_choice_keyboard(rid),
             )
             await query.answer("Отправил варианты в личку")
@@ -3719,6 +3738,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Исходное напоминание не найдено", show_alert=True)
                 return
 
+            if option == "custom":
+                kb = build_custom_date_keyboard(rid, callback_prefix="selfremind")
+                await query.edit_message_reply_markup(reply_markup=kb)
+                await query.answer("Выбери дату")
+                return
+
             remind_at = compute_self_remind_time(option, get_now())
 
             add_reminder(
@@ -3729,7 +3754,86 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 template_id=None,
             )
 
+            when_str = remind_at.strftime("%d.%m %H:%M")
+            await query.edit_message_text(f'Ок, напомню {when_str}: {src.text}')
             await query.answer("Личное напоминание создано")
+            return
+
+        if data.startswith("selfremind_cal:"):
+            _, rid_str, ym = data.split(":", 2)
+            rid = int(rid_str)
+
+            year_str, month_str = ym.split("-", 1)
+            year = int(year_str)
+            month = int(month_str)
+
+            kb = build_custom_date_keyboard(rid, year=year, month=month, callback_prefix="selfremind")
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer()
+            return
+
+        if data.startswith("selfremind_caltoday:"):
+            _, rid_str = data.split(":", 1)
+            rid = int(rid_str)
+
+            today = datetime.now(TZ).date()
+            kb = build_custom_date_keyboard(rid, year=today.year, month=today.month, callback_prefix="selfremind")
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer()
+            return
+
+        if data.startswith("selfremind_pickdate:"):
+            _, rid_str, date_str = data.split(":", 2)
+            rid = int(rid_str)
+
+            kb = build_custom_time_keyboard(rid, date_str, callback_prefix="selfremind")
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer("Выбери время")
+            return
+
+        if data.startswith("selfremind_picktime:"):
+            _, rid_str, date_str, time_str = data.split(":", 3)
+            rid = int(rid_str)
+
+            user_id = getattr(query.from_user, "id", None)
+            if user_id is None:
+                await query.answer("Не удалось определить пользователя", show_alert=True)
+                return
+
+            target_chat_id = get_user_chat_id_by_user_id(user_id)
+            if target_chat_id is None:
+                await query.answer("Открой бота в личке и нажми /start", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            try:
+                year, month, day = map(int, date_str.split("-"))
+                hour, minute = map(int, time_str.split(":"))
+                remind_at = datetime(year, month, day, hour, minute, tzinfo=TZ)
+            except Exception:
+                await query.answer("Не смог понять дату/время", show_alert=True)
+                return
+
+            add_reminder(
+                chat_id=target_chat_id,
+                text=src.text,
+                remind_at=remind_at,
+                created_by=user_id,
+                template_id=None,
+            )
+
+            when_str = remind_at.strftime("%d.%m %H:%M")
+            await query.edit_message_text(f'Ок, напомню {when_str}: {src.text}')
+            await query.answer("Личное напоминание создано")
+            return
+
+        if data.startswith("selfremind_cancel:"):
+            await query.answer("Отменено")
+            await query.edit_message_reply_markup(reply_markup=None)
             return
 
         # mark complete
@@ -4153,7 +4257,7 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
-            pattern=r"^(selfremind:ask:|selfremind:set:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
+            pattern=r"^(selfremind:ask:|selfremind:set:|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:|selfremind_picktime:|selfremind_cancel:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
         )
     )
 
