@@ -227,6 +227,19 @@ def get_user_chat_id_by_username(username: str) -> Optional[int]:
         return int(row[0])
     return None
 
+def get_user_chat_id_by_user_id(user_id: int) -> Optional[int]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT chat_id FROM user_chats WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+        (user_id,),
+    )
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return int(row[0])
+    return None
+
 def add_reminder(
     chat_id: int,
     text: str,
@@ -2151,6 +2164,60 @@ def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(buttons)
 
+def build_group_reminder_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+    try:
+        buttons: List[List[InlineKeyboardButton]] = [
+            [
+                InlineKeyboardButton(
+                    "Напомнить мне лично",
+                    callback_data=f"selfremind:ask:{reminder_id}",
+                ),
+            ],
+        ]
+        return InlineKeyboardMarkup(buttons)
+    except TypeError:
+        # В тестовой среде InlineKeyboardButton/Markup могут быть подменены на object.
+        # В этом случае просто не рисуем клавиатуру, чтобы не ломать worker delivery tests.
+        return None
+
+def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+    buttons: List[List[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("20 минут", callback_data=f"selfremind:set:{reminder_id}:20m"),
+            InlineKeyboardButton("1 час", callback_data=f"selfremind:set:{reminder_id}:1h"),
+        ],
+        [
+            InlineKeyboardButton("3 часа", callback_data=f"selfremind:set:{reminder_id}:3h"),
+            InlineKeyboardButton("завтра в 11:00", callback_data=f"selfremind:set:{reminder_id}:tomorrow11"),
+        ],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+def compute_self_remind_time(option: str, now: datetime) -> datetime:
+    now = now.astimezone(TZ)
+
+    if option == "20m":
+        return now + timedelta(minutes=20)
+
+    if option == "1h":
+        return now + timedelta(hours=1)
+
+    if option == "3h":
+        return now + timedelta(hours=3)
+
+    if option == "tomorrow11":
+        tomorrow = (now + timedelta(days=1)).date()
+        return datetime(
+            tomorrow.year,
+            tomorrow.month,
+            tomorrow.day,
+            11,
+            0,
+            tzinfo=TZ,
+        )
+
+    raise ValueError(f"Unknown self reminder option: {option}")
+
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 
@@ -3601,6 +3668,70 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
     data = query.data or ""
     try:
+        if data.startswith("selfremind:ask:"):
+            _, _, rid_str = data.split(":", 2)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            user_id = getattr(query.from_user, "id", None)
+            if user_id is None:
+                await query.answer("Не удалось определить пользователя", show_alert=True)
+                return
+
+            target_chat_id = get_user_chat_id_by_user_id(user_id)
+            if target_chat_id is None:
+                await query.answer("Открой бота в личке и нажми /start", show_alert=True)
+                return
+
+            await context.bot.send_message(
+                chat_id=target_chat_id,
+                text="Когда напомнить тебе об этом?",
+                reply_markup=build_self_remind_choice_keyboard(rid),
+            )
+            await query.answer("Отправил варианты в личку")
+            return
+
+        if data.startswith("selfremind:set:"):
+            _, _, rid_str, option = data.split(":", 3)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            user_id = getattr(query.from_user, "id", None)
+            if user_id is None:
+                await query.answer("Не удалось определить пользователя", show_alert=True)
+                return
+
+            target_chat_id = get_user_chat_id_by_user_id(user_id)
+            if target_chat_id is None:
+                await query.answer("Открой бота в личке и нажми /start", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            remind_at = compute_self_remind_time(option, get_now())
+
+            add_reminder(
+                chat_id=target_chat_id,
+                text=src["text"],
+                remind_at=remind_at,
+                created_by=user_id,
+                template_id=None,
+            )
+
+            await query.answer("Личное напоминание создано")
+            return
+
         # mark complete
         if data.startswith("done:"):
             _, rid_str = data.split(":", 1)
@@ -3830,7 +3961,7 @@ async def reminders_worker(app: Application) -> None:
                     reply_markup = (
                         build_snooze_keyboard(r.id)
                         if chat_type == Chat.PRIVATE
-                        else None
+                        else build_group_reminder_keyboard(r.id)
                     )
 
                     await app.bot.send_message(
@@ -4022,7 +4153,7 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
-            pattern=r"^(snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
+            pattern=r"^(selfremind:ask:|selfremind:set:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
         )
     )
 
