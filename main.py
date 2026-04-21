@@ -3832,8 +3832,38 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_cancel:"):
-            await query.answer("Отменено")
-            await query.edit_message_reply_markup(reply_markup=None)
+            _, rid_str = data.split(":", 1)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            source_chat_title = "этого чата"
+            if getattr(query, "message", None) is not None:
+                chat_obj = getattr(query.message, "chat", None)
+                if chat_obj is not None:
+                    source_chat_title = (
+                        getattr(chat_obj, "title", None)
+                        or getattr(chat_obj, "full_name", None)
+                        or "этого чата"
+                    )
+
+            await query.edit_message_text(
+                f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?'
+            )
+
+            await query.edit_message_reply_markup(
+                reply_markup=build_self_remind_choice_keyboard(rid)
+            )
+
+            await query.answer("Вернул варианты")
             return
 
         # mark complete
