@@ -3723,7 +3723,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             add_reminder(
                 chat_id=target_chat_id,
-                text=src["text"],
+                text=src.text,
                 remind_at=remind_at,
                 created_by=user_id,
                 template_id=None,
