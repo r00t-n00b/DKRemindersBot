@@ -4007,7 +4007,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             today = datetime.now(TZ).date()
             kb = build_custom_date_keyboard(rid, year=today.year, month=today.month)
-            await query.edit_message_reply_markup(reply_markup=kb)
+
+            try:
+                await query.edit_message_reply_markup(reply_markup=kb)
+            except Exception:
+                pass
+
             await query.answer()
             return
 
