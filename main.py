@@ -2254,6 +2254,18 @@ def get_query_source_chat_title(query) -> str:
             )
     return source_chat_title
 
+async def get_source_chat_title_for_self_remind(context: CTX, src, query) -> str:
+    try:
+        chat = await context.bot.get_chat(src.chat_id)
+        return (
+            getattr(chat, "title", None)
+            or getattr(chat, "full_name", None)
+            or getattr(chat, "username", None)
+            or f"chat {src.chat_id}"
+        )
+    except Exception:
+        return get_query_source_chat_title(query)
+
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 
@@ -3712,15 +3724,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Исходное напоминание не найдено", show_alert=True)
                 return
 
-            source_chat_title = "этого чата"
-            if getattr(query, "message", None) is not None:
-                chat_obj = getattr(query.message, "chat", None)
-                if chat_obj is not None:
-                    source_chat_title = (
-                        getattr(chat_obj, "title", None)
-                        or getattr(chat_obj, "full_name", None)
-                        or "этого чата"
-                    )
+            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
 
             await context.bot.send_message(
                 chat_id=target_chat_id,
@@ -3762,7 +3766,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             remind_at = compute_self_remind_time(option, get_now())
 
-            source_chat_title = get_query_source_chat_title(query)
+            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
             personal_text = format_self_remind_text(source_chat_title, src.text)
 
             add_reminder(
@@ -3837,7 +3841,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Не смог понять дату/время", show_alert=True)
                 return
 
-            source_chat_title = get_query_source_chat_title(query)
+            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
             personal_text = format_self_remind_text(source_chat_title, src.text)
 
             add_reminder(
