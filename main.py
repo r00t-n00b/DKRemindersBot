@@ -4070,8 +4070,13 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             if rid is not None:
                 mark_reminder_acked(rid)
 
-            await query.answer("Отменено")
-            await query.edit_message_reply_markup(reply_markup=None)
+                await query.edit_message_reply_markup(
+                    reply_markup=build_snooze_keyboard(rid)
+                )
+                await query.answer("Вернул варианты")
+                return
+
+            await query.answer("Некорректный reminder id", show_alert=True)
             return
 
         if data == "noop":
