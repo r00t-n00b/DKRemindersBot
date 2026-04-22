@@ -2238,6 +2238,22 @@ def compute_self_remind_time(option: str, now: datetime) -> datetime:
 
     raise ValueError(f"Unknown self reminder option: {option}")
 
+def format_self_remind_text(source_chat_title: str, source_text: str) -> str:
+    return f'Из чата "{source_chat_title}": {source_text}'
+
+
+def get_query_source_chat_title(query) -> str:
+    source_chat_title = "этого чата"
+    if getattr(query, "message", None) is not None:
+        chat_obj = getattr(query.message, "chat", None)
+        if chat_obj is not None:
+            source_chat_title = (
+                getattr(chat_obj, "title", None)
+                or getattr(chat_obj, "full_name", None)
+                or "этого чата"
+            )
+    return source_chat_title
+
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 
@@ -3688,7 +3704,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
             if target_chat_id is None:
-                await query.answer("Открой бота в личке и нажми /start", show_alert=True)
+                await query.answer("Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
                 return
 
             src = get_reminder(rid)
@@ -3730,7 +3746,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
             if target_chat_id is None:
-                await query.answer("Открой бота в личке и нажми /start", show_alert=True)
+                await query.answer("Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
                 return
 
             src = get_reminder(rid)
@@ -3746,16 +3762,19 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             remind_at = compute_self_remind_time(option, get_now())
 
+            source_chat_title = get_query_source_chat_title(query)
+            personal_text = format_self_remind_text(source_chat_title, src.text)
+
             add_reminder(
                 chat_id=target_chat_id,
-                text=src.text,
+                text=personal_text,
                 remind_at=remind_at,
                 created_by=user_id,
                 template_id=None,
             )
 
             when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(f'Ок, напомню {when_str}: {src.text}')
+            await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
             await query.answer("Личное напоминание создано")
             return
 
@@ -3802,7 +3821,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
             if target_chat_id is None:
-                await query.answer("Открой бота в личке и нажми /start", show_alert=True)
+                await query.answer("Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
                 return
 
             src = get_reminder(rid)
@@ -3818,16 +3837,19 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Не смог понять дату/время", show_alert=True)
                 return
 
+            source_chat_title = get_query_source_chat_title(query)
+            personal_text = format_self_remind_text(source_chat_title, src.text)
+
             add_reminder(
                 chat_id=target_chat_id,
-                text=src.text,
+                text=personal_text,
                 remind_at=remind_at,
                 created_by=user_id,
                 template_id=None,
             )
 
             when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(f'Ок, напомню {when_str}: {src.text}')
+            await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
             await query.answer("Личное напоминание создано")
             return
 
@@ -3845,15 +3867,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Исходное напоминание не найдено", show_alert=True)
                 return
 
-            source_chat_title = "этого чата"
-            if getattr(query, "message", None) is not None:
-                chat_obj = getattr(query.message, "chat", None)
-                if chat_obj is not None:
-                    source_chat_title = (
-                        getattr(chat_obj, "title", None)
-                        or getattr(chat_obj, "full_name", None)
-                        or "этого чата"
-                    )
+            source_chat_title = get_query_source_chat_title(query)
 
             await query.edit_message_text(
                 f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?'
