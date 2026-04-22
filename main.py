@@ -3716,7 +3716,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
             if target_chat_id is None:
-                await query.answer("Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
+                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
                 return
 
             src = get_reminder(rid)
@@ -3750,7 +3750,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
             if target_chat_id is None:
-                await query.answer("Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
+                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
                 return
 
             src = get_reminder(rid)
@@ -3835,7 +3835,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
             if target_chat_id is None:
-                await query.answer("Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
+                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
                 return
 
             src = get_reminder(rid)
