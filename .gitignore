@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# Virtualenv
+venv/
+.env
+
+# Test / coverage / tools
+.coverage
+.pytest_cache/
+htmlcov/
+.mutmut-cache
+mutmut_all.txt
+
+# Archives / temp
+*.zip
+
+# Local scripts / experiments
+scripts/
+
+# Tests (у тебя договоренность не пушить)
+tests/
+
+# IDE (на будущее)
+.vscode/
+.idea/
