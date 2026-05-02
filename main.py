@@ -2217,7 +2217,7 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
         ],
         [
-            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:ask:{reminder_id}"),
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:back:{reminder_id}"),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
@@ -2238,7 +2238,7 @@ def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardM
             InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
         ],
         [
-            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:mode:{reminder_id}"),
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:back:{reminder_id}"),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
@@ -4001,6 +4001,29 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer("Отправил варианты в личку")
             return
 
+        if data.startswith("selfremind:back:"):
+            _, _, rid_str = data.split(":", 2)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
+
+            await query.edit_message_text(
+                f'Как тебе напомнить о "{src.text}" из чата "{source_chat_title}"?',
+                reply_markup=build_self_remind_mode_keyboard(rid),
+            )
+            await query.answer("Вернул выбор")
+            return
+
         if data.startswith("selfremind:mode:"):
             _, _, rid_str, mode = data.split(":", 3)
 
@@ -4684,7 +4707,7 @@ def exhaust_nudges(reminder_id: int) -> None:
 
 def build_snooze_callback_pattern() -> str:
     return (
-        r"^(selfremind:ask:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
+        r"^(selfremind:ask:|selfremind:back:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
         r"|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:|selfremind_picktime:"
         r"|selfremind_cancel:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:"
         r"|snooze_picktime:|snooze_cancel:|noop|done:)"
