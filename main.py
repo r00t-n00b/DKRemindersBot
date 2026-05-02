@@ -4223,7 +4223,8 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             year = int(year_str)
             month = int(month_str)
 
-            kb = build_custom_date_keyboard(rid, year=year, month=month, callback_prefix="selfremind")
+            callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
+            kb = build_custom_date_keyboard(rid, year=year, month=month, callback_prefix=callback_prefix)
             await query.edit_message_reply_markup(reply_markup=kb)
             await query.answer()
             return
