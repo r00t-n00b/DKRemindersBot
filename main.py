@@ -4643,6 +4643,15 @@ def exhaust_nudges(reminder_id: int) -> None:
 
 # ===== main =====
 
+def build_snooze_callback_pattern() -> str:
+    return (
+        r"^(selfremind:ask:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
+        r"|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:|selfremind_picktime:"
+        r"|selfremind_cancel:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:"
+        r"|snooze_picktime:|snooze_cancel:|noop|done:)"
+    )
+
+
 def main() -> None:
     bot_token = os.environ.get("BOT_TOKEN")
     if not bot_token:
@@ -4666,7 +4675,7 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
-            pattern=r"^(selfremind:ask:|selfremind:set:|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:|selfremind_picktime:|selfremind_cancel:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:|snooze_picktime:|snooze_cancel:|noop|done:)"
+            pattern=build_snooze_callback_pattern(),
         )
     )
 
