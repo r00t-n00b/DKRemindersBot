@@ -71,6 +71,7 @@ class Reminder:
     remind_at: datetime
     created_by: Optional[int]
     template_id: Optional[int] = None
+    sent_at: Optional[datetime] = None
 
 
 # ===== Работа с БД =====
@@ -304,7 +305,7 @@ def get_reminder(reminder_id: int) -> Optional[Reminder]:
     c = conn.cursor()
     c.execute(
         """
-        SELECT id, chat_id, text, remind_at, created_by, template_id
+        SELECT id, chat_id, text, remind_at, created_by, template_id, sent_at
         FROM reminders
         WHERE id = ?
         """,
@@ -314,7 +315,10 @@ def get_reminder(reminder_id: int) -> Optional[Reminder]:
     conn.close()
     if not row:
         return None
-    rid, chat_id, text, remind_at_str, created_by, template_id = row
+
+    rid, chat_id, text, remind_at_str, created_by, template_id, sent_at_str = row
+    sent_at = datetime.fromisoformat(sent_at_str) if sent_at_str else None
+
     return Reminder(
         id=rid,
         chat_id=chat_id,
@@ -322,6 +326,7 @@ def get_reminder(reminder_id: int) -> Optional[Reminder]:
         remind_at=datetime.fromisoformat(remind_at_str),
         created_by=created_by,
         template_id=template_id,
+        sent_at=sent_at,
     )
 
 def get_active_reminders_created_by_for_chat(chat_id: int, created_by: int) -> List[Dict[str, Any]]:
@@ -2180,6 +2185,24 @@ def build_group_reminder_keyboard(reminder_id: int) -> Optional[InlineKeyboardMa
         # В этом случае просто не рисуем клавиатуру, чтобы не ломать worker delivery tests.
         return None
 
+def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+    buttons: List[List[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                "📅 Обычное напоминание",
+                callback_data=f"selfremind:mode:{reminder_id}:regular",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                '⏰ Напоминание "до события"',
+                callback_data=f"selfremind:mode:{reminder_id}:event",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
 def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
@@ -2192,6 +2215,39 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"selfremind:set:{reminder_id}:nextmon"),
+            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
+        ],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+    buttons: List[List[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("📅 За сутки", callback_data=f"selfremind:event_before:{reminder_id}:1d"),
+            InlineKeyboardButton("⏰ За 10 часов", callback_data=f"selfremind:event_before:{reminder_id}:10h"),
+        ],
+        [
+            InlineKeyboardButton("⏰ За 3 часа", callback_data=f"selfremind:event_before:{reminder_id}:3h"),
+            InlineKeyboardButton("⏰ За 1 час", callback_data=f"selfremind:event_before:{reminder_id}:1h"),
+        ],
+        [
+            InlineKeyboardButton("⏰ За 20 минут", callback_data=f"selfremind:event_before:{reminder_id}:20m"),
+            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
+        ],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_self_remind_event_fallback_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+    buttons: List[List[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                "📅 Обычное напоминание",
+                callback_data=f"selfremind:mode:{reminder_id}:regular",
+            ),
+        ],
+        [
             InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
         ],
     ]
@@ -2271,8 +2327,8 @@ from datetime import date, datetime, timedelta
 
 def build_custom_date_keyboard(
     reminder_id: int,
-    year: int | None = None,
-    month: int | None = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
     callback_prefix: str = "snooze",
 ):
     """
@@ -2417,6 +2473,179 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix:
     )
 
     return InlineKeyboardMarkup(keyboard)
+
+# ===== Парсинг даты события из текста напоминания =====
+
+def _nearest_future_time_from_base(hour: int, minute: int, base_now: datetime) -> datetime:
+    local = base_now.astimezone(TZ)
+    candidate = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= local:
+        candidate = candidate + timedelta(days=1)
+    return candidate
+
+
+def _parse_time_match(match: re.Match) -> Tuple[int, int]:
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute"))
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise ValueError("Неверное время события")
+    return hour, minute
+
+
+def _build_event_datetime(year: int, month: int, day: int, hour: int, minute: int, base_now: datetime) -> datetime:
+    local = base_now.astimezone(TZ)
+    dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+    if dt <= local:
+        try:
+            dt = dt.replace(year=year + 1)
+        except ValueError as e:
+            raise ValueError(f"Неверная дата события: {e}") from e
+    return dt
+
+
+def extract_event_datetime_from_text(text: str, base_now: datetime) -> Optional[datetime]:
+    """
+    Best-effort парсер даты/времени события из текста reminder-а.
+
+    Важно:
+    - base_now = время прихода исходного reminder-а, а не время клика
+    - не трогаем основной parse_date_time_smart
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+
+    s = raw.lower()
+    local = base_now.astimezone(TZ)
+
+    time_re = r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})"
+
+    relative_days = {
+        "сегодня": 0,
+        "today": 0,
+        "завтра": 1,
+        "tomorrow": 1,
+        "послезавтра": 2,
+        "day after tomorrow": 2,
+    }
+
+    # 1) Relative date где угодно + ближайшее время после нее:
+    # "завтра футбол в 15:00", "football tomorrow at 15:00"
+    for phrase, days in sorted(relative_days.items(), key=lambda x: -len(x[0])):
+        m_date = re.search(rf"\b{re.escape(phrase)}\b", s)
+        if not m_date:
+            continue
+
+        tail = s[m_date.end():]
+        m_time = re.search(rf"(?:\bв\s+|\bat\s+)?{time_re}", tail)
+        if not m_time:
+            continue
+
+        try:
+            hour, minute = _parse_time_match(m_time)
+        except ValueError:
+            return None
+
+        target_date = local.date() + timedelta(days=days)
+        return datetime(
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            hour,
+            minute,
+            tzinfo=TZ,
+        )
+
+    # 2) DD.MM / DD.MM.YYYY + время после даты, между ними могут быть слова:
+    # "03.05 футбол в 15:00", "футбол 03.05 в 15:00"
+    m = re.search(
+        rf"(?P<day>\d{{1,2}})[./](?P<month>\d{{1,2}})(?:[./](?P<year>\d{{2,4}}))?"
+        rf"(?P<middle>.{{0,80}}?)(?:\bв\s+|\bat\s+|\s+){time_re}",
+        s,
+    )
+    if m:
+        try:
+            day = int(m.group("day"))
+            month = int(m.group("month"))
+            year_raw = m.group("year")
+            if year_raw:
+                year = int(year_raw)
+                if year < 100:
+                    year += 2000
+            else:
+                year = local.year
+
+            hour, minute = _parse_time_match(m)
+            return _build_event_datetime(year, month, day, hour, minute, base_now)
+        except ValueError:
+            return None
+
+    # 3) Month name + day + время после даты:
+    # "May 3 football at 15:00", "football on May 3 at 15:00"
+    month_names = "|".join(sorted(MONTH_EN.keys(), key=len, reverse=True))
+    m = re.search(
+        rf"(?:\bon\s+)?(?P<month_name>{month_names})\s+(?P<day>\d{{1,2}})"
+        rf"(?:\s+(?P<year>\d{{4}}))?"
+        rf"(?P<middle>.{{0,80}}?)(?:\bв\s+|\bat\s+|\s+){time_re}",
+        s,
+    )
+    if m:
+        try:
+            month = int(MONTH_EN[m.group("month_name")])
+            day = int(m.group("day"))
+            year = int(m.group("year")) if m.group("year") else local.year
+            hour, minute = _parse_time_match(m)
+            return _build_event_datetime(year, month, day, hour, minute, base_now)
+        except ValueError:
+            return None
+
+    # 4) Day + month name + время после даты:
+    # "3 May football at 15:00", "football on 3 May at 15:00"
+    m = re.search(
+        rf"(?:\bon\s+)?(?P<day>\d{{1,2}})\s+(?P<month_name>{month_names})"
+        rf"(?:\s+(?P<year>\d{{4}}))?"
+        rf"(?P<middle>.{{0,80}}?)(?:\bв\s+|\bat\s+|\s+){time_re}",
+        s,
+    )
+    if m:
+        try:
+            month = int(MONTH_EN[m.group("month_name")])
+            day = int(m.group("day"))
+            year = int(m.group("year")) if m.group("year") else local.year
+            hour, minute = _parse_time_match(m)
+            return _build_event_datetime(year, month, day, hour, minute, base_now)
+        except ValueError:
+            return None
+
+    # 5) Только время с явным предлогом:
+    # "футбол в 15:00", "football at 15:00"
+    m = re.search(rf"(?:\bв\s+|\bat\s+){time_re}", s)
+    if m:
+        try:
+            hour, minute = _parse_time_match(m)
+        except ValueError:
+            return None
+        return _nearest_future_time_from_base(hour, minute, base_now)
+
+    return None
+
+
+def get_self_remind_event_base(src: Reminder) -> datetime:
+    return src.sent_at or src.remind_at
+
+
+def compute_event_before_time(option: str, event_at: datetime) -> Optional[datetime]:
+    if option == "20m":
+        return event_at - timedelta(minutes=20)
+    if option == "1h":
+        return event_at - timedelta(hours=1)
+    if option == "3h":
+        return event_at - timedelta(hours=3)
+    if option == "10h":
+        return event_at - timedelta(hours=10)
+    if option == "1d":
+        return event_at - timedelta(days=1)
+    return None
 
 
 # ===== Хендлеры команд =====
@@ -3728,10 +3957,122 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             await context.bot.send_message(
                 chat_id=target_chat_id,
-                text=f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?',
-                reply_markup=build_self_remind_choice_keyboard(rid),
+                text=f'Как тебе напомнить о "{src.text}" из чата "{source_chat_title}"?',
+                reply_markup=build_self_remind_mode_keyboard(rid),
             )
             await query.answer("Отправил варианты в личку")
+            return
+
+        if data.startswith("selfremind:mode:"):
+            _, _, rid_str, mode = data.split(":", 3)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            user_id = getattr(query.from_user, "id", None)
+            if user_id is None:
+                await query.answer("Не удалось определить пользователя", show_alert=True)
+                return
+
+            target_chat_id = get_user_chat_id_by_user_id(user_id)
+            if target_chat_id is None:
+                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            if mode == "regular":
+                source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
+                await query.edit_message_text(
+                    f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?',
+                    reply_markup=build_self_remind_choice_keyboard(rid),
+                )
+                await query.answer("Выбери время")
+                return
+
+            if mode == "event":
+                base_now = get_self_remind_event_base(src)
+                event_at = extract_event_datetime_from_text(src.text, base_now)
+
+                if event_at is None:
+                    await query.edit_message_text(
+                        "Я не смог понять дату события из текста.\n"
+                        "Выбери обычное напоминание или задай кастомное время:",
+                        reply_markup=build_self_remind_event_fallback_keyboard(rid),
+                    )
+                    await query.answer("Не смог понять дату события")
+                    return
+
+                event_str = event_at.strftime("%d.%m %H:%M")
+                await query.edit_message_text(
+                    f"Я понял, что событие из напоминания состоится {event_str}.\n"
+                    "За сколько до этого времени напомнить?",
+                    reply_markup=build_self_remind_event_before_keyboard(rid),
+                )
+                await query.answer("Выбери время")
+                return
+
+            await query.answer("Неизвестный режим", show_alert=True)
+            return
+
+        if data.startswith("selfremind:event_before:"):
+            _, _, rid_str, option = data.split(":", 3)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            user_id = getattr(query.from_user, "id", None)
+            if user_id is None:
+                await query.answer("Не удалось определить пользователя", show_alert=True)
+                return
+
+            target_chat_id = get_user_chat_id_by_user_id(user_id)
+            if target_chat_id is None:
+                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            base_now = get_self_remind_event_base(src)
+            event_at = extract_event_datetime_from_text(src.text, base_now)
+            if event_at is None:
+                await query.answer("Я не смог понять дату события из текста", show_alert=True)
+                return
+
+            remind_at = compute_event_before_time(option, event_at)
+            if remind_at is None:
+                await query.answer("Неизвестный вариант времени", show_alert=True)
+                return
+
+            if remind_at <= get_now():
+                await query.answer("Это время уже прошло. Выбери другое время.", show_alert=True)
+                return
+
+            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
+            personal_text = format_self_remind_text(source_chat_title, src.text)
+
+            add_reminder(
+                chat_id=target_chat_id,
+                text=personal_text,
+                remind_at=remind_at,
+                created_by=user_id,
+            )
+
+            when_str = remind_at.strftime("%d.%m %H:%M")
+            await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
+            await query.answer("Личное напоминание создано")
             return
 
         if data.startswith("selfremind:set:"):
