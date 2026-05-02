@@ -2392,7 +2392,7 @@ def build_custom_date_keyboard(
             label = f"·{day}·"
 
         if d < today:
-            cells.append(_noop(label))
+            cells.append(_btn(label, f"{callback_prefix}_pastdate:{reminder_id}:{iso}"))
         else:
             cells.append(_btn(label, f"{callback_prefix}_pickdate:{reminder_id}:{iso}"))
 
@@ -3970,6 +3970,14 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
     data = query.data or ""
     try:
+        if (
+            data.startswith("snooze_pastdate:")
+            or data.startswith("selfremind_pastdate:")
+            or data.startswith("selfremind_event_pastdate:")
+        ):
+            await query.answer("Эта дата уже прошла. Выбери другую.", show_alert=True)
+            return
+
         if data.startswith("selfremind:ask:"):
             _, _, rid_str = data.split(":", 2)
 
@@ -4774,10 +4782,11 @@ def exhaust_nudges(reminder_id: int) -> None:
 def build_snooze_callback_pattern() -> str:
     return (
         r"^(selfremind:ask:|selfremind:back:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
-        r"|selfremind:event_custom:|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:"
-        r"|selfremind_picktime:|selfremind_cancel:|selfremind_event_cal:|selfremind_event_caltoday:"
-        r"|selfremind_event_pickdate:|selfremind_event_picktime:|selfremind_event_cancel:"
-        r"|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:"
+        r"|selfremind:event_custom:|selfremind_cal:|selfremind_caltoday:|selfremind_pastdate:"
+        r"|selfremind_pickdate:|selfremind_picktime:|selfremind_cancel:|selfremind_event_cal:"
+        r"|selfremind_event_caltoday:|selfremind_event_pastdate:|selfremind_event_pickdate:"
+        r"|selfremind_event_picktime:|selfremind_event_cancel:"
+        r"|snooze:|snooze_cal:|snooze_caltoday:|snooze_pastdate:|snooze_pickdate:"
         r"|snooze_picktime:|snooze_cancel:|noop|done:)"
     )
 
