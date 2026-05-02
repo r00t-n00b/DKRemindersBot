@@ -4222,11 +4222,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             rid = int(rid_str)
 
             today = datetime.now(TZ).date()
+            callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
             kb = build_custom_date_keyboard(
                 rid,
                 year=today.year,
                 month=today.month,
-                callback_prefix="selfremind",
+                callback_prefix=callback_prefix,
             )
 
             try:
@@ -4241,7 +4242,8 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             _, rid_str, date_str = data.split(":", 2)
             rid = int(rid_str)
 
-            kb = build_custom_time_keyboard(rid, date_str, callback_prefix="selfremind")
+            callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
+            kb = build_custom_time_keyboard(rid, date_str, callback_prefix=callback_prefix)
             await query.edit_message_reply_markup(reply_markup=kb)
             await query.answer("Выбери время")
             return
@@ -4271,6 +4273,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 remind_at = datetime(year, month, day, hour, minute, tzinfo=TZ)
             except Exception:
                 await query.answer("Не смог понять дату/время", show_alert=True)
+                return
+
+            if remind_at <= get_now():
+                await query.answer("Это время уже прошло. Выбери другое время.", show_alert=True)
                 return
 
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
@@ -4508,6 +4514,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 new_dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
             except Exception:
                 await query.answer("Не смог понять дату/время", show_alert=True)
+                return
+
+            if new_dt <= get_now():
+                await query.answer("Это время уже прошло. Выбери другое время.", show_alert=True)
                 return
 
             # успешный picktime - реакция
