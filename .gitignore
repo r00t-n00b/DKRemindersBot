@@ -30,3 +30,5 @@ tests/
 # IDE (на будущее)
 .vscode/
 .idea/
+.github/
+setup.cfg
