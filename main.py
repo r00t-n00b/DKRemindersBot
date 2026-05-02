@@ -2226,7 +2226,7 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
 def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton("📅 За сутки", callback_data=f"selfremind:event_before:{reminder_id}:24h"),
+            InlineKeyboardButton("📅 За сутки", callback_data=f"selfremind:event_before:{reminder_id}:1d"),
             InlineKeyboardButton("⏰ За 10 часов", callback_data=f"selfremind:event_before:{reminder_id}:10h"),
         ],
         [
