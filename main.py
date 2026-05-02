@@ -2235,7 +2235,7 @@ def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardM
         ],
         [
             InlineKeyboardButton("За 20 минут", callback_data=f"selfremind:event_before:{reminder_id}:20m"),
-            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
+            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:event_custom:{reminder_id}"),
         ],
         [
             InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:back:{reminder_id}"),
@@ -4082,6 +4082,25 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer("Неизвестный режим", show_alert=True)
             return
 
+        if data.startswith("selfremind:event_custom:"):
+            _, _, rid_str = data.split(":", 2)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            kb = build_custom_date_keyboard(rid, callback_prefix="selfremind_event")
+            await query.edit_message_reply_markup(reply_markup=kb)
+            await query.answer("Выбери дату")
+            return
+
         if data.startswith("selfremind:event_before:"):
             _, _, rid_str, option = data.split(":", 3)
 
@@ -4185,7 +4204,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer("Личное напоминание создано")
             return
 
-        if data.startswith("selfremind_cal:"):
+        if data.startswith("selfremind_cal:") or data.startswith("selfremind_event_cal:"):
             _, rid_str, ym = data.split(":", 2)
             rid = int(rid_str)
 
@@ -4198,7 +4217,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer()
             return
 
-        if data.startswith("selfremind_caltoday:"):
+        if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):
             _, rid_str = data.split(":", 1)
             rid = int(rid_str)
 
@@ -4218,7 +4237,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer()
             return
 
-        if data.startswith("selfremind_pickdate:"):
+        if data.startswith("selfremind_pickdate:") or data.startswith("selfremind_event_pickdate:"):
             _, rid_str, date_str = data.split(":", 2)
             rid = int(rid_str)
 
@@ -4227,7 +4246,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer("Выбери время")
             return
 
-        if data.startswith("selfremind_picktime:"):
+        if data.startswith("selfremind_picktime:") or data.startswith("selfremind_event_picktime:"):
             _, rid_str, date_str, time_str = data.split(":", 3)
             rid = int(rid_str)
 
@@ -4268,6 +4287,40 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             when_str = remind_at.strftime("%d.%m %H:%M")
             await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
             await query.answer("Личное напоминание создано")
+            return
+
+        if data.startswith("selfremind_event_cancel:"):
+            _, rid_str = data.split(":", 1)
+
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            src = get_reminder(rid)
+            if not src:
+                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                return
+
+            base_now = get_self_remind_event_base(src)
+            event_at = extract_event_datetime_from_text(src.text, base_now)
+            if event_at is None:
+                await query.edit_message_text(
+                    "Я не смог понять дату события из текста.\n"
+                    "Выбери обычное напоминание или задай кастомное время:",
+                    reply_markup=build_self_remind_event_fallback_keyboard(rid),
+                )
+                await query.answer("Вернул варианты")
+                return
+
+            event_str = event_at.strftime("%d.%m %H:%M")
+            await query.edit_message_text(
+                f"Я понял, что событие из напоминания состоится {event_str}.\n"
+                "За сколько до этого времени напомнить?",
+                reply_markup=build_self_remind_event_before_keyboard(rid),
+            )
+            await query.answer("Вернул варианты до события")
             return
 
         if data.startswith("selfremind_cancel:"):
@@ -4708,8 +4761,10 @@ def exhaust_nudges(reminder_id: int) -> None:
 def build_snooze_callback_pattern() -> str:
     return (
         r"^(selfremind:ask:|selfremind:back:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
-        r"|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:|selfremind_picktime:"
-        r"|selfremind_cancel:|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:"
+        r"|selfremind:event_custom:|selfremind_cal:|selfremind_caltoday:|selfremind_pickdate:"
+        r"|selfremind_picktime:|selfremind_cancel:|selfremind_event_cal:|selfremind_event_caltoday:"
+        r"|selfremind_event_pickdate:|selfremind_event_picktime:|selfremind_event_cancel:"
+        r"|snooze:|snooze_cal:|snooze_caltoday:|snooze_pickdate:"
         r"|snooze_picktime:|snooze_cancel:|noop|done:)"
     )
 
