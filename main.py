@@ -2391,7 +2391,10 @@ def build_custom_date_keyboard(
         if d == today:
             label = f"·{day}·"
 
-        cells.append(_btn(label, f"{callback_prefix}_pickdate:{reminder_id}:{iso}"))
+        if d < today:
+            cells.append(_noop(label))
+        else:
+            cells.append(_btn(label, f"{callback_prefix}_pickdate:{reminder_id}:{iso}"))
 
     while len(cells) % 7 != 0:
         cells.append(_noop(" "))
