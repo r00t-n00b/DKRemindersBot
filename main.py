@@ -2202,7 +2202,6 @@ def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(buttons)
 
-
 def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
@@ -2217,6 +2216,9 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"selfremind:set:{reminder_id}:nextmon"),
             InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
         ],
+        [
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:ask:{reminder_id}"),
+        ],
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -2224,16 +2226,19 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
 def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton("📅 За сутки", callback_data=f"selfremind:event_before:{reminder_id}:1d"),
-            InlineKeyboardButton("⏰ За 10 часов", callback_data=f"selfremind:event_before:{reminder_id}:10h"),
+            InlineKeyboardButton("За сутки", callback_data=f"selfremind:event_before:{reminder_id}:24h"),
+            InlineKeyboardButton("За 10 часов", callback_data=f"selfremind:event_before:{reminder_id}:10h"),
         ],
         [
-            InlineKeyboardButton("⏰ За 3 часа", callback_data=f"selfremind:event_before:{reminder_id}:3h"),
-            InlineKeyboardButton("⏰ За 1 час", callback_data=f"selfremind:event_before:{reminder_id}:1h"),
+            InlineKeyboardButton("За 3 часа", callback_data=f"selfremind:event_before:{reminder_id}:3h"),
+            InlineKeyboardButton("За 1 час", callback_data=f"selfremind:event_before:{reminder_id}:1h"),
         ],
         [
-            InlineKeyboardButton("⏰ За 20 минут", callback_data=f"selfremind:event_before:{reminder_id}:20m"),
+            InlineKeyboardButton("За 20 минут", callback_data=f"selfremind:event_before:{reminder_id}:20m"),
             InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:mode:{reminder_id}"),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
