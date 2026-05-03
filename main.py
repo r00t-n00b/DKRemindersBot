@@ -4377,7 +4377,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Исходное напоминание не найдено", show_alert=True)
                 return
 
-            source_chat_title = get_query_source_chat_title(query)
+            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
 
             await query.edit_message_text(
                 f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?'
