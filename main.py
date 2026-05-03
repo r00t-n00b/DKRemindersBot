@@ -4096,8 +4096,8 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 if event_at is None:
                     await query.edit_message_text(
                         "Я не смог понять дату события из текста.\n"
-                        "Выбери обычное напоминание или задай кастомное время:",
-                        reply_markup=build_self_remind_event_fallback_keyboard(rid),
+                        "Ты можешь поставить себе обычный ремайндер:",
+                        reply_markup=build_self_remind_choice_keyboard(rid),
                     )
                     await query.answer("Не смог понять дату события")
                     return
@@ -4344,11 +4344,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             base_now = get_self_remind_event_base(src)
             event_at = extract_event_datetime_from_text(src.text, base_now)
+
             if event_at is None:
                 await query.edit_message_text(
                     "Я не смог понять дату события из текста.\n"
-                    "Выбери обычное напоминание или задай кастомное время:",
-                    reply_markup=build_self_remind_event_fallback_keyboard(rid),
+                    "Ты можешь поставить себе обычный ремайндер:",
+                    reply_markup=build_self_remind_choice_keyboard(rid),
                 )
                 await query.answer("Вернул варианты")
                 return
