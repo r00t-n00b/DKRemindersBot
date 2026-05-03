@@ -2199,6 +2199,12 @@ def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
                 callback_data=f"selfremind:mode:{reminder_id}:event",
             ),
         ],
+        [
+            InlineKeyboardButton(
+                "✅ Я передумал, напоминание не нужно",
+                callback_data=f"selfremind:cancel_personal:{reminder_id}",
+            ),
+        ],
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -4012,6 +4018,21 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             await query.answer("Отправил варианты в личку")
             return
 
+        if data.startswith("selfremind:cancel_personal:"):
+            _, _, rid_str = data.split(":", 2)
+
+            try:
+                int(rid_str)
+            except ValueError:
+                await query.answer("Некорректный reminder id", show_alert=True)
+                return
+
+            if query.message:
+                await query.edit_message_text("Ок, личное напоминание не создаю.")
+
+            await query.answer("Ок")
+            return
+
         if data.startswith("selfremind:back:"):
             _, _, rid_str = data.split(":", 2)
 
@@ -4782,7 +4803,7 @@ def exhaust_nudges(reminder_id: int) -> None:
 
 def build_snooze_callback_pattern() -> str:
     return (
-        r"^(selfremind:ask:|selfremind:back:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
+        r"^(selfremind:ask:|selfremind:back:|selfremind:cancel_personal:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
         r"|selfremind:event_custom:|selfremind_cal:|selfremind_caltoday:|selfremind_pastdate:"
         r"|selfremind_pickdate:|selfremind_picktime:|selfremind_cancel:|selfremind_event_cal:"
         r"|selfremind_event_caltoday:|selfremind_event_pastdate:|selfremind_event_pickdate:"
