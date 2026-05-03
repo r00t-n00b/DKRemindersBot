@@ -2249,21 +2249,6 @@ def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardM
     ]
     return InlineKeyboardMarkup(buttons)
 
-
-def build_self_remind_event_fallback_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
-    buttons: List[List[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton(
-                "📅 Обычное напоминание",
-                callback_data=f"selfremind:mode:{reminder_id}:regular",
-            ),
-        ],
-        [
-            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
-
 def compute_self_remind_time(option: str, now: datetime) -> datetime:
     now = now.astimezone(TZ)
 
