@@ -3224,7 +3224,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                     # или с month-name формата ("On March 1 ...", "March 1 ..."), или с relative ("in 2 hours ...").
                     if re.match(
                         r"^(?:"
-                        r"\d{1,2}\.\d{1,2}(?:\.\d{2,4})?(?:\s+\d{1,2}[:.]\d{2})?"
+                        r"(?:on\s+)?\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?:\s+\d{1,2}[:.]\d{2})?"
                         r"|"
                         r"\d{1,2}[:.]\d{2}"
                         r"|"
