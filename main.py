@@ -1554,40 +1554,56 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
 def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
     s = expr.strip()
     local = now.astimezone(TZ)
-    
-    # DD.MM.YYYY HH:MM
-    m = re.match(
-        r"^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})$",
-        expr,
+
+    # DD.MM.YYYY HH:MM / DD.MM.YY HH:MM
+    m = re.fullmatch(
+        r"(?P<day>\d{1,2})\.(?P<month>\d{1,2})\.(?P<year>\d{2,4})\s+(?P<hour>\d{1,2})[:.](?P<minute>\d{2})",
+        s,
     )
     if m:
-        day, month, year, hour, minute = map(int, m.groups())
+        day = int(m.group("day"))
+        month = int(m.group("month"))
+        year = int(m.group("year"))
+        hour = int(m.group("hour"))
+        minute = int(m.group("minute"))
+
+        if year < 100:
+            year += 2000
+
         try:
-            return datetime(
-                year,
-                month,
-                day,
-                hour,
-                minute,
-                tzinfo=TZ,
-            )
-        except ValueError:
-            return None
+            return datetime(year, month, day, hour, minute, tzinfo=TZ)
+        except ValueError as e:
+            raise ValueError(f"Неверная дата или время: {e}") from e
+    
+    # DD.MM / DD.MM.YYYY без времени.
+    # Важно: "23.10 - текст" = 23 октября, НЕ 23:10.
+    m = re.fullmatch(r"(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?", s)
+    if m:
+        day = int(m.group(1))
+        month = int(m.group(2))
+        year_raw = m.group(3)
 
+        year = local.year
+        if year_raw:
+            year = int(year_raw)
+            if year < 100:
+                year += 2000
 
-    # только время: 23:59 или 23.59
-    # (важно проверять ДО DD.MM, иначе "23.59" попытается стать датой 23.59)
-    m2 = re.fullmatch(r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})", s)
-    if m2:
-        hour = int(m2.group("hour"))
-        minute = int(m2.group("minute"))
+        try:
+            dt = datetime(year, month, day, 11, 0, tzinfo=TZ)
+        except ValueError as e:
+            raise ValueError(f"Неверная дата или время: {e}") from e
 
-        # защита: "29.11" - это дата, а не время
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            dt = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if dt < now - timedelta(minutes=1):
-                dt = dt + timedelta(days=1)
-            return dt
+        if dt < now - timedelta(minutes=1):
+            try:
+                dt = dt.replace(year=year + 1)
+            except ValueError as e:
+                raise ValueError(
+                    f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
+                ) from e
+
+        return dt
+
 
     # 25.01 [11:00] / 25/01 [11:00]
     m = re.fullmatch(
@@ -1618,6 +1634,21 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
                     f"Дата выглядит прошедшей и не может быть перенесена на следующий год: {e}"
                 ) from e
         return dt
+
+    # только время: 23:59 или 23.59
+    # Важно: проверяем ПОСЛЕ DD.MM, чтобы "23.10" стало датой,
+    # а "23.59" дошло сюда, потому что месяца 59 не существует.
+    m2 = re.fullmatch(r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})", s)
+    if m2:
+        hour = int(m2.group("hour"))
+        minute = int(m2.group("minute"))
+
+        # защита: "29.11" - это дата, а не время
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            dt = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if dt < now - timedelta(minutes=1):
+                dt = dt + timedelta(days=1)
+            return dt
 
     # 25 december [20:30]
     m_name_dm = re.fullmatch(
