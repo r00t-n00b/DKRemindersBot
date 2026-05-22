@@ -168,6 +168,20 @@ def init_db() -> None:
         """
     )
 
+    # алиасы для пользователей
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_aliases (
+            alias TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            chat_id INTEGER NOT NULL,
+            username TEXT,
+            created_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
     # привязка пользователей (кто нажал /start в личке)
     c.execute(
         """
@@ -857,6 +871,61 @@ def get_all_aliases():
     rows = c.fetchall()
     conn.close()
     return rows
+
+def get_user_alias(alias: str) -> Optional[Dict[str, Any]]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT alias, user_id, chat_id, username, created_by, created_at
+        FROM user_aliases
+        WHERE alias = ?
+        """,
+        (alias,),
+    )
+    row = c.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return dict(row)
+
+
+def set_user_alias(
+    alias: str,
+    user_id: int,
+    chat_id: int,
+    username: Optional[str],
+    created_by: int,
+) -> None:
+    now_iso = datetime.now(TZ).isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(alias) DO UPDATE SET
+            user_id = excluded.user_id,
+            chat_id = excluded.chat_id,
+            username = excluded.username,
+            created_by = excluded.created_by,
+            created_at = excluded.created_at
+        """,
+        (alias, user_id, chat_id, username, created_by, now_iso),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_alias_chat_id(alias: str) -> Optional[int]:
+    row = get_user_alias(alias)
+    if not row:
+        return None
+    return int(row["chat_id"])
 
 def get_private_chat_id_by_username(username: str) -> Optional[int]:
     if not username:
@@ -3195,6 +3264,29 @@ async def remind_command(update: Update, context: CTX) -> None:
 
             # alias != @username (этот кейс обработан выше)
             if first_token and not first_token.startswith("@"):
+                user_alias_chat_id = get_user_alias_chat_id(first_token)
+                if user_alias_chat_id is not None:
+                    rest_first_line = first_line[len(first_token):].lstrip()
+                    rest_lines = "\n".join(raw_args.splitlines()[1:])
+
+                    parts = []
+                    if rest_first_line:
+                        parts.append(rest_first_line)
+                    if rest_lines.strip():
+                        parts.append(rest_lines)
+
+                    raw_args = "\n".join(parts).strip()
+
+                    target_chat_id = user_alias_chat_id
+                    used_alias = None
+
+                    if not raw_args:
+                        await safe_reply(
+                            message,
+                            "После alias нужно указать дату и текст.\n"
+                            f"Пример:\n/remind {first_token} 28.11 12:00 - завтра футбол"
+                        )
+                        return
                 alias_chat_id = get_chat_id_by_alias(first_token)
                 if alias_chat_id is not None:
                     # убираем alias из raw_args (и single, и bulk)
@@ -3412,6 +3504,56 @@ async def remind_command(update: Update, context: CTX) -> None:
                 f"Ок, напомню {when_str}: {text}"
             )
 
+async def linkuser_command(update: Update, context: CTX) -> None:
+    message = update.effective_message
+    user = update.effective_user
+
+    if message is None or user is None:
+        return
+
+    if len(context.args or []) != 2:
+        await safe_reply(
+            message,
+            "Формат:\n/linkuser alias @username\n\nПример:\n/linkuser misha @friend"
+        )
+        return
+
+    alias = context.args[0].strip()
+    username = context.args[1].strip()
+
+    if not alias:
+        await safe_reply(message, "Alias не может быть пустым.")
+        return
+
+    if alias.startswith("@"):
+        await safe_reply(message, "Alias не должен начинаться с @. Напиши, например: /linkuser misha @friend")
+        return
+
+    if not username.startswith("@") or len(username) <= 1:
+        await safe_reply(message, "Вторым аргументом нужен @username. Пример: /linkuser misha @friend")
+        return
+
+    if get_chat_id_by_alias(alias) is not None:
+        await safe_reply(message, f"Alias '{alias}' уже занят chat-alias. Выбери другое имя.")
+        return
+
+    target_chat_id = get_user_chat_id_by_username(username)
+    if target_chat_id is None:
+        await safe_reply(
+            message,
+            f"Я пока не могу написать {username}, потому что он/она не нажимал(а) Start у бота."
+        )
+        return
+
+    set_user_alias(
+        alias=alias,
+        user_id=int(target_chat_id),
+        chat_id=int(target_chat_id),
+        username=username.lstrip("@"),
+        created_by=user.id,
+    )
+
+    await safe_reply(message, f"Ок, alias '{alias}' теперь указывает на {username}.")
 
 async def list_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
@@ -3501,29 +3643,36 @@ async def list_command(update: Update, context: CTX) -> None:
             await safe_reply(message,reply, reply_markup=InlineKeyboardMarkup(buttons))
             return
 
-    # ===== СТАРАЯ ЛОГИКА: /list alias =====
+    # ===== /list alias: сначала user-alias, потом chat-alias =====
     if chat.type == Chat.PRIVATE and context.args:
         alias = context.args[0].strip()
         if alias:
-            alias_chat_id = get_chat_id_by_alias(alias)
-            if alias_chat_id is None:
-                aliases = get_all_aliases()
-                if not aliases:
-                    await safe_reply(
-                        message,
-                        f"Alias '{alias}' не найден.\n"
-                        f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
-                    )
-                else:
-                    known = ", ".join(a for a, _, _ in aliases)
-                    await safe_reply(
-                        message,
-                        f"Alias '{alias}' не найден.\n"
-                        f"Из известных: {known}"
-                    )
-                return
-            target_chat_id = alias_chat_id
-            used_alias = alias
+            user_alias_chat_id = get_user_alias_chat_id(alias)
+            if user_alias_chat_id is not None:
+                target_chat_id = user_alias_chat_id
+                used_alias = alias
+            else:
+                alias_chat_id = get_chat_id_by_alias(alias)
+                if alias_chat_id is None:
+                    aliases = get_all_aliases()
+                    if not aliases:
+                        await safe_reply(
+                            message,
+                            f"Alias '{alias}' не найден.\n"
+                            f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
+                            f"Или создай user-alias: /linkuser {alias} @username"
+                        )
+                    else:
+                        known = ", ".join(a for a, _, _ in aliases)
+                        await safe_reply(
+                            message,
+                            f"Alias '{alias}' не найден.\n"
+                            f"Из известных chat-alias: {known}"
+                        )
+                    return
+
+                target_chat_id = alias_chat_id
+                used_alias = alias
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -4845,6 +4994,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
+    application.add_handler(CommandHandler("linkuser", linkuser_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
