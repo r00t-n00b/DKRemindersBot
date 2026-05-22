@@ -2933,16 +2933,30 @@ async def help_command(update: Update, context: CTX) -> None:
         АЛИАСЫ И ЛИЧКА
         ======================
 
-        🔗 Привязка чата:
-        В чате: /linkchat football
+        🔗 Привязка chat-alias:
+        В нужном чате:
+            /linkchat football
 
-        💬 Использование в личке:
-        /remind football 28.11 12:00 - матч
-        /list football
+        Использование в личке:
+            /remind football 28.11 12:00 - матч
+            /list football
 
-        👤 Напоминания конкретному человеку (в личке):
-        /list @username
-        (показывает только те, которые ты ему поставил)
+        👤 Привязка user-alias:
+        В личке:
+            /linkuser misha @username
+
+        Использование:
+            /remind misha 28.11 18:00 - созвон
+            /list misha
+
+        📨 Напоминания конкретному человеку:
+            /list @username
+
+        Показывает только те reminders,
+        которые ТЫ поставил этому пользователю.
+
+        ⚠️ User-alias работает только если
+        пользователь уже писал боту в личку.
 
 
         ======================
