@@ -2814,6 +2814,7 @@ async def start(update: Update, context: CTX) -> None:
 
         Самое базовое:
         /remind DD.MM HH:MM - текст
+	/remind me DD.MM HH:MM - текст
         Пример: /remind 28.11 12:00 - завтра футбол
 
         Еще примеры:
@@ -2849,9 +2850,11 @@ async def help_command(update: Update, context: CTX) -> None:
         БАЗОВЫЙ ФОРМАТ
         ======================
         /remind ДАТА ВРЕМЯ - текст
+	/remind me ДАТА ВРЕМЯ - текст
 
         Пример:
         /remind 28.11 12:00 - завтра футбол
+	/remind me at 18:00 - купить молоко
 
 
         ======================
@@ -3239,6 +3242,25 @@ async def remind_command(update: Update, context: CTX) -> None:
         first_line = raw_args.splitlines()[0].lstrip()
         if first_line and not first_line.startswith("-"):
             first_token = first_line.split(maxsplit=1)[0].strip()
+            if first_token.lower() == "me":
+                rest_first_line = first_line[len(first_token):].lstrip()
+                rest_lines = "\n".join(raw_args.splitlines()[1:])
+
+                parts = []
+                if rest_first_line:
+                    parts.append(rest_first_line)
+                if rest_lines.strip():
+                    parts.append(rest_lines)
+
+                raw_args = "\n".join(parts).strip()
+
+                if not raw_args:
+                    await safe_reply(
+                        message,
+                        "После me нужно указать дату и текст.\n"
+                        "Пример: /remind me at 18:00 - купить молоко"
+                    )
+                    return
             if first_token.startswith("@") and len(first_token) > 1:
                 target = get_user_chat_id_by_username(first_token)
                 if target is None:
