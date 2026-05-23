@@ -2814,7 +2814,7 @@ async def start(update: Update, context: CTX) -> None:
 
         Самое базовое:
         /remind DD.MM HH:MM - текст
-	/remind me DD.MM HH:MM - текст
+        /remind me DD.MM HH:MM - текст
         Пример: /remind 28.11 12:00 - завтра футбол
 
         Еще примеры:
@@ -2850,11 +2850,11 @@ async def help_command(update: Update, context: CTX) -> None:
         БАЗОВЫЙ ФОРМАТ
         ======================
         /remind ДАТА ВРЕМЯ - текст
-	/remind me ДАТА ВРЕМЯ - текст
+        /remind me ДАТА ВРЕМЯ - текст
 
         Пример:
         /remind 28.11 12:00 - завтра футбол
-	/remind me at 18:00 - купить молоко
+        /remind me at 18.00 - купить молоко
 
 
         ======================
