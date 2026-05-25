@@ -3163,6 +3163,15 @@ async def remind_command(update: Update, context: CTX) -> None:
     now = get_now()
 
     raw_text = message.text or ""
+
+    logger.info(
+        "REMIND input chat_id=%s chat_type=%s user_id=%s raw_text=%r",
+        chat.id,
+        chat.type,
+        user.id,
+        raw_text,
+    )
+
     had_newline = "\n" in raw_text
 
     if had_newline:
@@ -3236,6 +3245,39 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     target_chat_id = chat.id
     used_alias: Optional[str] = None
+
+    # В личке допускаем slack-style "/remind me ..."
+    if is_private:
+        first_line = raw_args.splitlines()[0].lstrip()
+        if first_line and not first_line.startswith("-"):
+            first_token = first_line.split(maxsplit=1)[0].strip().lower()
+
+            if first_token == "me":
+                rest_first_line = first_line[len(first_token):].lstrip()
+                rest_lines = "\n".join(raw_args.splitlines()[1:])
+
+                parts = []
+                if rest_first_line:
+                    parts.append(rest_first_line)
+                if rest_lines.strip():
+                    parts.append(rest_lines)
+
+                raw_args = "\n".join(parts).strip()
+
+                logger.info(
+                    "REMIND me-stripped chat_id=%s user_id=%s raw_args=%r",
+                    chat.id,
+                    user.id,
+                    raw_args,
+                )
+
+                if not raw_args:
+                    await safe_reply(
+                        message,
+                        "После me нужно указать дату и текст.\n"
+                        "Пример: /remind me on Tuesday - алкоголь под КС"
+                    )
+                    return
 
     # В личке допускаем @username первым словом / первой строкой
     if is_private:
@@ -3358,6 +3400,15 @@ async def remind_command(update: Update, context: CTX) -> None:
             first_name=getattr(user, "first_name", None),
             last_name=getattr(user, "last_name", None),
         )
+
+    logger.info(
+        "REMIND normalized chat_id=%s target_chat_id=%s used_alias=%s raw_args=%r had_newline=%s",
+        chat.id,
+        target_chat_id,
+        used_alias,
+        raw_args,
+        had_newline,
+    )
 
     # Bulk или одиночный?
     if had_newline:
@@ -3502,7 +3553,14 @@ async def remind_command(update: Update, context: CTX) -> None:
     try:
         remind_at, text = parse_date_time_smart(raw_single, now)
     except ValueError as e:
-        await safe_reply(message,f"Не смог понять дату и текст: {e}")
+        logger.warning(
+            "REMIND parse failed chat_id=%s user_id=%s raw_single=%r error=%s",
+            chat.id,
+            user.id,
+            raw_single,
+            e,
+        )
+        await safe_reply(message, f"Не смог понять дату и текст: {e}")
         return
 
     reminder_id = add_reminder(
