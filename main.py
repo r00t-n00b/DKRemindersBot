@@ -3234,11 +3234,11 @@ async def _gemini_transcribe_audio_with_retries(
     *,
     client,
     audio_bytes: bytes,
-    attempts_per_model: int = 2,
+    attempts_per_model: int = 3,
 ) -> str:
     models_raw = os.environ.get(
         "GEMINI_TRANSCRIBE_MODELS",
-        "gemini-2.5-flash-lite,gemini-2.0-flash-lite",
+        "gemini-2.5-flash-lite,gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash",
     )
 
     models = [m.strip() for m in models_raw.split(",") if m.strip()]
@@ -3272,6 +3272,14 @@ async def _gemini_transcribe_audio_with_retries(
 
             except Exception as e:
                 last_error = e
+                logger.warning(
+                    "Gemini transcription failed model=%s attempt=%s transient=%s error=%s: %s",
+                    model,
+                    attempt,
+                    _is_transient_gemini_error(e),
+                    type(e).__name__,
+                    e,
+                )
 
                 if not _is_transient_gemini_error(e):
                     raise
