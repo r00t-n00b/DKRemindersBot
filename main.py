@@ -3229,6 +3229,18 @@ def _is_transient_gemini_error(exc: Exception) -> bool:
         or "resource_exhausted" in text
     )
 
+def _is_unsupported_gemini_model_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return (
+        "404" in text
+        and (
+            "not_found" in text
+            or "is not found" in text
+            or "not supported for generatecontent" in text
+            or "listmodels" in text
+        )
+    )
+
 
 async def _gemini_transcribe_audio_with_retries(
     *,
@@ -3238,7 +3250,7 @@ async def _gemini_transcribe_audio_with_retries(
 ) -> str:
     models_raw = os.environ.get(
         "GEMINI_TRANSCRIBE_MODELS",
-        "gemini-2.5-flash-lite,gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash",
+        "gemini-2.5-flash-lite,gemini-2.5-flash,gemini-2.0-flash-lite,gemini-2.0-flash",
     )
 
     models = [m.strip() for m in models_raw.split(",") if m.strip()]
@@ -3272,18 +3284,25 @@ async def _gemini_transcribe_audio_with_retries(
 
             except Exception as e:
                 last_error = e
+
+                unsupported_model = _is_unsupported_gemini_model_error(e)
+                transient = _is_transient_gemini_error(e)
+
                 logger.warning(
-                    "Gemini transcription failed model=%s attempt=%s transient=%s error=%s: %s",
+                    "Gemini transcription failed model=%s attempt=%s transient=%s unsupported_model=%s error=%s: %s",
                     model,
                     attempt,
-                    _is_transient_gemini_error(e),
+                    transient,
+                    unsupported_model,
                     type(e).__name__,
                     e,
                 )
 
-                if not _is_transient_gemini_error(e):
-                    raise
+                if unsupported_model:
+                    break
 
+                if not transient:
+                    raise
             await asyncio.sleep(0.8 * attempt)
 
     raise RuntimeError(
