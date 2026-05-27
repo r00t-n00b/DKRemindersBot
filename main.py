@@ -935,16 +935,36 @@ def get_unacked_sent_before(dt: datetime) -> List[Dict[str, Any]]:
 def set_chat_alias(alias: str, chat_id: int, title: Optional[str], created_by: int = 0) -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
     c.execute(
         """
-        INSERT INTO chat_aliases(alias, chat_id, title, created_by)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(created_by, alias) DO UPDATE SET
-            chat_id = excluded.chat_id,
-            title = excluded.title
+        SELECT alias
+        FROM chat_aliases
+        WHERE alias = ? COLLATE NOCASE AND created_by = ?
         """,
-        (alias, chat_id, title, created_by),
+        (alias, created_by),
     )
+    existing = c.fetchone()
+
+    if existing:
+        existing_alias = str(existing[0])
+        c.execute(
+            """
+            UPDATE chat_aliases
+            SET chat_id = ?, title = ?
+            WHERE alias = ? AND created_by = ?
+            """,
+            (chat_id, title, existing_alias, created_by),
+        )
+    else:
+        c.execute(
+            """
+            INSERT INTO chat_aliases(alias, chat_id, title, created_by)
+            VALUES (?, ?, ?, ?)
+            """,
+            (alias, chat_id, title, created_by),
+        )
+
     conn.commit()
     conn.close()
 
@@ -956,7 +976,7 @@ def get_chat_id_by_alias(alias: str, created_by: int = 0) -> Optional[int]:
         """
         SELECT chat_id
         FROM chat_aliases
-        WHERE alias = ? AND created_by = ?
+        WHERE alias = ? COLLATE NOCASE AND created_by = ?
         """,
         (alias, created_by),
     )
@@ -992,7 +1012,7 @@ def get_user_alias(alias: str, created_by: int) -> Optional[Dict[str, Any]]:
         """
         SELECT alias, user_id, chat_id, username, created_by, created_at
         FROM user_aliases
-        WHERE alias = ? AND created_by = ?
+        WHERE alias = ? COLLATE NOCASE AND created_by = ?
         """,
         (alias, created_by),
     )
@@ -1016,21 +1036,38 @@ def set_user_alias(
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
     c.execute(
         """
-        INSERT INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(created_by, alias) DO UPDATE SET
-            user_id = excluded.user_id,
-            chat_id = excluded.chat_id,
-            username = excluded.username,
-            created_at = excluded.created_at
+        SELECT alias
+        FROM user_aliases
+        WHERE alias = ? COLLATE NOCASE AND created_by = ?
         """,
-        (alias, user_id, chat_id, username, created_by, now_iso),
+        (alias, created_by),
     )
+    existing = c.fetchone()
+
+    if existing:
+        existing_alias = str(existing[0])
+        c.execute(
+            """
+            UPDATE user_aliases
+            SET user_id = ?, chat_id = ?, username = ?, created_at = ?
+            WHERE alias = ? AND created_by = ?
+            """,
+            (user_id, chat_id, username, now_iso, existing_alias, created_by),
+        )
+    else:
+        c.execute(
+            """
+            INSERT INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (alias, user_id, chat_id, username, created_by, now_iso),
+        )
+
     conn.commit()
     conn.close()
-
 
 def get_user_alias_chat_id(alias: str, created_by: int = 0) -> Optional[int]:
     row = get_user_alias(alias, created_by)
@@ -1060,7 +1097,7 @@ def delete_chat_alias(alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "DELETE FROM chat_aliases WHERE alias = ? AND created_by = ?",
+        "DELETE FROM chat_aliases WHERE alias = ? COLLATE NOCASE AND created_by = ?",
         (alias, created_by),
     )
     deleted = c.rowcount > 0
@@ -1073,7 +1110,7 @@ def delete_user_alias(alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "DELETE FROM user_aliases WHERE alias = ? AND created_by = ?",
+        "DELETE FROM user_aliases WHERE alias = ? COLLATE NOCASE AND created_by = ?",
         (alias, created_by),
     )
     deleted = c.rowcount > 0
@@ -1087,17 +1124,27 @@ def rename_chat_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
     c = conn.cursor()
 
     c.execute(
-        "SELECT 1 FROM chat_aliases WHERE alias = ? AND created_by = ?",
+        """
+        SELECT alias
+        FROM chat_aliases
+        WHERE alias = ? COLLATE NOCASE AND created_by = ?
+        """,
         (old_alias, created_by),
     )
-    old_exists = c.fetchone() is not None
-    if not old_exists:
+    old_row = c.fetchone()
+    if old_row is None:
         conn.close()
         return False
 
-    if old_alias != new_alias:
+    existing_old_alias = str(old_row[0])
+
+    if old_alias.casefold() != new_alias.casefold():
         c.execute(
-            "SELECT 1 FROM chat_aliases WHERE alias = ? AND created_by = ?",
+            """
+            SELECT 1
+            FROM chat_aliases
+            WHERE alias = ? COLLATE NOCASE AND created_by = ?
+            """,
             (new_alias, created_by),
         )
         if c.fetchone() is not None:
@@ -1110,7 +1157,7 @@ def rename_chat_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
         SET alias = ?
         WHERE alias = ? AND created_by = ?
         """,
-        (new_alias, old_alias, created_by),
+        (new_alias, existing_old_alias, created_by),
     )
     conn.commit()
     conn.close()
@@ -1122,17 +1169,27 @@ def rename_user_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
     c = conn.cursor()
 
     c.execute(
-        "SELECT 1 FROM user_aliases WHERE alias = ? AND created_by = ?",
+        """
+        SELECT alias
+        FROM user_aliases
+        WHERE alias = ? COLLATE NOCASE AND created_by = ?
+        """,
         (old_alias, created_by),
     )
-    old_exists = c.fetchone() is not None
-    if not old_exists:
+    old_row = c.fetchone()
+    if old_row is None:
         conn.close()
         return False
 
-    if old_alias != new_alias:
+    existing_old_alias = str(old_row[0])
+
+    if old_alias.casefold() != new_alias.casefold():
         c.execute(
-            "SELECT 1 FROM user_aliases WHERE alias = ? AND created_by = ?",
+            """
+            SELECT 1
+            FROM user_aliases
+            WHERE alias = ? COLLATE NOCASE AND created_by = ?
+            """,
             (new_alias, created_by),
         )
         if c.fetchone() is not None:
@@ -1145,7 +1202,7 @@ def rename_user_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
         SET alias = ?
         WHERE alias = ? AND created_by = ?
         """,
-        (new_alias, old_alias, created_by),
+        (new_alias, existing_old_alias, created_by),
     )
     conn.commit()
     conn.close()
