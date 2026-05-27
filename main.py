@@ -3217,6 +3217,71 @@ def normalize_voice_reminder_text(text: str) -> str:
 
     return s
 
+def _is_transient_gemini_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return (
+        "503" in text
+        or "unavailable" in text
+        or "high demand" in text
+        or "temporar" in text
+        or "deadline_exceeded" in text
+        or "429" in text
+        or "resource_exhausted" in text
+    )
+
+
+async def _gemini_transcribe_audio_with_retries(
+    *,
+    client,
+    audio_bytes: bytes,
+    attempts_per_model: int = 2,
+) -> str:
+    models_raw = os.environ.get(
+        "GEMINI_TRANSCRIBE_MODELS",
+        "gemini-2.5-flash-lite,gemini-2.0-flash-lite",
+    )
+
+    models = [m.strip() for m in models_raw.split(",") if m.strip()]
+    if not models:
+        models = ["gemini-2.5-flash-lite"]
+
+    last_error: Optional[Exception] = None
+
+    for model in models:
+        for attempt in range(1, attempts_per_model + 1):
+            try:
+                result = client.models.generate_content(
+                    model=model,
+                    contents=[
+                        genai_types.Part.from_bytes(
+                            data=audio_bytes,
+                            mime_type="audio/ogg",
+                        ),
+                        (
+                            "Transcribe this Telegram voice message exactly as plain text. "
+                            "Return only the spoken text, no quotes, no commentary."
+                        ),
+                    ],
+                )
+
+                text = (getattr(result, "text", "") or "").strip()
+                if text:
+                    return text
+
+                last_error = RuntimeError(f"Gemini model {model} returned empty transcription")
+
+            except Exception as e:
+                last_error = e
+
+                if not _is_transient_gemini_error(e):
+                    raise
+
+            await asyncio.sleep(0.8 * attempt)
+
+    raise RuntimeError(
+        "Gemini временно не смог распознать голосовое после retry/fallback. "
+        f"Последняя ошибка: {type(last_error).__name__}: {last_error}"
+    )
 
 async def transcribe_voice_message(update: Update, context: CTX) -> str:
     message = update.effective_message
@@ -3246,25 +3311,10 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
 
         client = genai.Client(api_key=token)
 
-        result = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
-            contents=[
-                genai_types.Part.from_bytes(
-                    data=audio_bytes,
-                    mime_type="audio/ogg",
-                ),
-                (
-                    "Transcribe this Telegram voice message exactly as plain text. "
-                    "Return only the spoken text, no quotes, no commentary."
-                ),
-            ],
+        return await _gemini_transcribe_audio_with_retries(
+            client=client,
+            audio_bytes=audio_bytes,
         )
-
-        text = (getattr(result, "text", "") or "").strip()
-        if not text:
-            raise RuntimeError("Gemini вернул пустую транскрипцию")
-
-        return text
     finally:
         try:
             os.remove(tmp_path)
@@ -3287,11 +3337,16 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
         heard_text = await transcribe_voice_message(update, context)
     except Exception as e:
         logger.exception("Не смог распознать голосовое сообщение")
-        await safe_reply(
-            message,
-            "Не смог распознать голосовое.\n"
-            f"Техническая ошибка: {type(e).__name__}: {e}"
-        )
+        if _is_transient_gemini_error(e):
+            await safe_reply(
+                message,
+                "Сервис распознавания сейчас перегружен. Попробуй еще раз через минуту."
+            )
+        else:
+            await safe_reply(
+                message,
+                "Не смог распознать голосовое. Попробуй текстом или повтори голосом чуть четче."
+            )
         return
 
     if not heard_text:
