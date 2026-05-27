@@ -2380,6 +2380,70 @@ def extract_after_command(text: str) -> str:
     # Убираем только пробелы/табы после команды, но НЕ убираем \n
     return rest.lstrip(" \t")
 
+SMART_REMINDER_PREFIXES = {
+    "in",
+    "через",
+    "today",
+    "сегодня",
+    "tomorrow",
+    "завтра",
+    "dayaftertomorrow",
+    "day",
+    "послезавтра",
+    "next",
+    "следующий",
+    "следующая",
+    "следующее",
+    "следующие",
+    "weekend",
+    "weekday",
+    "workday",
+    "выходные",
+    "будний",
+    "буднийдень",
+    "рабочий",
+    "рабочийдень",
+    "every",
+    "everyday",
+    "daily",
+    "weekly",
+    "monthly",
+    "каждый",
+    "каждую",
+    "каждое",
+    "каждые",
+    "on",
+    "at",
+    "в",
+}
+
+MONTH_REMINDER_PREFIXES = {
+    "jan", "january",
+    "feb", "february",
+    "mar", "march",
+    "apr", "april",
+    "may",
+    "jun", "june",
+    "jul", "july",
+    "aug", "august",
+    "sep", "sept", "september",
+    "oct", "october",
+    "nov", "november",
+    "dec", "december",
+}
+
+
+def first_token_looks_like_reminder_start(first_token: str) -> bool:
+    token = first_token.strip()
+    token_lower = token.lower()
+    token_compact = token_lower.replace(" ", "")
+
+    return bool(
+        re.match(r"^\d{1,2}[:.]\d{2}$", token)
+        or re.match(r"^\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?$", token)
+        or token_compact in SMART_REMINDER_PREFIXES
+        or token_lower in MONTH_REMINDER_PREFIXES
+    )
 
 def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
     """
@@ -2420,43 +2484,8 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
         if second_token in MONTH_EN:
             return None, args_text.lstrip()
 
-    smart_prefixes = {
-        "in",
-        "через",
-        "today",
-        "сегодня",
-        "tomorrow",
-        "завтра",
-        "dayaftertomorrow",
-        "day",
-        "послезавтра",
-        "next",
-        "следующий",
-        "следующая",
-        "следующее",
-        "следующие",
-        "weekend",
-        "weekday",
-        "workday",
-        "выходные",
-        "будний",
-        "буднийдень",
-        "рабочий",
-        "рабочийдень",
-        "every",
-        "everyday",
-        "каждый",
-        "каждую",
-        "каждое",
-        "каждые",
-        # важное для новых "человеческих" форм
-        "on",
-        "at",
-        "в",
-    }
-
-    if first_lower in smart_prefixes:
-        return None, args_text.lstrip()
+    if first_token_looks_like_reminder_start(first):
+        return None, args_text
 
     alias = first
     after_alias_first_line = rest_first[0] if rest_first else ""
@@ -4386,10 +4415,32 @@ async def remind_command(update: Update, context: CTX) -> None:
         if first_line and not first_line.startswith("-"):
             first_token = first_line.split(maxsplit=1)[0].strip()
 
-            # alias != @username (этот кейс обработан выше)
-            if first_token and not first_token.startswith("@"):
-                user_alias_chat_id = get_user_alias_chat_id_for_user(first_token, user.id)
-                if user_alias_chat_id is not None:
+            if first_token and first_token.lower() == "me":
+                rest_first_line = first_line[len(first_token):].lstrip()
+                rest_lines = "\n".join(raw_args.splitlines()[1:])
+
+                parts = []
+                if rest_first_line:
+                    parts.append(rest_first_line)
+                if rest_lines.strip():
+                    parts.append(rest_lines)
+
+                raw_args = "\n".join(parts).strip()
+
+                if not raw_args:
+                    await safe_reply(
+                        message,
+                        "После me нужно указать дату и текст.\n"
+                        "Пример: /remind me at 18:00 - купить молоко"
+                    )
+                    return
+
+            # alias != @username и alias != me (эти кейсы обработаны выше)
+            elif first_token and not first_token.startswith("@"):
+                # Не трогаем обычные команды, которые уже начинаются с даты/времени/recurring.
+                # Важно: используем общий helper, чтобы maybe_split_alias_first_token()
+                # и remind_command() не расходились по списку smart-prefixes.
+                if not first_token_looks_like_reminder_start(first_token):
                     rest_first_line = first_line[len(first_token):].lstrip()
                     rest_lines = "\n".join(raw_args.splitlines()[1:])
 
@@ -4399,43 +4450,50 @@ async def remind_command(update: Update, context: CTX) -> None:
                     if rest_lines.strip():
                         parts.append(rest_lines)
 
-                    raw_args = "\n".join(parts).strip()
+                    raw_args_without_first_token = "\n".join(parts).strip()
 
-                    target_chat_id = user_alias_chat_id
-                    used_alias = None
+                    user_alias_chat_id = get_user_alias_chat_id_for_user(first_token, user.id)
+                    if user_alias_chat_id is not None:
+                        raw_args = raw_args_without_first_token
+                        target_chat_id = user_alias_chat_id
+                        used_alias = None
 
-                    if not raw_args:
-                        await safe_reply(
-                            message,
-                            "После alias нужно указать дату и текст.\n"
-                            f"Пример:\n/remind {first_token} 28.11 12:00 - завтра футбол"
-                        )
-                        return
-                alias_chat_id = get_chat_id_by_alias_for_user(first_token, user.id)
-                if alias_chat_id is not None:
-                    # убираем alias из raw_args (и single, и bulk)
-                    rest_first_line = first_line[len(first_token):].lstrip()
-                    rest_lines = "\n".join(raw_args.splitlines()[1:])
+                        if not raw_args:
+                            await safe_reply(
+                                message,
+                                "После alias нужно указать дату и текст.\n"
+                                f"Пример:\n/remind {first_token} 28.11 12:00 - завтра футбол"
+                            )
+                            return
+                    else:
+                        alias_chat_id = get_chat_id_by_alias_for_user(first_token, user.id)
+                        if alias_chat_id is not None:
+                            raw_args = raw_args_without_first_token
+                            target_chat_id = alias_chat_id
+                            used_alias = first_token
 
-                    parts = []
-                    if rest_first_line:
-                        parts.append(rest_first_line)
-                    if rest_lines.strip():
-                        parts.append(rest_lines)
-
-                    raw_args = "\n".join(parts).strip()
-
-                    target_chat_id = alias_chat_id
-                    used_alias = first_token
-
-                    if not raw_args:
-                        await safe_reply(
-                            message,
-                            "После alias нужно указать дату и текст.\n"
-                            "Пример:\n"
-                            f"/remind {used_alias} 28.11 12:00 - завтра футбол"
-                        )
-                        return
+                            if not raw_args:
+                                await safe_reply(
+                                    message,
+                                    "После alias нужно указать дату и текст.\n"
+                                    "Пример:\n"
+                                    f"/remind {used_alias} 28.11 12:00 - завтра футбол"
+                                )
+                                return
+                        elif raw_args_without_first_token and "\n" not in raw_args:
+                            try:
+                                parse_date_time_smart(raw_args_without_first_token, now)
+                            except Exception:
+                                pass
+                            else:
+                                await safe_reply(
+                                    message,
+                                    f'Алиаса "{first_token}" не существует. '
+                                    "Используй команду без него, если хочешь поставить ремайндер себе, "
+                                    f'или присвой "{first_token}" тому, кому нужно, с помощью команд /linkuser или /linkchat. '
+                                    "Подробнее о них можешь прочитать в /help."
+                                )
+                                return
 
     # если человек пишет боту в личке - запомним его chat_id
     if is_private:
