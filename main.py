@@ -3220,7 +3220,9 @@ def normalize_voice_reminder_text(text: str) -> str:
 def _is_transient_gemini_error(exc: Exception) -> bool:
     text = f"{type(exc).__name__}: {exc}".lower()
     return (
-        "503" in text
+        "500" in text
+        or "internal" in text
+        or "503" in text
         or "unavailable" in text
         or "high demand" in text
         or "temporar" in text
