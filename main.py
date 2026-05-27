@@ -17,7 +17,7 @@ except ImportError:
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
-
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 from textwrap import dedent
 
@@ -942,6 +942,20 @@ def get_user_alias_chat_id(alias: str) -> Optional[int]:
     if not row:
         return None
     return int(row["chat_id"])
+
+def get_all_user_aliases() -> List[Tuple[str, int]]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT alias, chat_id
+        FROM user_aliases
+        ORDER BY alias COLLATE NOCASE
+        """
+    )
+    rows = c.fetchall()
+    conn.close()
+    return [(str(alias), int(chat_id)) for alias, chat_id in rows]
 
 def get_private_chat_id_by_username(username: str) -> Optional[int]:
     if not username:
@@ -3495,11 +3509,56 @@ def _is_gemini_quota_error(exc: Exception) -> bool:
         )
     )
 
+def _format_known_aliases_for_voice_prompt() -> str:
+    """
+    Собираем известные aliases для Gemini voice-normalization.
+
+    Gemini не должен придумывать aliases из воздуха.
+    Он может использовать только aliases из этого списка.
+    """
+    user_aliases = []
+    chat_aliases = []
+
+    try:
+        user_aliases = [a for a, _chat_id in get_all_user_aliases()]
+    except Exception:
+        logger.exception("Не смог получить user aliases для voice prompt")
+        user_aliases = []
+
+    try:
+        chat_aliases = [a for a, _chat_id, _title in get_all_aliases()]
+    except Exception:
+        logger.exception("Не смог получить chat aliases для voice prompt")
+        chat_aliases = []
+
+    lines = [
+        "Known aliases. Use these only if the spoken target clearly matches one of them.",
+        "",
+        "Known user aliases:",
+    ]
+
+    if user_aliases:
+        for alias in sorted(set(user_aliases), key=str.lower):
+            lines.append(f"- {alias}")
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "Known chat aliases:"])
+
+    if chat_aliases:
+        for alias in sorted(set(chat_aliases), key=str.lower):
+            lines.append(f"- {alias}")
+    else:
+        lines.append("- none")
+
+    return "\n".join(lines)
+
 async def _gemini_transcribe_audio_with_retries(
     *,
     client,
     audio_bytes: bytes,
     attempts_per_model: int = 3,
+    aliases_prompt: str = "",
 ) -> str:
     models_raw = os.environ.get(
         "GEMINI_TRANSCRIBE_MODELS",
@@ -3526,20 +3585,42 @@ async def _gemini_transcribe_audio_with_retries(
                             "You are normalizing a Telegram voice reminder.\n"
                             "\n"
                             "Listen to the audio and return only one line in this exact format:\n"
-                            "<date/time expression> - <reminder text>\n"
+                            "<optional target alias> <date/time expression> - <reminder text>\n"
+                            "\n"
+                            "The output must be directly usable after '/remind '.\n"
                             "\n"
                             "Rules:\n"
                             "- Return only the normalized reminder command. No quotes. No markdown. No commentary.\n"
                             "- Preserve the reminder text meaning.\n"
+                            "- Never change an explicitly spoken time. If the user says 'в 12', return '12:00'.\n"
+                            "- If the user says 'в 14:55', return '14:55' exactly.\n"
                             "- Remove leading phrases like 'напомни', 'напомни мне', 'поставь напоминание', 'remind me'.\n"
                             "- Convert spoken Russian numbers to digits where needed.\n"
                             "- Convert Russian month names to English month names.\n"
                             "- Do not calculate actual dates. Keep relative expressions like 'завтра', 'следующий понедельник', '29 may'.\n"
+                            "- Support one-off reminders, recurring reminders, private target aliases, and chat aliases.\n"
+                            "- Use a target alias only if it appears in the known aliases list below.\n"
+                            "- Do not invent aliases or usernames.\n"
+                            "- If a spoken person name is an inflected form of a known user alias, normalize it to that alias.\n"
+                            "- Examples: known alias 'Наташа': 'Наташе', 'Наташу', 'Наташи' -> 'Наташа'.\n"
+                            "- Examples: known alias 'Миша': 'Мише', 'Мишу', 'Миши' -> 'Миша'.\n"
+                            "- Examples: known alias 'Леша': 'Леше', 'Лёше', 'Лешу', 'Лёшу' -> 'Леша'.\n"
+                            "- If the spoken person name is not in known aliases, keep it inside reminder text, not as target.\n"
                             "- If the user says only a time like 'в 11 купить молоко', return '11:00 - купить молоко'.\n"
                             "- If the user says 'завтра в 11 купить молоко', return 'завтра 11:00 - купить молоко'.\n"
                             "- If the user says 'напомни завтра в 14:55 позвонить доктору', return 'завтра 14:55 - позвонить доктору'.\n"
                             "- If the user says 'в следующий понедельник в 22:00 спросить как дела', return 'следующий понедельник 22:00 - спросить как дела'.\n"
                             "- If the user says 'двадцать девятого мая в восемнадцать сорок шесть спросить как дела', return '29 may 18:46 - спросить как дела'.\n"
+                            "- If known user alias list contains 'Наташа' and user says 'напомнить Наташе завтра в 12 позвонить', return 'Наташа завтра 12:00 - позвонить'.\n"
+                            "- If known user alias list does not contain 'Наташа', return 'завтра 12:00 - позвонить Наташе'.\n"
+                            "- If known chat alias list contains 'football' and user says 'напомни football завтра в 12 матч', return 'football завтра 12:00 - матч'.\n"
+                            "- For recurring reminders, keep a parser-friendly recurring expression with explicit time.\n"
+                            "- If the user says 'каждый понедельник в 11 выпить таблетку', return 'каждый понедельник 11:00 - выпить таблетку'.\n"
+                            "- If the user says 'каждый день в 9 пить воду', return 'каждый день 09:00 - пить воду'.\n"
+                            "- If the user says 'every Monday at 11 take a pill', return 'every monday 11:00 - take a pill'.\n"
+                            "- If the user says 'every day at 9 drink water', return 'every day 09:00 - drink water'.\n"
+                            "\n"
+                            f"{aliases_prompt}\n"
                         ),
                     ],
                 )
@@ -3617,6 +3698,7 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
         return await _gemini_transcribe_audio_with_retries(
             client=client,
             audio_bytes=audio_bytes,
+            aliases_prompt=_format_known_aliases_for_voice_prompt(),
         )
     finally:
         try:
@@ -3647,44 +3729,48 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
         )
         return
 
-    if not heard_text:
+    normalized = (heard_text or "").strip()
+    if not normalized:
         await safe_reply(message, "Не услышал текст в голосовом.")
         return
 
-    normalized = heard_text.strip()
-
-    try:
-        remind_at, reminder_text = parse_date_time_smart(normalized, get_now())
-    except ValueError as first_error:
-        fallback_normalized = normalize_voice_reminder_text(heard_text)
-
-        try:
-            remind_at, reminder_text = parse_date_time_smart(fallback_normalized, get_now())
+    # Если Gemini вдруг вернул обычную транскрипцию, а не канонический формат,
+    # пробуем старую локальную нормализацию как fallback.
+    if " - " not in normalized:
+        fallback_normalized = normalize_voice_reminder_text(normalized)
+        if fallback_normalized:
             normalized = fallback_normalized
-        except ValueError:
-            await safe_reply(
-                message,
+
+    class VoiceReminderMessageProxy:
+        def __init__(self, original_message, command_text: str):
+            self._original_message = original_message
+            self.text = command_text
+            self.voice = getattr(original_message, "voice", None)
+
+        def __getattr__(self, name):
+            return getattr(self._original_message, name)
+
+        async def reply_text(self, text, **kwargs):
+            await self._original_message.reply_text(
                 "Я понял:\n"
-                f"{heard_text}\n\n"
-                f"Но не смог поставить reminder: {first_error}\n\n"
-                "Попробуй сказать так: «завтра в 11 купить молоко»"
+                f"{normalized}\n\n"
+                f"{text}",
+                **kwargs,
             )
-            return
 
-    add_reminder(
-        chat_id=chat.id,
-        text=reminder_text,
-        remind_at=remind_at,
-        created_by=user.id,
-    )
-
-    when_str = remind_at.strftime("%d.%m %H:%M")
-    await safe_reply(
+    proxy_message = VoiceReminderMessageProxy(
         message,
-        "Я понял:\n"
-        f"{normalized}\n\n"
-        f"Ок, напомню {when_str}: {reminder_text}"
+        f"/remind {normalized}",
     )
+
+    proxy_update = SimpleNamespace(
+        effective_chat=chat,
+        effective_message=proxy_message,
+        effective_user=user,
+        message=proxy_message,
+    )
+
+    await remind_command(proxy_update, context)
 
 async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
