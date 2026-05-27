@@ -3168,31 +3168,217 @@ def _format_bulk_result(
 
     return " ".join(parts)
 
+def _strip_voice_reminder_prefix(s: str) -> str:
+    """
+    Убираем естественные голосовые префиксы:
+    - напомни завтра ...
+    - напомнить завтра ...
+    - поставь напоминание завтра ...
+    - remind me tomorrow ...
+    """
+    s = (s or "").strip()
+    s = re.sub(r"\s+", " ", s).strip()
+
+    prefixes = [
+        r"^напомни\s+мне\s+",
+        r"^напомни\s+",
+        r"^напомнить\s+мне\s+",
+        r"^напомнить\s+",
+        r"^поставь\s+напоминание\s+",
+        r"^создай\s+напоминание\s+",
+        r"^remind\s+me\s+",
+        r"^reminder\s+",
+        r"^me\s+",
+    ]
+
+    for pattern in prefixes:
+        new_s = re.sub(pattern, "", s, count=1, flags=re.IGNORECASE).strip()
+        if new_s != s:
+            return new_s
+
+    return s
+
+
+def _normalize_voice_spoken_numbers(s: str) -> str:
+    """
+    MVP для русских голосовых чисел.
+    Не пытаемся сделать полный NLP, только частые reminder-кейсы:
+    - двадцать девятого мая
+    - в восемнадцать сорок шесть
+    """
+    replacements = {
+        "первого": "1",
+        "второго": "2",
+        "третьего": "3",
+        "четвертого": "4",
+        "четвёртого": "4",
+        "пятого": "5",
+        "шестого": "6",
+        "седьмого": "7",
+        "восьмого": "8",
+        "девятого": "9",
+        "десятого": "10",
+        "одиннадцатого": "11",
+        "двенадцатого": "12",
+        "тринадцатого": "13",
+        "четырнадцатого": "14",
+        "пятнадцатого": "15",
+        "шестнадцатого": "16",
+        "семнадцатого": "17",
+        "восемнадцатого": "18",
+        "девятнадцатого": "19",
+        "двадцатого": "20",
+        "двадцать первого": "21",
+        "двадцать второго": "22",
+        "двадцать третьего": "23",
+        "двадцать четвертого": "24",
+        "двадцать четвёртого": "24",
+        "двадцать пятого": "25",
+        "двадцать шестого": "26",
+        "двадцать седьмого": "27",
+        "двадцать восьмого": "28",
+        "двадцать девятого": "29",
+        "тридцатого": "30",
+        "тридцать первого": "31",
+        "ноль": "0",
+        "один": "1",
+        "два": "2",
+        "три": "3",
+        "четыре": "4",
+        "пять": "5",
+        "шесть": "6",
+        "семь": "7",
+        "восемь": "8",
+        "девять": "9",
+        "десять": "10",
+        "одиннадцать": "11",
+        "двенадцать": "12",
+        "тринадцать": "13",
+        "четырнадцать": "14",
+        "пятнадцать": "15",
+        "шестнадцать": "16",
+        "семнадцать": "17",
+        "восемнадцать": "18",
+        "девятнадцать": "19",
+        "двадцать девять": "29",
+        "двадцать восемь": "28",
+        "двадцать семь": "27",
+        "двадцать шесть": "26",
+        "двадцать пять": "25",
+        "двадцать четыре": "24",
+        "двадцать три": "23",
+        "двадцать два": "22",
+        "двадцать один": "21",
+
+        "тридцать девять": "39",
+        "тридцать восемь": "38",
+        "тридцать семь": "37",
+        "тридцать шесть": "36",
+        "тридцать пять": "35",
+        "тридцать четыре": "34",
+        "тридцать три": "33",
+        "тридцать два": "32",
+        "тридцать один": "31",
+
+        "сорок девять": "49",
+        "сорок восемь": "48",
+        "сорок семь": "47",
+        "сорок шесть": "46",
+        "сорок пять": "45",
+        "сорок четыре": "44",
+        "сорок три": "43",
+        "сорок два": "42",
+        "сорок один": "41",
+
+        "пятьдесят девять": "59",
+        "пятьдесят восемь": "58",
+        "пятьдесят семь": "57",
+        "пятьдесят шесть": "56",
+        "пятьдесят пять": "55",
+        "пятьдесят четыре": "54",
+        "пятьдесят три": "53",
+        "пятьдесят два": "52",
+        "пятьдесят один": "51",
+
+        "двадцать": "20",
+        "тридцать": "30",
+        "сорок": "40",
+        "пятьдесят": "50",
+    }
+
+    result = s
+
+    # Сначала длинные фразы, потом одиночные слова.
+    for phrase, value in sorted(replacements.items(), key=lambda x: -len(x[0])):
+        result = re.sub(
+            rf"\b{re.escape(phrase)}\b",
+            value,
+            result,
+            flags=re.IGNORECASE,
+        )
+
+    return result
+
+
+def _normalize_voice_ru_months(s: str) -> str:
+    month_map = {
+        "января": "january",
+        "февраля": "february",
+        "марта": "march",
+        "апреля": "april",
+        "мая": "may",
+        "июня": "june",
+        "июля": "july",
+        "августа": "august",
+        "сентября": "september",
+        "октября": "october",
+        "ноября": "november",
+        "декабря": "december",
+    }
+
+    result = s
+    for ru, en in month_map.items():
+        result = re.sub(rf"\b{ru}\b", en, result, flags=re.IGNORECASE)
+
+    return result
+
+
 def normalize_voice_reminder_text(text: str) -> str:
     """
     MVP-нормализация голосового reminder-а.
 
     Примеры:
     - "завтра в 11 купить молоко" -> "завтра 11:00 - купить молоко"
-    - "tomorrow at 11 buy milk" -> "tomorrow 11:00 - buy milk"
-    - "23.10 напоминание" остается как есть и парсится обычным no-dash fallback
+    - "напомни завтра в 14:55 позвонить" -> "завтра 14:55 - позвонить"
+    - "в следующий понедельник в 22:00 спросить" -> "следующий понедельник 22:00 - спросить"
+    - "в понедельник 22:58 спросить" -> "в понедельник 22:58 - спросить"
+    - "двадцать девятого мая в восемнадцать сорок шесть спросить" -> "29 may 18:46 - спросить"
     """
     raw = (text or "").strip()
     if not raw:
         return ""
 
     s = re.sub(r"\s+", " ", raw).strip()
+    s = _strip_voice_reminder_prefix(s)
+    s = _normalize_voice_spoken_numbers(s)
+    s = _normalize_voice_ru_months(s)
 
-    # Убираем Slack-style "me" в начале, если STT его оставил.
-    if s.lower().startswith("me "):
-        s = s[3:].strip()
+    # "18 46" после spoken-number нормализации -> "18:46"
+    s = re.sub(
+        r"\b(?P<hour>\d{1,2})\s+(?P<minute>[0-5]?\d)\b",
+        lambda m: (
+            f"{int(m.group('hour')):02d}:{int(m.group('minute')):02d}"
+            if 0 <= int(m.group("hour")) < 24 and 0 <= int(m.group("minute")) < 60
+            else m.group(0)
+        ),
+        s,
+    )
 
     # "завтра в 11 купить" / "tomorrow at 11 buy"
     m = re.match(
         r"^(?P<date>today|tomorrow|day after tomorrow|сегодня|завтра|послезавтра)\s+"
         r"(?:(?:в|at)\s+)?"
-        r"(?P<hour>\d{1,2})"
-        r"(?::(?P<minute>\d{2}))?"
+        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
         r"\s+(?P<text>.+)$",
         s,
         flags=re.IGNORECASE,
@@ -3202,6 +3388,60 @@ def normalize_voice_reminder_text(text: str) -> str:
         minute = int(m.group("minute") or "0")
         if 0 <= hour < 24 and 0 <= minute < 60:
             return f"{m.group('date')} {hour:02d}:{minute:02d} - {m.group('text').strip()}"
+
+    # "в следующий понедельник в 22:00 спросить"
+    m = re.match(
+        r"^(?:в\s+)?(?P<date>следующий|следующая|следующее|следующие|next)\s+"
+        r"(?P<weekday>[a-zа-яё]+)\s+"
+        r"(?:(?:в|at)\s+)?"
+        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"\s+(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        hour = int(m.group("hour"))
+        minute = int(m.group("minute") or "0")
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            return (
+                f"{m.group('date')} {m.group('weekday')} "
+                f"{hour:02d}:{minute:02d} - {m.group('text').strip()}"
+            )
+
+    # "в понедельник 22:58 спросить" / "понедельник в 22:58 спросить"
+    m = re.match(
+        r"^(?:в\s+)?(?P<weekday>[a-zа-яё]+)\s+"
+        r"(?:(?:в|at)\s+)?"
+        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"\s+(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        weekday = m.group("weekday").lower()
+        if weekday in WEEKDAY_EN or weekday in WEEKDAY_RU:
+            hour = int(m.group("hour"))
+            minute = int(m.group("minute") or "0")
+            if 0 <= hour < 24 and 0 <= minute < 60:
+                return f"в {weekday} {hour:02d}:{minute:02d} - {m.group('text').strip()}"
+
+    # "29 may в 18:46 спросить" / "29 may 18:46 спросить"
+    m = re.match(
+        r"^(?P<day>\d{1,2})\s+(?P<month>[a-z]+)\s+"
+        r"(?:(?:в|at)\s+)?"
+        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"\s+(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m and m.group("month").lower() in MONTH_EN:
+        hour = int(m.group("hour"))
+        minute = int(m.group("minute") or "0")
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            return (
+                f"{m.group('day')} {m.group('month')} "
+                f"{hour:02d}:{minute:02d} - {m.group('text').strip()}"
+            )
 
     # "в 11 купить" / "at 11 buy" -> "11:00 - buy"
     m = re.match(
@@ -3216,7 +3456,6 @@ def normalize_voice_reminder_text(text: str) -> str:
             return f"{hour:02d}:{minute:02d} - {m.group('text').strip()}"
 
     return s
-
 def _is_transient_gemini_error(exc: Exception) -> bool:
     text = f"{type(exc).__name__}: {exc}".lower()
     return (
@@ -3284,8 +3523,23 @@ async def _gemini_transcribe_audio_with_retries(
                             mime_type="audio/ogg",
                         ),
                         (
-                            "Transcribe this Telegram voice message exactly as plain text. "
-                            "Return only the spoken text, no quotes, no commentary."
+                            "You are normalizing a Telegram voice reminder.\n"
+                            "\n"
+                            "Listen to the audio and return only one line in this exact format:\n"
+                            "<date/time expression> - <reminder text>\n"
+                            "\n"
+                            "Rules:\n"
+                            "- Return only the normalized reminder command. No quotes. No markdown. No commentary.\n"
+                            "- Preserve the reminder text meaning.\n"
+                            "- Remove leading phrases like 'напомни', 'напомни мне', 'поставь напоминание', 'remind me'.\n"
+                            "- Convert spoken Russian numbers to digits where needed.\n"
+                            "- Convert Russian month names to English month names.\n"
+                            "- Do not calculate actual dates. Keep relative expressions like 'завтра', 'следующий понедельник', '29 may'.\n"
+                            "- If the user says only a time like 'в 11 купить молоко', return '11:00 - купить молоко'.\n"
+                            "- If the user says 'завтра в 11 купить молоко', return 'завтра 11:00 - купить молоко'.\n"
+                            "- If the user says 'напомни завтра в 14:55 позвонить доктору', return 'завтра 14:55 - позвонить доктору'.\n"
+                            "- If the user says 'в следующий понедельник в 22:00 спросить как дела', return 'следующий понедельник 22:00 - спросить как дела'.\n"
+                            "- If the user says 'двадцать девятого мая в восемнадцать сорок шесть спросить как дела', return '29 may 18:46 - спросить как дела'.\n"
                         ),
                     ],
                 )
@@ -3397,19 +3651,25 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
         await safe_reply(message, "Не услышал текст в голосовом.")
         return
 
-    normalized = normalize_voice_reminder_text(heard_text)
+    normalized = heard_text.strip()
 
     try:
         remind_at, reminder_text = parse_date_time_smart(normalized, get_now())
-    except ValueError as e:
-        await safe_reply(
-            message,
-            "Я услышал:\n"
-            f"{heard_text}\n\n"
-            f"Но не смог поставить reminder: {e}\n\n"
-            "Попробуй сказать так: «завтра в 11 купить молоко»"
-        )
-        return
+    except ValueError as first_error:
+        fallback_normalized = normalize_voice_reminder_text(heard_text)
+
+        try:
+            remind_at, reminder_text = parse_date_time_smart(fallback_normalized, get_now())
+            normalized = fallback_normalized
+        except ValueError:
+            await safe_reply(
+                message,
+                "Я понял:\n"
+                f"{heard_text}\n\n"
+                f"Но не смог поставить reminder: {first_error}\n\n"
+                "Попробуй сказать так: «завтра в 11 купить молоко»"
+            )
+            return
 
     add_reminder(
         chat_id=chat.id,
@@ -3421,8 +3681,8 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
     when_str = remind_at.strftime("%d.%m %H:%M")
     await safe_reply(
         message,
-        "Я услышал:\n"
-        f"{heard_text}\n\n"
+        "Я понял:\n"
+        f"{normalized}\n\n"
         f"Ок, напомню {when_str}: {reminder_text}"
     )
 
