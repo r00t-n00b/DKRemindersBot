@@ -10,8 +10,10 @@ import inspect
 import tempfile
 try:
     from google import genai
+    from google.genai import types as genai_types
 except ImportError:
     genai = None
+    genai_types = None
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
@@ -3225,7 +3227,7 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
     if not token:
         raise RuntimeError("GEMINI_API_KEY не задан")
 
-    if genai is None:
+    if genai is None or genai_types is None:
         raise RuntimeError("Пакет google-genai не установлен")
 
     tg_file = await context.bot.get_file(message.voice.file_id)
@@ -3236,22 +3238,33 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
     try:
         await tg_file.download_to_drive(tmp_path)
 
-        client = genai.Client(api_key=token)
+        with open(tmp_path, "rb") as audio_file:
+            audio_bytes = audio_file.read()
 
-        uploaded = client.files.upload(file=tmp_path)
+        if not audio_bytes:
+            raise RuntimeError("Telegram voice file пустой")
+
+        client = genai.Client(api_key=token)
 
         result = client.models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=[
-                uploaded,
+                genai_types.Part.from_bytes(
+                    data=audio_bytes,
+                    mime_type="audio/ogg",
+                ),
                 (
-                    "Transcribe this voice message exactly as plain text. "
+                    "Transcribe this Telegram voice message exactly as plain text. "
                     "Return only the spoken text, no quotes, no commentary."
                 ),
             ],
         )
 
-        return (getattr(result, "text", "") or "").strip()
+        text = (getattr(result, "text", "") or "").strip()
+        if not text:
+            raise RuntimeError("Gemini вернул пустую транскрипцию")
+
+        return text
     finally:
         try:
             os.remove(tmp_path)
@@ -3272,11 +3285,12 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
 
     try:
         heard_text = await transcribe_voice_message(update, context)
-    except Exception:
+    except Exception as e:
         logger.exception("Не смог распознать голосовое сообщение")
         await safe_reply(
             message,
-            "Не смог распознать голосовое. Попробуй текстом или повтори голосом чуть четче."
+            "Не смог распознать голосовое.\n"
+            f"Техническая ошибка: {type(e).__name__}: {e}"
         )
         return
 
