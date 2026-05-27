@@ -3241,6 +3241,18 @@ def _is_unsupported_gemini_model_error(exc: Exception) -> bool:
         )
     )
 
+def _is_gemini_quota_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return (
+        "429" in text
+        and (
+            "resource_exhausted" in text
+            or "quota exceeded" in text
+            or "check your plan and billing" in text
+            or "free_tier" in text
+            or "limit: 0" in text
+        )
+    )
 
 async def _gemini_transcribe_audio_with_retries(
     *,
@@ -3250,7 +3262,7 @@ async def _gemini_transcribe_audio_with_retries(
 ) -> str:
     models_raw = os.environ.get(
         "GEMINI_TRANSCRIBE_MODELS",
-        "gemini-2.5-flash-lite,gemini-2.5-flash,gemini-2.0-flash-lite,gemini-2.0-flash",
+        "gemini-2.5-flash-lite,gemini-2.5-flash",
     )
 
     models = [m.strip() for m in models_raw.split(",") if m.strip()]
@@ -3286,20 +3298,28 @@ async def _gemini_transcribe_audio_with_retries(
                 last_error = e
 
                 unsupported_model = _is_unsupported_gemini_model_error(e)
-                transient = _is_transient_gemini_error(e)
+                quota_error = _is_gemini_quota_error(e)
+                transient = _is_transient_gemini_error(e) and not quota_error
 
                 logger.warning(
-                    "Gemini transcription failed model=%s attempt=%s transient=%s unsupported_model=%s error=%s: %s",
+                    "Gemini transcription failed model=%s attempt=%s transient=%s unsupported_model=%s quota_error=%s error=%s: %s",
                     model,
                     attempt,
                     transient,
                     unsupported_model,
+                    quota_error,
                     type(e).__name__,
                     e,
                 )
 
                 if unsupported_model:
                     break
+
+                if quota_error:
+                    raise RuntimeError(
+                        "Gemini quota/billing limit exceeded. "
+                        "Проверь лимиты проекта или включи billing для Gemini API."
+                    ) from e
 
                 if not transient:
                     raise
