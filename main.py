@@ -7,6 +7,11 @@ import json
 import secrets
 import calendar
 import inspect
+import tempfile
+try:
+    from google import genai
+except ImportError:
+    genai = None
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
@@ -25,6 +30,8 @@ if TYPE_CHECKING:
         CommandHandler,
         ContextTypes,
         CallbackQueryHandler,
+        MessageHandler,
+        filters,
     )
 else:
     try:
@@ -34,11 +41,18 @@ else:
             CommandHandler,
             ContextTypes,
             CallbackQueryHandler,
+            MessageHandler,
+            filters,
         )
     except ImportError:
         # pytest / test environment
         Update = Chat = InlineKeyboardButton = InlineKeyboardMarkup = object
-        Application = CommandHandler = ContextTypes = CallbackQueryHandler = object
+        Application = CommandHandler = ContextTypes = CallbackQueryHandler = MessageHandler = object
+
+        class _DummyFilters:
+            VOICE = "voice"
+
+        filters = _DummyFilters()
 
 # Тип для context в хендлерах (чтобы pytest не падал)
 try:
@@ -3152,6 +3166,153 @@ def _format_bulk_result(
 
     return " ".join(parts)
 
+def normalize_voice_reminder_text(text: str) -> str:
+    """
+    MVP-нормализация голосового reminder-а.
+
+    Примеры:
+    - "завтра в 11 купить молоко" -> "завтра 11:00 - купить молоко"
+    - "tomorrow at 11 buy milk" -> "tomorrow 11:00 - buy milk"
+    - "23.10 напоминание" остается как есть и парсится обычным no-dash fallback
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+
+    s = re.sub(r"\s+", " ", raw).strip()
+
+    # Убираем Slack-style "me" в начале, если STT его оставил.
+    if s.lower().startswith("me "):
+        s = s[3:].strip()
+
+    # "завтра в 11 купить" / "tomorrow at 11 buy"
+    m = re.match(
+        r"^(?P<date>today|tomorrow|day after tomorrow|сегодня|завтра|послезавтра)\s+"
+        r"(?:(?:в|at)\s+)?"
+        r"(?P<hour>\d{1,2})"
+        r"(?::(?P<minute>\d{2}))?"
+        r"\s+(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        hour = int(m.group("hour"))
+        minute = int(m.group("minute") or "0")
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            return f"{m.group('date')} {hour:02d}:{minute:02d} - {m.group('text').strip()}"
+
+    # "в 11 купить" / "at 11 buy" -> "11:00 - buy"
+    m = re.match(
+        r"^(?:(?:в|at)\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s+(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        hour = int(m.group("hour"))
+        minute = int(m.group("minute") or "0")
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            return f"{hour:02d}:{minute:02d} - {m.group('text').strip()}"
+
+    return s
+
+
+async def transcribe_voice_message(update: Update, context: CTX) -> str:
+    message = update.effective_message
+    if message is None or message.voice is None:
+        raise ValueError("Нет голосового сообщения")
+
+    token = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not token:
+        raise RuntimeError("GEMINI_API_KEY не задан")
+
+    if genai is None:
+        raise RuntimeError("Пакет google-genai не установлен")
+
+    tg_file = await context.bot.get_file(message.voice.file_id)
+
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        await tg_file.download_to_drive(tmp_path)
+
+        client = genai.Client(api_key=token)
+
+        uploaded = client.files.upload(file=tmp_path)
+
+        result = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=[
+                uploaded,
+                (
+                    "Transcribe this voice message exactly as plain text. "
+                    "Return only the spoken text, no quotes, no commentary."
+                ),
+            ],
+        )
+
+        return (getattr(result, "text", "") or "").strip()
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+async def voice_remind_command(update: Update, context: CTX) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+    user = update.effective_user
+
+    if chat is None or message is None or user is None:
+        return
+
+    # MVP: в группах голосовые игнорируем, чтобы бот не слушал всё подряд.
+    if chat.type != Chat.PRIVATE:
+        return
+
+    try:
+        heard_text = await transcribe_voice_message(update, context)
+    except Exception:
+        logger.exception("Не смог распознать голосовое сообщение")
+        await safe_reply(
+            message,
+            "Не смог распознать голосовое. Попробуй текстом или повтори голосом чуть четче."
+        )
+        return
+
+    if not heard_text:
+        await safe_reply(message, "Не услышал текст в голосовом.")
+        return
+
+    normalized = normalize_voice_reminder_text(heard_text)
+
+    try:
+        remind_at, reminder_text = parse_date_time_smart(normalized, get_now())
+    except ValueError as e:
+        await safe_reply(
+            message,
+            "Я услышал:\n"
+            f"{heard_text}\n\n"
+            f"Но не смог поставить reminder: {e}\n\n"
+            "Попробуй сказать так: «завтра в 11 купить молоко»"
+        )
+        return
+
+    add_reminder(
+        chat_id=chat.id,
+        text=reminder_text,
+        remind_at=remind_at,
+        created_by=user.id,
+    )
+
+    when_str = remind_at.strftime("%d.%m %H:%M")
+    await safe_reply(
+        message,
+        "Я услышал:\n"
+        f"{heard_text}\n\n"
+        f"Ок, напомню {when_str}: {reminder_text}"
+    )
+
 async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -5091,6 +5252,7 @@ def main() -> None:
     application.add_handler(CommandHandler("linkuser", linkuser_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
+    application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
