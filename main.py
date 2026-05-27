@@ -932,22 +932,38 @@ def get_unacked_sent_before(dt: datetime) -> List[Dict[str, Any]]:
     return rows
 
 
+def _find_existing_alias_casefold(
+    c: sqlite3.Cursor,
+    table: str,
+    alias: str,
+    created_by: int,
+) -> Optional[str]:
+    target = alias.casefold()
+
+    c.execute(
+        f"""
+        SELECT alias
+        FROM {table}
+        WHERE created_by = ?
+        """,
+        (created_by,),
+    )
+
+    for row in c.fetchall():
+        existing_alias = str(row[0])
+        if existing_alias.casefold() == target:
+            return existing_alias
+
+    return None
+
+
 def set_chat_alias(alias: str, chat_id: int, title: Optional[str], created_by: int = 0) -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute(
-        """
-        SELECT alias
-        FROM chat_aliases
-        WHERE alias = ? COLLATE NOCASE AND created_by = ?
-        """,
-        (alias, created_by),
-    )
-    existing = c.fetchone()
+    existing_alias = _find_existing_alias_casefold(c, "chat_aliases", alias, created_by)
 
-    if existing:
-        existing_alias = str(existing[0])
+    if existing_alias is not None:
         c.execute(
             """
             UPDATE chat_aliases
@@ -972,16 +988,23 @@ def set_chat_alias(alias: str, chat_id: int, title: Optional[str], created_by: i
 def get_chat_id_by_alias(alias: str, created_by: int = 0) -> Optional[int]:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    existing_alias = _find_existing_alias_casefold(c, "chat_aliases", alias, created_by)
+    if existing_alias is None:
+        conn.close()
+        return None
+
     c.execute(
         """
         SELECT chat_id
         FROM chat_aliases
-        WHERE alias = ? COLLATE NOCASE AND created_by = ?
+        WHERE alias = ? AND created_by = ?
         """,
-        (alias, created_by),
+        (existing_alias, created_by),
     )
     row = c.fetchone()
     conn.close()
+
     if row:
         return int(row[0])
     return None
@@ -1008,13 +1031,19 @@ def get_user_alias(alias: str, created_by: int) -> Optional[Dict[str, Any]]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
+
+    existing_alias = _find_existing_alias_casefold(c, "user_aliases", alias, created_by)
+    if existing_alias is None:
+        conn.close()
+        return None
+
     c.execute(
         """
         SELECT alias, user_id, chat_id, username, created_by, created_at
         FROM user_aliases
-        WHERE alias = ? COLLATE NOCASE AND created_by = ?
+        WHERE alias = ? AND created_by = ?
         """,
-        (alias, created_by),
+        (existing_alias, created_by),
     )
     row = c.fetchone()
     conn.close()
@@ -1037,18 +1066,9 @@ def set_user_alias(
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute(
-        """
-        SELECT alias
-        FROM user_aliases
-        WHERE alias = ? COLLATE NOCASE AND created_by = ?
-        """,
-        (alias, created_by),
-    )
-    existing = c.fetchone()
+    existing_alias = _find_existing_alias_casefold(c, "user_aliases", alias, created_by)
 
-    if existing:
-        existing_alias = str(existing[0])
+    if existing_alias is not None:
         c.execute(
             """
             UPDATE user_aliases
@@ -1096,22 +1116,33 @@ def get_all_user_aliases(created_by: int) -> List[Tuple[str, int]]:
 def delete_chat_alias(alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    existing_alias = _find_existing_alias_casefold(c, "chat_aliases", alias, created_by)
+    if existing_alias is None:
+        conn.close()
+        return False
+
     c.execute(
-        "DELETE FROM chat_aliases WHERE alias = ? COLLATE NOCASE AND created_by = ?",
-        (alias, created_by),
+        "DELETE FROM chat_aliases WHERE alias = ? AND created_by = ?",
+        (existing_alias, created_by),
     )
     deleted = c.rowcount > 0
     conn.commit()
     conn.close()
     return deleted
 
-
 def delete_user_alias(alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    existing_alias = _find_existing_alias_casefold(c, "user_aliases", alias, created_by)
+    if existing_alias is None:
+        conn.close()
+        return False
+
     c.execute(
-        "DELETE FROM user_aliases WHERE alias = ? COLLATE NOCASE AND created_by = ?",
-        (alias, created_by),
+        "DELETE FROM user_aliases WHERE alias = ? AND created_by = ?",
+        (existing_alias, created_by),
     )
     deleted = c.rowcount > 0
     conn.commit()
@@ -1123,31 +1154,13 @@ def rename_chat_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute(
-        """
-        SELECT alias
-        FROM chat_aliases
-        WHERE alias = ? COLLATE NOCASE AND created_by = ?
-        """,
-        (old_alias, created_by),
-    )
-    old_row = c.fetchone()
-    if old_row is None:
+    existing_old_alias = _find_existing_alias_casefold(c, "chat_aliases", old_alias, created_by)
+    if existing_old_alias is None:
         conn.close()
         return False
 
-    existing_old_alias = str(old_row[0])
-
     if old_alias.casefold() != new_alias.casefold():
-        c.execute(
-            """
-            SELECT 1
-            FROM chat_aliases
-            WHERE alias = ? COLLATE NOCASE AND created_by = ?
-            """,
-            (new_alias, created_by),
-        )
-        if c.fetchone() is not None:
+        if _find_existing_alias_casefold(c, "chat_aliases", new_alias, created_by) is not None:
             conn.close()
             raise ValueError(f"Chat-alias '{new_alias}' уже существует")
 
@@ -1168,31 +1181,13 @@ def rename_user_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute(
-        """
-        SELECT alias
-        FROM user_aliases
-        WHERE alias = ? COLLATE NOCASE AND created_by = ?
-        """,
-        (old_alias, created_by),
-    )
-    old_row = c.fetchone()
-    if old_row is None:
+    existing_old_alias = _find_existing_alias_casefold(c, "user_aliases", old_alias, created_by)
+    if existing_old_alias is None:
         conn.close()
         return False
 
-    existing_old_alias = str(old_row[0])
-
     if old_alias.casefold() != new_alias.casefold():
-        c.execute(
-            """
-            SELECT 1
-            FROM user_aliases
-            WHERE alias = ? COLLATE NOCASE AND created_by = ?
-            """,
-            (new_alias, created_by),
-        )
-        if c.fetchone() is not None:
+        if _find_existing_alias_casefold(c, "user_aliases", new_alias, created_by) is not None:
             conn.close()
             raise ValueError(f"User-alias '{new_alias}' уже существует")
 
