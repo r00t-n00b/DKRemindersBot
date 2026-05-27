@@ -159,9 +159,11 @@ def init_db() -> None:
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS chat_aliases (
-            alias TEXT PRIMARY KEY,
+            alias TEXT NOT NULL,
             chat_id INTEGER NOT NULL,
-            title TEXT
+            title TEXT,
+            created_by INTEGER NOT NULL,
+            PRIMARY KEY (created_by, alias)
         )
         """
     )
@@ -188,12 +190,13 @@ def init_db() -> None:
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS user_aliases (
-            alias TEXT PRIMARY KEY,
+            alias TEXT NOT NULL,
             user_id INTEGER NOT NULL,
             chat_id INTEGER NOT NULL,
             username TEXT,
             created_by INTEGER NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (created_by, alias)
         )
         """
     )
@@ -214,6 +217,83 @@ def init_db() -> None:
     c.execute(
         "CREATE INDEX IF NOT EXISTS idx_user_chats_username ON user_chats(username)"
     )
+
+    conn.commit()
+    conn.close()
+
+def migrate_alias_tables_to_owner_scope() -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    def table_info(table_name: str):
+        c.execute(f"PRAGMA table_info({table_name})")
+        return c.fetchall()
+
+    def primary_key_columns(table_name: str) -> List[str]:
+        rows = table_info(table_name)
+        pk_rows = [row for row in rows if int(row[5]) > 0]
+        pk_rows.sort(key=lambda row: int(row[5]))
+        return [str(row[1]) for row in pk_rows]
+
+    # user_aliases: старую таблицу можно безопасно мигрировать, потому created_by уже есть.
+    user_cols = [str(row[1]) for row in table_info("user_aliases")]
+    user_pk = primary_key_columns("user_aliases")
+
+    if user_cols and user_pk != ["created_by", "alias"]:
+        c.execute("ALTER TABLE user_aliases RENAME TO user_aliases_old_owner_scope")
+        c.execute(
+            """
+            CREATE TABLE user_aliases (
+                alias TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                username TEXT,
+                created_by INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (created_by, alias)
+            )
+            """
+        )
+        c.execute(
+            """
+            INSERT OR IGNORE INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
+            SELECT alias, user_id, chat_id, username, created_by, created_at
+            FROM user_aliases_old_owner_scope
+            WHERE created_by IS NOT NULL
+            """
+        )
+        c.execute("DROP TABLE user_aliases_old_owner_scope")
+
+    # chat_aliases: старую таблицу безопасно восстановить нельзя, потому owner там не хранился.
+    # Поэтому старые global chat-aliases намеренно не мигрируем. Их надо пересоздать через /linkchat.
+    chat_cols = [str(row[1]) for row in table_info("chat_aliases")]
+    chat_pk = primary_key_columns("chat_aliases")
+
+    if chat_cols and chat_pk != ["created_by", "alias"]:
+        c.execute("ALTER TABLE chat_aliases RENAME TO chat_aliases_old_owner_scope")
+        c.execute(
+            """
+            CREATE TABLE chat_aliases (
+                alias TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                title TEXT,
+                created_by INTEGER NOT NULL,
+                PRIMARY KEY (created_by, alias)
+            )
+            """
+        )
+
+        if "created_by" in chat_cols:
+            c.execute(
+                """
+                INSERT OR IGNORE INTO chat_aliases(alias, chat_id, title, created_by)
+                SELECT alias, chat_id, title, created_by
+                FROM chat_aliases_old_owner_scope
+                WHERE created_by IS NOT NULL
+                """
+            )
+
+        c.execute("DROP TABLE chat_aliases_old_owner_scope")
 
     conn.commit()
     conn.close()
@@ -852,27 +932,34 @@ def get_unacked_sent_before(dt: datetime) -> List[Dict[str, Any]]:
     return rows
 
 
-def set_chat_alias(alias: str, chat_id: int, title: Optional[str]) -> None:
+def set_chat_alias(alias: str, chat_id: int, title: Optional[str], created_by: int = 0) -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
         """
-        INSERT INTO chat_aliases(alias, chat_id, title)
-        VALUES (?, ?, ?)
-        ON CONFLICT(alias) DO UPDATE SET
+        INSERT INTO chat_aliases(alias, chat_id, title, created_by)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(created_by, alias) DO UPDATE SET
             chat_id = excluded.chat_id,
             title = excluded.title
         """,
-        (alias, chat_id, title),
+        (alias, chat_id, title, created_by),
     )
     conn.commit()
     conn.close()
 
 
-def get_chat_id_by_alias(alias: str) -> Optional[int]:
+def get_chat_id_by_alias(alias: str, created_by: int = 0) -> Optional[int]:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT chat_id FROM chat_aliases WHERE alias = ?", (alias,))
+    c.execute(
+        """
+        SELECT chat_id
+        FROM chat_aliases
+        WHERE alias = ? AND created_by = ?
+        """,
+        (alias, created_by),
+    )
     row = c.fetchone()
     conn.close()
     if row:
@@ -880,15 +967,24 @@ def get_chat_id_by_alias(alias: str) -> Optional[int]:
     return None
 
 
-def get_all_aliases():
+def get_all_aliases(created_by: int):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT alias, chat_id, title FROM chat_aliases ORDER BY alias")
+    c.execute(
+        """
+        SELECT alias, chat_id, title
+        FROM chat_aliases
+        WHERE created_by = ?
+        ORDER BY alias COLLATE NOCASE
+        """,
+        (created_by,),
+    )
     rows = c.fetchall()
     conn.close()
     return rows
 
-def get_user_alias(alias: str) -> Optional[Dict[str, Any]]:
+
+def get_user_alias(alias: str, created_by: int) -> Optional[Dict[str, Any]]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -896,9 +992,9 @@ def get_user_alias(alias: str) -> Optional[Dict[str, Any]]:
         """
         SELECT alias, user_id, chat_id, username, created_by, created_at
         FROM user_aliases
-        WHERE alias = ?
+        WHERE alias = ? AND created_by = ?
         """,
-        (alias,),
+        (alias, created_by),
     )
     row = c.fetchone()
     conn.close()
@@ -924,11 +1020,10 @@ def set_user_alias(
         """
         INSERT INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(alias) DO UPDATE SET
+        ON CONFLICT(created_by, alias) DO UPDATE SET
             user_id = excluded.user_id,
             chat_id = excluded.chat_id,
             username = excluded.username,
-            created_by = excluded.created_by,
             created_at = excluded.created_at
         """,
         (alias, user_id, chat_id, username, created_by, now_iso),
@@ -937,115 +1032,124 @@ def set_user_alias(
     conn.close()
 
 
-def get_user_alias_chat_id(alias: str) -> Optional[int]:
-    row = get_user_alias(alias)
+def get_user_alias_chat_id(alias: str, created_by: int = 0) -> Optional[int]:
+    row = get_user_alias(alias, created_by)
     if not row:
         return None
     return int(row["chat_id"])
 
-def get_all_user_aliases() -> List[Tuple[str, int]]:
+
+def get_all_user_aliases(created_by: int) -> List[Tuple[str, int]]:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
         """
         SELECT alias, chat_id
         FROM user_aliases
+        WHERE created_by = ?
         ORDER BY alias COLLATE NOCASE
-        """
+        """,
+        (created_by,),
     )
     rows = c.fetchall()
     conn.close()
     return [(str(alias), int(chat_id)) for alias, chat_id in rows]
 
-def delete_chat_alias(alias: str) -> bool:
+
+def delete_chat_alias(alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("DELETE FROM chat_aliases WHERE alias = ?", (alias,))
+    c.execute(
+        "DELETE FROM chat_aliases WHERE alias = ? AND created_by = ?",
+        (alias, created_by),
+    )
     deleted = c.rowcount > 0
     conn.commit()
     conn.close()
     return deleted
 
 
-def delete_user_alias(alias: str) -> bool:
+def delete_user_alias(alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("DELETE FROM user_aliases WHERE alias = ?", (alias,))
+    c.execute(
+        "DELETE FROM user_aliases WHERE alias = ? AND created_by = ?",
+        (alias, created_by),
+    )
     deleted = c.rowcount > 0
     conn.commit()
     conn.close()
     return deleted
 
 
-def rename_chat_alias(old_alias: str, new_alias: str) -> bool:
+def rename_chat_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute("SELECT 1 FROM chat_aliases WHERE alias = ?", (old_alias,))
+    c.execute(
+        "SELECT 1 FROM chat_aliases WHERE alias = ? AND created_by = ?",
+        (old_alias, created_by),
+    )
     old_exists = c.fetchone() is not None
     if not old_exists:
         conn.close()
         return False
 
     if old_alias != new_alias:
-        c.execute("SELECT 1 FROM chat_aliases WHERE alias = ?", (new_alias,))
+        c.execute(
+            "SELECT 1 FROM chat_aliases WHERE alias = ? AND created_by = ?",
+            (new_alias, created_by),
+        )
         if c.fetchone() is not None:
             conn.close()
             raise ValueError(f"Chat-alias '{new_alias}' уже существует")
 
     c.execute(
-        "UPDATE chat_aliases SET alias = ? WHERE alias = ?",
-        (new_alias, old_alias),
+        """
+        UPDATE chat_aliases
+        SET alias = ?
+        WHERE alias = ? AND created_by = ?
+        """,
+        (new_alias, old_alias, created_by),
     )
     conn.commit()
     conn.close()
     return True
 
 
-def rename_user_alias(old_alias: str, new_alias: str) -> bool:
+def rename_user_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute("SELECT 1 FROM user_aliases WHERE alias = ?", (old_alias,))
+    c.execute(
+        "SELECT 1 FROM user_aliases WHERE alias = ? AND created_by = ?",
+        (old_alias, created_by),
+    )
     old_exists = c.fetchone() is not None
     if not old_exists:
         conn.close()
         return False
 
     if old_alias != new_alias:
-        c.execute("SELECT 1 FROM user_aliases WHERE alias = ?", (new_alias,))
+        c.execute(
+            "SELECT 1 FROM user_aliases WHERE alias = ? AND created_by = ?",
+            (new_alias, created_by),
+        )
         if c.fetchone() is not None:
             conn.close()
             raise ValueError(f"User-alias '{new_alias}' уже существует")
 
     c.execute(
-        "UPDATE user_aliases SET alias = ? WHERE alias = ?",
-        (new_alias, old_alias),
+        """
+        UPDATE user_aliases
+        SET alias = ?
+        WHERE alias = ? AND created_by = ?
+        """,
+        (new_alias, old_alias, created_by),
     )
     conn.commit()
     conn.close()
     return True
-
-def parse_renamealias_args(args: List[str]) -> Tuple[Optional[str], Optional[str]]:
-    raw = " ".join(args or []).strip()
-    if not raw:
-        return None, None
-
-    if "->" in raw:
-        old_alias, new_alias = raw.split("->", 1)
-        old_alias = old_alias.strip()
-        new_alias = new_alias.strip()
-        if old_alias and new_alias:
-            return old_alias, new_alias
-        return None, None
-
-    if len(args or []) >= 2:
-        old_alias = args[0].strip()
-        new_alias = " ".join(args[1:]).strip()
-        if old_alias and new_alias:
-            return old_alias, new_alias
-
-    return None, None
 
 def get_private_chat_id_by_username(username: str) -> Optional[int]:
     if not username:
@@ -3122,52 +3226,61 @@ async def help_command(update: Update, context: CTX) -> None:
 async def linkchat_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
+    user = update.effective_user
 
-    if chat is None or message is None:
+    if chat is None or message is None or user is None:
         return
 
     if chat.type == Chat.PRIVATE:
-        await safe_reply(message,"Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать.")
+        await safe_reply(
+            message,
+            "Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать."
+        )
         return
 
     if not context.args:
-        await safe_reply(message,"Формат: /linkchat alias\nНапример: /linkchat football")
+        await safe_reply(
+            message,
+            "Формат: /linkchat alias\nНапример: /linkchat football"
+        )
         return
 
     alias = context.args[0].strip()
     if not alias:
-        await safe_reply(message,"Alias не должен быть пустым.")
+        await safe_reply(message, "Alias не должен быть пустым.")
         return
 
     title = chat.title or chat.username or str(chat.id)
 
-    set_chat_alias(
-        chat_id=chat.id,
+    set_chat_alias_for_user(
         alias=alias,
+        chat_id=chat.id,
         title=title,
+        created_by=user.id,
     )
 
     await safe_reply(
         message,
-        f"Ок, запомнил этот чат как '{alias}'.\n"
+        f"Ок, запомнил этот чат как '{alias}' для тебя.\n"
         f"Теперь в личке можно писать:\n"
         f"/remind {alias} 28.11 12:00 - завтра футбол"
     )
 
-import re
 from typing import Tuple
 
 async def aliases_command(update: Update, context: CTX) -> None:
     message = update.effective_message
-    if message is None:
+    user = update.effective_user
+
+    if message is None or user is None:
         return
 
     user_aliases = []
     chat_aliases = []
 
     try:
-        for alias, chat_id in get_all_user_aliases():
-            row = get_user_alias(alias) or {}
+        for alias, chat_id in get_all_user_aliases(user.id):
+            row = get_user_alias(alias, user.id) or {}
             username = row.get("username")
             if username:
                 user_aliases.append(f"• {alias} -> @{username} / chat_id={chat_id}")
@@ -3179,7 +3292,7 @@ async def aliases_command(update: Update, context: CTX) -> None:
         return
 
     try:
-        for alias, chat_id, title in get_all_aliases():
+        for alias, chat_id, title in get_all_aliases(user.id):
             if title:
                 chat_aliases.append(f"• {alias} -> {title} / chat_id={chat_id}")
             else:
@@ -3216,7 +3329,6 @@ async def aliases_command(update: Update, context: CTX) -> None:
 
     await safe_reply(message, "\n".join(parts))
 
-
 async def unalias_command(update: Update, context: CTX) -> None:
     message = update.effective_message
     if message is None:
@@ -3231,8 +3343,12 @@ async def unalias_command(update: Update, context: CTX) -> None:
         )
         return
 
-    deleted_user = delete_user_alias(alias)
-    deleted_chat = delete_chat_alias(alias)
+    user = update.effective_user
+    if user is None:
+        return
+
+    deleted_user = delete_user_alias(alias, user.id)
+    deleted_chat = delete_chat_alias(alias, user.id)
 
     if not deleted_user and not deleted_chat:
         await safe_reply(message, f"Alias '{alias}' не найден.")
@@ -3249,6 +3365,28 @@ async def unalias_command(update: Update, context: CTX) -> None:
         f"Удалил alias '{alias}' из: {', '.join(deleted_parts)}."
     )
 
+def parse_renamealias_args(args: List[str]) -> Tuple[Optional[str], Optional[str]]:
+    if not args:
+        return None, None
+
+    if "->" in args:
+        arrow_idx = args.index("->")
+        old_alias = " ".join(args[:arrow_idx]).strip()
+        new_alias = " ".join(args[arrow_idx + 1:]).strip()
+        if not old_alias or not new_alias:
+            return None, None
+        return old_alias, new_alias
+
+    if len(args) < 2:
+        return None, None
+
+    old_alias = args[0].strip()
+    new_alias = " ".join(args[1:]).strip()
+
+    if not old_alias or not new_alias:
+        return None, None
+
+    return old_alias, new_alias
 
 async def renamealias_command(update: Update, context: CTX) -> None:
     message = update.effective_message
@@ -3265,8 +3403,12 @@ async def renamealias_command(update: Update, context: CTX) -> None:
         return
 
     try:
-        renamed_user = rename_user_alias(old_alias, new_alias)
-        renamed_chat = rename_chat_alias(old_alias, new_alias)
+        user = update.effective_user
+        if user is None:
+            return
+        
+        renamed_user = rename_user_alias(old_alias, new_alias, user.id)
+        renamed_chat = rename_chat_alias(old_alias, new_alias, user.id)
     except ValueError as e:
         await safe_reply(message, str(e))
         return
@@ -3752,24 +3894,23 @@ def _is_gemini_quota_error(exc: Exception) -> bool:
         )
     )
 
-def _format_known_aliases_for_voice_prompt() -> str:
+def _format_known_aliases_for_voice_prompt(created_by: int) -> str:
     """
-    Собираем известные aliases для Gemini voice-normalization.
+    Собираем известные aliases текущего пользователя для Gemini voice-normalization.
 
-    Gemini не должен придумывать aliases из воздуха.
-    Он может использовать только aliases из этого списка.
+    Gemini не должен видеть чужие aliases и не должен придумывать aliases из воздуха.
     """
     user_aliases = []
     chat_aliases = []
 
     try:
-        user_aliases = [a for a, _chat_id in get_all_user_aliases()]
+        user_aliases = [a for a, _chat_id in get_all_user_aliases(created_by)]
     except Exception:
         logger.exception("Не смог получить user aliases для voice prompt")
         user_aliases = []
 
     try:
-        chat_aliases = [a for a, _chat_id, _title in get_all_aliases()]
+        chat_aliases = [a for a, _chat_id, _title in get_all_aliases(created_by)]
     except Exception:
         logger.exception("Не смог получить chat aliases для voice prompt")
         chat_aliases = []
@@ -3912,6 +4053,10 @@ async def _gemini_transcribe_audio_with_retries(
 
 async def transcribe_voice_message(update: Update, context: CTX) -> str:
     message = update.effective_message
+    user = update.effective_user
+    if user is None:
+        raise ValueError("Нет пользователя")
+
     if message is None or message.voice is None:
         raise ValueError("Нет голосового сообщения")
 
@@ -3941,7 +4086,7 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
         return await _gemini_transcribe_audio_with_retries(
             client=client,
             audio_bytes=audio_bytes,
-            aliases_prompt=_format_known_aliases_for_voice_prompt(),
+            aliases_prompt=_format_known_aliases_for_voice_prompt(update.effective_user.id),
         )
     finally:
         try:
@@ -4014,6 +4159,44 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
     )
 
     await remind_command(proxy_update, context)
+
+def get_chat_id_by_alias_for_user(alias: str, created_by: int):
+    try:
+        return get_chat_id_by_alias(alias, created_by)
+    except TypeError as original_error:
+        try:
+            return get_chat_id_by_alias(alias)
+        except TypeError:
+            raise original_error
+
+
+def get_user_alias_chat_id_for_user(alias: str, created_by: int):
+    try:
+        return get_user_alias_chat_id(alias, created_by)
+    except TypeError as original_error:
+        try:
+            return get_user_alias_chat_id(alias)
+        except TypeError:
+            raise original_error
+
+
+def set_chat_alias_for_user(alias: str, chat_id: int, title: Optional[str], created_by: int) -> None:
+    try:
+        set_chat_alias(
+            alias=alias,
+            chat_id=chat_id,
+            title=title,
+            created_by=created_by,
+        )
+    except TypeError as original_error:
+        try:
+            set_chat_alias(
+                alias=alias,
+                chat_id=chat_id,
+                title=title,
+            )
+        except TypeError:
+            raise original_error
 
 async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
@@ -4094,7 +4277,7 @@ async def remind_command(update: Update, context: CTX) -> None:
 
                 # alias в начале в группе запрещаем
                 try:
-                    alias_chat_id = get_chat_id_by_alias(first_token)
+                    alias_chat_id = get_chat_id_by_alias_for_user(first_token, user.id)
                 except Exception:
                     alias_chat_id = None
 
@@ -4205,7 +4388,7 @@ async def remind_command(update: Update, context: CTX) -> None:
 
             # alias != @username (этот кейс обработан выше)
             if first_token and not first_token.startswith("@"):
-                user_alias_chat_id = get_user_alias_chat_id(first_token)
+                user_alias_chat_id = get_user_alias_chat_id_for_user(first_token, user.id)
                 if user_alias_chat_id is not None:
                     rest_first_line = first_line[len(first_token):].lstrip()
                     rest_lines = "\n".join(raw_args.splitlines()[1:])
@@ -4228,7 +4411,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                             f"Пример:\n/remind {first_token} 28.11 12:00 - завтра футбол"
                         )
                         return
-                alias_chat_id = get_chat_id_by_alias(first_token)
+                alias_chat_id = get_chat_id_by_alias_for_user(first_token, user.id)
                 if alias_chat_id is not None:
                     # убираем alias из raw_args (и single, и bulk)
                     rest_first_line = first_line[len(first_token):].lstrip()
@@ -4490,7 +4673,7 @@ async def linkuser_command(update: Update, context: CTX) -> None:
         await safe_reply(message, "Вторым аргументом нужен @username. Пример: /linkuser misha @friend")
         return
 
-    if get_chat_id_by_alias(alias) is not None:
+    if get_chat_id_by_alias(alias, user.id) is not None:
         await safe_reply(message, f"Alias '{alias}' уже занят chat-alias. Выбери другое имя.")
         return
 
@@ -4604,14 +4787,14 @@ async def list_command(update: Update, context: CTX) -> None:
     if chat.type == Chat.PRIVATE and context.args:
         alias = context.args[0].strip()
         if alias:
-            user_alias_chat_id = get_user_alias_chat_id(alias)
+            user_alias_chat_id = get_user_alias_chat_id_for_user(alias, user.id)
             if user_alias_chat_id is not None:
                 target_chat_id = user_alias_chat_id
                 used_alias = alias
             else:
-                alias_chat_id = get_chat_id_by_alias(alias)
+                alias_chat_id = get_chat_id_by_alias_for_user(alias, user.id)
                 if alias_chat_id is None:
-                    aliases = get_all_aliases()
+                    aliases = get_all_aliases(user.id)
                     if not aliases:
                         await safe_reply(
                             message,
@@ -5849,6 +6032,7 @@ async def reminders_nudge_worker(app: Application) -> None:
 
 async def post_init(application: Application) -> None:
     init_db()
+    migrate_alias_tables_to_owner_scope()
     application.create_task(reminders_worker(application))
     application.create_task(reminders_nudge_worker(application))
     logger.info("Фоновый worker напоминаний запущен из post_init")
