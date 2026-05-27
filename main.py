@@ -957,6 +957,96 @@ def get_all_user_aliases() -> List[Tuple[str, int]]:
     conn.close()
     return [(str(alias), int(chat_id)) for alias, chat_id in rows]
 
+def delete_chat_alias(alias: str) -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM chat_aliases WHERE alias = ?", (alias,))
+    deleted = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def delete_user_alias(alias: str) -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM user_aliases WHERE alias = ?", (alias,))
+    deleted = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def rename_chat_alias(old_alias: str, new_alias: str) -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute("SELECT 1 FROM chat_aliases WHERE alias = ?", (old_alias,))
+    old_exists = c.fetchone() is not None
+    if not old_exists:
+        conn.close()
+        return False
+
+    if old_alias != new_alias:
+        c.execute("SELECT 1 FROM chat_aliases WHERE alias = ?", (new_alias,))
+        if c.fetchone() is not None:
+            conn.close()
+            raise ValueError(f"Chat-alias '{new_alias}' уже существует")
+
+    c.execute(
+        "UPDATE chat_aliases SET alias = ? WHERE alias = ?",
+        (new_alias, old_alias),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def rename_user_alias(old_alias: str, new_alias: str) -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute("SELECT 1 FROM user_aliases WHERE alias = ?", (old_alias,))
+    old_exists = c.fetchone() is not None
+    if not old_exists:
+        conn.close()
+        return False
+
+    if old_alias != new_alias:
+        c.execute("SELECT 1 FROM user_aliases WHERE alias = ?", (new_alias,))
+        if c.fetchone() is not None:
+            conn.close()
+            raise ValueError(f"User-alias '{new_alias}' уже существует")
+
+    c.execute(
+        "UPDATE user_aliases SET alias = ? WHERE alias = ?",
+        (new_alias, old_alias),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+def parse_renamealias_args(args: List[str]) -> Tuple[Optional[str], Optional[str]]:
+    raw = " ".join(args or []).strip()
+    if not raw:
+        return None, None
+
+    if "->" in raw:
+        old_alias, new_alias = raw.split("->", 1)
+        old_alias = old_alias.strip()
+        new_alias = new_alias.strip()
+        if old_alias and new_alias:
+            return old_alias, new_alias
+        return None, None
+
+    if len(args or []) >= 2:
+        old_alias = args[0].strip()
+        new_alias = " ".join(args[1:]).strip()
+        if old_alias and new_alias:
+            return old_alias, new_alias
+
+    return None, None
+
 def get_private_chat_id_by_username(username: str) -> Optional[int]:
     if not username:
         return None
@@ -2982,6 +3072,11 @@ async def help_command(update: Update, context: CTX) -> None:
             /remind misha 28.11 18:00 - созвон
             /list misha
 
+        📚 Управление алиасами:
+            /aliases
+            /unalias Наташа
+            /renamealias Наташа -> Ната
+
         📨 Напоминания конкретному человеку:
             /list @username
 
@@ -3042,6 +3137,134 @@ async def linkchat_command(update: Update, context: CTX) -> None:
 import re
 from typing import Tuple
 
+async def aliases_command(update: Update, context: CTX) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+
+    user_aliases = []
+    chat_aliases = []
+
+    try:
+        for alias, chat_id in get_all_user_aliases():
+            row = get_user_alias(alias) or {}
+            username = row.get("username")
+            if username:
+                user_aliases.append(f"• {alias} -> @{username} / chat_id={chat_id}")
+            else:
+                user_aliases.append(f"• {alias} -> chat_id={chat_id}")
+    except Exception:
+        logger.exception("Не смог получить user aliases")
+        await safe_reply(message, "Не смог получить user-aliases.")
+        return
+
+    try:
+        for alias, chat_id, title in get_all_aliases():
+            if title:
+                chat_aliases.append(f"• {alias} -> {title} / chat_id={chat_id}")
+            else:
+                chat_aliases.append(f"• {alias} -> chat_id={chat_id}")
+    except Exception:
+        logger.exception("Не смог получить chat aliases")
+        await safe_reply(message, "Не смог получить chat-aliases.")
+        return
+
+    if not user_aliases and not chat_aliases:
+        await safe_reply(
+            message,
+            "Алиасов пока нет.\n\n"
+            "Создать chat-alias: /linkchat football\n"
+            "Создать user-alias: /linkuser Наташа @username"
+        )
+        return
+
+    parts = ["Текущие алиасы:"]
+
+    if user_aliases:
+        parts.append("\n👤 User aliases:")
+        parts.extend(user_aliases)
+
+    if chat_aliases:
+        parts.append("\n💬 Chat aliases:")
+        parts.extend(chat_aliases)
+
+    parts.append(
+        "\nКоманды:\n"
+        "/unalias <alias>\n"
+        "/renamealias <old> -> <new>"
+    )
+
+    await safe_reply(message, "\n".join(parts))
+
+
+async def unalias_command(update: Update, context: CTX) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+
+    alias = " ".join(getattr(context, "args", []) or []).strip()
+    if not alias:
+        await safe_reply(
+            message,
+            "Использование: /unalias <alias>\n"
+            "Пример: /unalias Наташа"
+        )
+        return
+
+    deleted_user = delete_user_alias(alias)
+    deleted_chat = delete_chat_alias(alias)
+
+    if not deleted_user and not deleted_chat:
+        await safe_reply(message, f"Alias '{alias}' не найден.")
+        return
+
+    deleted_parts = []
+    if deleted_user:
+        deleted_parts.append("user-alias")
+    if deleted_chat:
+        deleted_parts.append("chat-alias")
+
+    await safe_reply(
+        message,
+        f"Удалил alias '{alias}' из: {', '.join(deleted_parts)}."
+    )
+
+
+async def renamealias_command(update: Update, context: CTX) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+
+    old_alias, new_alias = parse_renamealias_args(getattr(context, "args", []) or [])
+    if not old_alias or not new_alias:
+        await safe_reply(
+            message,
+            "Использование: /renamealias <old> -> <new>\n"
+            "Пример: /renamealias Наташа -> Натали"
+        )
+        return
+
+    try:
+        renamed_user = rename_user_alias(old_alias, new_alias)
+        renamed_chat = rename_chat_alias(old_alias, new_alias)
+    except ValueError as e:
+        await safe_reply(message, str(e))
+        return
+
+    if not renamed_user and not renamed_chat:
+        await safe_reply(message, f"Alias '{old_alias}' не найден.")
+        return
+
+    renamed_parts = []
+    if renamed_user:
+        renamed_parts.append("user-alias")
+    if renamed_chat:
+        renamed_parts.append("chat-alias")
+
+    await safe_reply(
+        message,
+        f"Переименовал '{old_alias}' -> '{new_alias}' в: {', '.join(renamed_parts)}."
+    )
 
 def _rest_starts_like_datetime(s: str) -> bool:
     """
@@ -5709,6 +5932,9 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("linkuser", linkuser_command))
+    application.add_handler(CommandHandler("aliases", aliases_command))
+    application.add_handler(CommandHandler("unalias", unalias_command))
+    application.add_handler(CommandHandler("renamealias", renamealias_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
