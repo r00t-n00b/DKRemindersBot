@@ -3345,16 +3345,11 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
         heard_text = await transcribe_voice_message(update, context)
     except Exception as e:
         logger.exception("Не смог распознать голосовое сообщение")
-        if _is_transient_gemini_error(e):
-            await safe_reply(
-                message,
-                "Сервис распознавания сейчас перегружен. Попробуй еще раз через минуту."
-            )
-        else:
-            await safe_reply(
-                message,
-                "Не смог распознать голосовое. Попробуй текстом или повтори голосом чуть четче."
-            )
+        await safe_reply(
+            message,
+            "Не смог распознать голосовое.\n"
+            f"Техническая ошибка: {type(e).__name__}: {e}"
+        )
         return
 
     if not heard_text:
