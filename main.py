@@ -2115,6 +2115,14 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
 
 # ===== Парсинг recurring-форматов =====
 
+def _add_months_clamped(dt: datetime, months: int) -> datetime:
+    month_index = dt.month - 1 + months
+    year = dt.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+
+    return dt.replace(year=year, month=month, day=day)
+
 def looks_like_recurring(raw: str) -> bool:
     s = raw.strip().lower()
     if not s:
@@ -2228,6 +2236,35 @@ def compute_next_occurrence(
 
         return None
 
+    if pattern_type == "interval":
+        value = int(payload.get("value", 0))
+        unit = str(payload.get("unit", "")).lower()
+
+        if value <= 0:
+            return None
+
+        base = after_dt.astimezone(TZ).replace(second=0, microsecond=0)
+
+        if unit == "minutes":
+            return base + timedelta(minutes=value)
+
+        if unit == "hours":
+            return base + timedelta(hours=value)
+
+        if unit == "days":
+            candidate = base + timedelta(days=value)
+            return candidate.replace(hour=time_hour, minute=time_minute, second=0, microsecond=0)
+
+        if unit == "weeks":
+            candidate = base + timedelta(weeks=value)
+            return candidate.replace(hour=time_hour, minute=time_minute, second=0, microsecond=0)
+
+        if unit == "months":
+            candidate = _add_months_clamped(base, value)
+            return candidate.replace(hour=time_hour, minute=time_minute, second=0, microsecond=0)
+
+        return None
+
     return None
 
 
@@ -2240,6 +2277,10 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     - каждые выходные - текст
     - every month 15 10:00 - текст
     - каждый месяц 15 10:00 - текст
+    - every 3 days - текст
+    - every 2 hours - текст
+    - каждые 3 дня - текст
+    - каждые 2 часа - текст
     """
     expr, text = _split_expr_and_text(raw)
     expr_lower = expr.lower().strip()
@@ -2255,6 +2296,62 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
     pattern_type: Optional[str] = None
     payload: Dict[str, Any] = {}
+
+    interval_units_en = {
+        "minute": "minutes",
+        "minutes": "minutes",
+        "min": "minutes",
+        "mins": "minutes",
+        "hour": "hours",
+        "hours": "hours",
+        "day": "days",
+        "days": "days",
+        "week": "weeks",
+        "weeks": "weeks",
+        "month": "months",
+        "months": "months",
+    }
+
+    interval_units_ru = {
+        "минута": "minutes",
+        "минуту": "minutes",
+        "минуты": "minutes",
+        "минут": "minutes",
+        "мин": "minutes",
+        "час": "hours",
+        "часа": "hours",
+        "часов": "hours",
+        "день": "days",
+        "дня": "days",
+        "дней": "days",
+        "дни": "days",
+        "неделя": "weeks",
+        "неделю": "weeks",
+        "недели": "weeks",
+        "недель": "weeks",
+        "месяц": "months",
+        "месяца": "months",
+        "месяцев": "months",
+    }
+
+    # interval: every 3 days / каждые 3 дня
+    if len(tokens_no_time) >= 3:
+        second = tokens_no_time[1]
+        third = tokens_no_time[2]
+
+        if first == "every" and second.isdigit() and third in interval_units_en:
+            value = int(second)
+            if value <= 0:
+                raise ValueError("Интервал должен быть больше нуля")
+            pattern_type = "interval"
+            payload = {"value": value, "unit": interval_units_en[third]}
+
+        elif first.startswith("кажд") and second.isdigit() and third in interval_units_ru:
+            value = int(second)
+            if value <= 0:
+                raise ValueError("Интервал должен быть больше нуля")
+            pattern_type = "interval"
+            payload = {"value": value, "unit": interval_units_ru[third]}
 
     # daily
     if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
@@ -2392,6 +2489,23 @@ def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[s
         d = int(payload.get("day", 1))
         m = max(1, min(12, m))
         return f"yearly ({month_short[m - 1]} {d})"
+
+    if pattern_type == "interval":
+        value = int(payload.get("value", 0))
+        unit = str(payload.get("unit", "")).lower()
+
+        if unit == "minutes":
+            return f"every {value} minute{'s' if value != 1 else ''}"
+        if unit == "hours":
+            return f"every {value} hour{'s' if value != 1 else ''}"
+        if unit == "days":
+            return f"every {value} day{'s' if value != 1 else ''}"
+        if unit == "weeks":
+            return f"every {value} week{'s' if value != 1 else ''}"
+        if unit == "months":
+            return f"every {value} month{'s' if value != 1 else ''}"
+
+        return f"every {value} {unit}".strip()
 
     return pattern_type
 
