@@ -4420,6 +4420,13 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
             )
             normalized = (getattr(result, "text", "") or "").strip()
             if normalized:
+                logger.info(
+                    "GEMINI_TEXT_NORMALIZE_SUCCESS model=%s normalized_kind=%s raw_len=%s normalized_len=%s",
+                    model,
+                    "no_reminder" if normalized == "NO_REMINDER" else "reminder",
+                    len(raw),
+                    len(normalized),
+                )
                 return normalized
             last_error = RuntimeError(f"Gemini model {model} returned empty text normalization")
         except Exception as e:
@@ -4430,7 +4437,7 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
             transient = _is_transient_gemini_error(e) and not quota_error
 
             logger.warning(
-                "Gemini text normalization failed model=%s transient=%s unsupported_model=%s quota_error=%s error=%s: %s",
+                "GEMINI_TEXT_NORMALIZE_FAILED model=%s transient=%s unsupported_model=%s quota_error=%s error_type=%s error=%s",
                 model,
                 transient,
                 unsupported_model,
@@ -4582,6 +4589,14 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
 
     if normalized.startswith("/remind "):
         normalized = normalized[len("/remind "):].strip()
+
+    logger.info(
+        "TEXT_REMIND_NORMALIZED user_id=%s chat_id=%s raw_len=%s normalized_len=%s",
+        user.id,
+        chat.id,
+        len(raw_text),
+        len(normalized),
+    )
 
     if " - " not in normalized:
         normalized = _normalize_reminder_text_fallback(normalized)
