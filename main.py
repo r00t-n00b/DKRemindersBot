@@ -3993,6 +3993,77 @@ def _normalize_voice_ru_months(s: str) -> str:
 
     return result
 
+def normalize_gemini_reminder_command_text(text: str) -> str:
+    """
+    Детерминированно дочищает Gemini output перед передачей в /remind.
+
+    Gemini иногда возвращает человекочитаемые интервалы:
+    - "каждые два часа - попить воды"
+    - "каждые полтора часа - попить воды"
+
+    Parser ожидает канонический формат:
+    - "каждые 2 часа - попить воды"
+    - "every 90 minutes - попить воды"
+    """
+    s = (text or "").strip()
+    if not s:
+        return ""
+
+    number_words = {
+        "одну": "1",
+        "один": "1",
+        "одно": "1",
+        "два": "2",
+        "две": "2",
+        "три": "3",
+        "четыре": "4",
+        "пять": "5",
+        "шесть": "6",
+        "семь": "7",
+        "восемь": "8",
+        "девять": "9",
+        "десять": "10",
+        "одиннадцать": "11",
+        "двенадцать": "12",
+    }
+
+    # "каждые полчаса - text" -> "every 30 minutes - text"
+    s = re.sub(
+        r"\bкажд\w*\s+полчаса\b",
+        "every 30 minutes",
+        s,
+        flags=re.IGNORECASE,
+    )
+
+    # "каждые полтора часа - text" / "каждые полторы минуты - text"
+    # Для часов переводим в минуты, чтобы parser не зависел от дробных чисел.
+    s = re.sub(
+        r"\bкажд\w*\s+полтор[аы]\s+час\w*\b",
+        "every 90 minutes",
+        s,
+        flags=re.IGNORECASE,
+    )
+
+    def replace_interval_number(match):
+        prefix = match.group("prefix")
+        num = match.group("num")
+        unit = match.group("unit")
+        num_normalized = number_words.get(num.lower(), num)
+        return f"{prefix} {num_normalized} {unit}"
+
+    # "каждые два часа" -> "каждые 2 часа"
+    # "каждые две недели" -> "каждые 2 недели"
+    # Трогаем только конструкции после "кажд...", чтобы не портить текст напоминания.
+    s = re.sub(
+        r"\b(?P<prefix>кажд\w*)\s+"
+        r"(?P<num>одну|один|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|одиннадцать|двенадцать)\s+"
+        r"(?P<unit>минут\w*|час\w*|дн\w*|недел\w*|месяц\w*)",
+        replace_interval_number,
+        s,
+        flags=re.IGNORECASE,
+    )
+
+    return s
 
 def normalize_voice_reminder_text(text: str) -> str:
     """
@@ -4240,6 +4311,8 @@ async def _gemini_transcribe_audio_with_retries(
                             "- Remove leading phrases like 'напомни', 'напомни мне', 'поставь напоминание', 'remind me'.\n"
                             "- Convert spoken Russian numbers to digits where needed.\n"
                             "- Convert Russian month names to English month names.\n"
+                            "- Convert Russian number words to digits in intervals: 'два часа' -> '2 часа', 'три дня' -> '3 дня'.\n"
+                            "- Convert fractional Russian intervals to parser-friendly units: 'полчаса' -> 'every 30 minutes', 'полтора часа' -> 'every 90 minutes'.\n"
                             "- Do not calculate actual dates. Keep relative expressions like 'завтра', 'следующий понедельник', '29 may'.\n"
                             "- Support one-off reminders, recurring reminders, private target aliases, and chat aliases.\n"
                             "- Use a target alias only if it appears in the known aliases list below.\n"
@@ -4260,6 +4333,9 @@ async def _gemini_transcribe_audio_with_retries(
                             "- For recurring reminders, keep a parser-friendly recurring expression with explicit time.\n"
                             "- If the user says 'каждый понедельник в 11 выпить таблетку', return 'каждый понедельник 11:00 - выпить таблетку'.\n"
                             "- If the user says 'каждый день в 9 пить воду', return 'каждый день 09:00 - пить воду'.\n"
+                            "- If the user says 'напоминай каждые два часа пить воды', return 'каждые 2 часа - пить воды'.\n"
+                            "- If the user says 'напоминай каждые полтора часа пить воды', return 'every 90 minutes - пить воды'.\n"
+                            "- If the user says 'напоминай каждые полчаса пить воды', return 'every 30 minutes - пить воды'.\n"
                             "- If the user says 'every Monday at 11 take a pill', return 'every monday 11:00 - take a pill'.\n"
                             "- If the user says 'every day at 9 drink water', return 'every day 09:00 - drink water'.\n"
                             "\n"
@@ -4398,7 +4474,7 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
         "- Never change an explicitly written time. If the user says 'в 18', return '18:00'.\n"
         "- Convert Russian month names to English month names.\n"
         "- Convert Russian number words to digits in intervals: 'два часа' -> '2 часа', 'три дня' -> '3 дня'.\n"
-        "- Convert fractional Russian intervals to parser-friendly units: 'полчаса' -> '30 minutes', 'полтора часа' -> '90 minutes', 'полторы минуты' -> '90 minutes'.\n"
+        "- Convert fractional Russian intervals to parser-friendly recurring commands: 'каждые полчаса' -> 'every 30 minutes', 'каждые полтора часа' -> 'every 90 minutes'.\n"
         "- Do not calculate actual dates. Keep relative expressions like 'сегодня', 'завтра', 'следующий понедельник', '29 may'.\n"
         "- Support one-off reminders, recurring reminders, private target aliases, and chat aliases.\n"
         "- Use a target alias only if it appears in the known aliases list below.\n"
@@ -4478,6 +4554,8 @@ def _normalize_reminder_text_fallback(text: str) -> str:
         fallback_normalized = normalize_voice_reminder_text(normalized)
         if fallback_normalized:
             normalized = fallback_normalized
+
+    normalized = normalize_gemini_reminder_command_text(normalized)
 
     return normalized
 
@@ -4581,6 +4659,7 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
         normalized = _normalize_reminder_text_fallback(raw_text)
 
     normalized = (normalized or "").strip()
+    normalized = normalize_gemini_reminder_command_text(normalized)
 
     if normalized == "NO_REMINDER" or not normalized:
         await safe_reply(
