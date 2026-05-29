@@ -4162,7 +4162,7 @@ async def _gemini_transcribe_audio_with_retries(
     *,
     client,
     audio_bytes: bytes,
-    attempts_per_model: int = 3,
+    attempts_per_model: Optional[int] = None,
     aliases_prompt: str = "",
 ) -> str:
     models_raw = os.environ.get(
@@ -4175,6 +4175,13 @@ async def _gemini_transcribe_audio_with_retries(
         models = ["gemini-2.5-flash-lite"]
 
     last_error: Optional[Exception] = None
+    if attempts_per_model is None:
+        try:
+            attempts_per_model = int(os.environ.get("GEMINI_TRANSCRIBE_ATTEMPTS", "1"))
+        except ValueError:
+            attempts_per_model = 1
+
+    attempts_per_model = max(1, min(5, attempts_per_model))
 
     for model in models:
         for attempt in range(1, attempts_per_model + 1):
@@ -4232,6 +4239,11 @@ async def _gemini_transcribe_audio_with_retries(
 
                 text = (getattr(result, "text", "") or "").strip()
                 if text:
+                    logger.info(
+                        "GEMINI_TRANSCRIPTION_SUCCESS model=%s attempt=%s",
+                        model,
+                        attempt,
+                    )
                     return text
 
                 last_error = RuntimeError(f"Gemini model {model} returned empty transcription")
