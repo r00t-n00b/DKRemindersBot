@@ -51,8 +51,17 @@ else:
         Update = Chat = InlineKeyboardButton = InlineKeyboardMarkup = object
         Application = CommandHandler = ContextTypes = CallbackQueryHandler = MessageHandler = object
 
+        class _DummyFilter:
+            def __and__(self, other):
+                return self
+
+            def __invert__(self):
+                return self
+
         class _DummyFilters:
-            VOICE = "voice"
+            VOICE = _DummyFilter()
+            TEXT = _DummyFilter()
+            COMMAND = _DummyFilter()
 
         filters = _DummyFilters()
 
@@ -3338,26 +3347,25 @@ async def help_command(update: Update, context: CTX) -> None:
         ПОВТОРЯЮЩИЕСЯ
         ======================
 
-        🔁 Каждый день:
+        🔁 Каждый день / неделю / месяц / год:
         /remind every day 10:00 - текст
         /remind каждый день 10:00 - текст
-
-        🔁 Каждую неделю:
         /remind every Monday 10:00 - текст
         /remind каждую среду 19:00 - текст
+        /remind every month 15 10:00 - текст
+        /remind every year on December 25 10:00 - текст
 
         🔁 Будни / выходные:
         /remind every weekday 09:00 - текст
-        /remind every weekend 11:00 - текст
         /remind каждые выходные 11:00 - текст
 
-        🔁 Каждый месяц:
-        /remind every month 15 10:00 - текст
-        /remind каждый месяц 15 10:00 - текст
+        🔁 Интервалы:
+        /remind every 3 days - пить лекарство
+        /remind каждые 2 часа - размяться
+        /remind every 10 minutes - выпить воды
+        /remind каждые 2 недели 09:00 - отчет
 
-        🔁 Каждый год:
-        /remind every year on December 25 10:00 - текст
-
+        Если время не указано, используется 11:00.
 
         ======================
         СПИСКИ И УДАЛЕНИЕ
@@ -4289,6 +4297,117 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
         except OSError:
             pass
 
+async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+
+    token = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not token:
+        raise RuntimeError("GEMINI_API_KEY не задан")
+
+    if genai is None:
+        raise RuntimeError("Пакет google-genai не установлен")
+
+    models_raw = os.environ.get(
+        "GEMINI_TEXT_NORMALIZE_MODELS",
+        os.environ.get("GEMINI_TRANSCRIBE_MODELS", "gemini-2.5-flash-lite,gemini-2.5-flash"),
+    )
+    models = [m.strip() for m in models_raw.split(",") if m.strip()]
+    if not models:
+        models = ["gemini-2.5-flash-lite"]
+
+    aliases_prompt = _format_known_aliases_for_voice_prompt(created_by)
+    client = genai.Client(api_key=token)
+    last_error: Optional[Exception] = None
+
+    prompt = (
+        "You are normalizing a Telegram text message into a reminder command.\n"
+        "\n"
+        "Return only one line in this exact format:\n"
+        "<optional target alias> <date/time expression> - <reminder text>\n"
+        "\n"
+        "If the message is not a reminder request, return exactly:\n"
+        "NO_REMINDER\n"
+        "\n"
+        "Rules:\n"
+        "- Return only the normalized reminder command or NO_REMINDER. No quotes. No markdown. No commentary.\n"
+        "- Preserve the reminder text meaning.\n"
+        "- Remove leading phrases like 'напомни', 'напомни мне', 'поставь напоминание', 'remind me'.\n"
+        "- Never change an explicitly written time. If the user says 'в 18', return '18:00'.\n"
+        "- Convert Russian month names to English month names.\n"
+        "- Do not calculate actual dates. Keep relative expressions like 'сегодня', 'завтра', 'следующий понедельник', '29 may'.\n"
+        "- Support one-off reminders, recurring reminders, private target aliases, and chat aliases.\n"
+        "- Use a target alias only if it appears in the known aliases list below.\n"
+        "- Do not invent aliases or usernames.\n"
+        "- If a person name is not in known aliases, keep it inside reminder text, not as target.\n"
+        "- If the user says 'напомни мне сегодня поздравить Саню часов в 6 вечера', return 'сегодня 18:00 - поздравить Саню'.\n"
+        "- If the user says 'напомни завтра в 14:55 позвонить доктору', return 'завтра 14:55 - позвонить доктору'.\n"
+        "- If the user says 'каждые 3 дня пить лекарство', return 'каждые 3 дня - пить лекарство'.\n"
+        "- If the user says 'every 2 hours stretch', return 'every 2 hours - stretch'.\n"
+        "\n"
+        f"{aliases_prompt}\n"
+        "\n"
+        f"User message:\n{raw}\n"
+    )
+
+    for model in models:
+        try:
+            result = client.models.generate_content(
+                model=model,
+                contents=[prompt],
+            )
+            normalized = (getattr(result, "text", "") or "").strip()
+            if normalized:
+                return normalized
+            last_error = RuntimeError(f"Gemini model {model} returned empty text normalization")
+        except Exception as e:
+            last_error = e
+
+            unsupported_model = _is_unsupported_gemini_model_error(e)
+            quota_error = _is_gemini_quota_error(e)
+            transient = _is_transient_gemini_error(e) and not quota_error
+
+            logger.warning(
+                "Gemini text normalization failed model=%s transient=%s unsupported_model=%s quota_error=%s error=%s: %s",
+                model,
+                transient,
+                unsupported_model,
+                quota_error,
+                type(e).__name__,
+                e,
+            )
+
+            if unsupported_model:
+                continue
+
+            if quota_error:
+                raise RuntimeError(
+                    "Gemini quota/billing limit exceeded. "
+                    "Проверь лимиты проекта или включи billing для Gemini API."
+                ) from e
+
+            if not transient:
+                raise
+
+    raise RuntimeError(
+        "Gemini временно не смог нормализовать текст после fallback. "
+        f"Последняя ошибка: {type(last_error).__name__}: {last_error}"
+    )
+
+
+def _normalize_reminder_text_fallback(text: str) -> str:
+    normalized = (text or "").strip()
+    if not normalized:
+        return ""
+
+    if " - " not in normalized:
+        fallback_normalized = normalize_voice_reminder_text(normalized)
+        if fallback_normalized:
+            normalized = fallback_normalized
+
+    return normalized
+
 async def voice_remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -4297,32 +4416,25 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
     if chat is None or message is None or user is None:
         return
 
-    # MVP: в группах голосовые игнорируем, чтобы бот не слушал всё подряд.
+    # В группах голосовые игнорируем, чтобы бот не слушал всё подряд.
     if chat.type != Chat.PRIVATE:
         return
 
     try:
         heard_text = await transcribe_voice_message(update, context)
-    except Exception as e:
+    except Exception:
         logger.exception("Не смог распознать голосовое сообщение")
         await safe_reply(
             message,
-            "Не смог распознать голосовое.\n"
-            f"Техническая ошибка: {type(e).__name__}: {e}"
+            "Не смог распознать голосовое: сервис распознавания сейчас перегружен. "
+            "Попробуй еще раз чуть позже или напиши текстом."
         )
         return
 
-    normalized = (heard_text or "").strip()
+    normalized = _normalize_reminder_text_fallback(heard_text)
     if not normalized:
         await safe_reply(message, "Не услышал текст в голосовом.")
         return
-
-    # Если Gemini вдруг вернул обычную транскрипцию, а не канонический формат,
-    # пробуем старую локальную нормализацию как fallback.
-    if " - " not in normalized:
-        fallback_normalized = normalize_voice_reminder_text(normalized)
-        if fallback_normalized:
-            normalized = fallback_normalized
 
     class VoiceReminderMessageProxy:
         def __init__(self, original_message, command_text: str):
@@ -4355,6 +4467,91 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
 
     await remind_command(proxy_update, context)
 
+
+async def plain_text_remind_command(update: Update, context: CTX) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+    user = update.effective_user
+
+    if chat is None or message is None or user is None:
+        return
+
+    # Обычный свободный текст обрабатываем только в личке.
+    # В группах нельзя, иначе бот будет реагировать на обычную переписку.
+    if chat.type != Chat.PRIVATE:
+        return
+
+    raw_text = (getattr(message, "text", "") or "").strip()
+    if not raw_text:
+        return
+
+    if raw_text.startswith("/"):
+        return
+
+    try:
+        normalized = await normalize_plain_text_reminder_with_gemini(raw_text, user.id)
+    except Exception:
+        logger.exception("Не смог нормализовать обычный текст через Gemini")
+        normalized = _normalize_reminder_text_fallback(raw_text)
+
+    normalized = (normalized or "").strip()
+
+    if normalized == "NO_REMINDER" or not normalized:
+        await safe_reply(
+            message,
+            "Не понял, что сделать с этим сообщением.\n"
+            "Если хочешь поставить напоминание, напиши, например:\n"
+            "/remind завтра 18:00 - поздравить Саню\n\n"
+            "Подробнее: /help"
+        )
+        return
+
+    if normalized.startswith("/remind "):
+        normalized = normalized[len("/remind "):].strip()
+
+    if " - " not in normalized:
+        normalized = _normalize_reminder_text_fallback(normalized)
+
+    if not normalized or " - " not in normalized:
+        await safe_reply(
+            message,
+            "Не понял, что сделать с этим сообщением.\n"
+            "Если хочешь поставить напоминание, напиши, например:\n"
+            "/remind завтра 18:00 - поздравить Саню\n\n"
+            "Подробнее: /help"
+        )
+        return
+
+    class PlainTextReminderMessageProxy:
+        def __init__(self, original_message, command_text: str):
+            self._original_message = original_message
+            self.text = command_text
+            self.voice = getattr(original_message, "voice", None)
+
+        def __getattr__(self, name):
+            return getattr(self._original_message, name)
+
+        async def reply_text(self, text, **kwargs):
+            await self._original_message.reply_text(
+                "Я понял:\n"
+                f"{normalized}\n\n"
+                f"{text}",
+                **kwargs,
+            )
+
+    proxy_message = PlainTextReminderMessageProxy(
+        message,
+        f"/remind {normalized}",
+    )
+
+    proxy_update = SimpleNamespace(
+        effective_chat=chat,
+        effective_message=proxy_message,
+        effective_user=user,
+        message=proxy_message,
+    )
+
+    await remind_command(proxy_update, context)
 def get_chat_id_by_alias_for_user(alias: str, created_by: int):
     try:
         return get_chat_id_by_alias(alias, created_by)
@@ -6366,6 +6563,7 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
