@@ -77,10 +77,28 @@ except Exception:
 TZ = ZoneInfo("Europe/Madrid")
 DB_PATH = os.environ.get("DB_PATH", "/data/reminders.db")
 
+LOG_PATH = os.environ.get("BOT_LOG_PATH", "/data/bot.log")
+
+_log_handlers = [logging.StreamHandler()]
+
+try:
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    _log_handlers.append(logging.FileHandler(LOG_PATH, encoding="utf-8"))
+except Exception:
+    # В локальной/test-среде /data может не существовать или быть недоступен.
+    # stdout/stderr handler все равно останется.
+    pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=_log_handlers,
 )
+
+# Не печатаем Telegram API URLs с bot token-ом в логи.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 def get_now() -> datetime:
@@ -4226,7 +4244,7 @@ async def _gemini_transcribe_audio_with_retries(
                 transient = _is_transient_gemini_error(e) and not quota_error
 
                 logger.warning(
-                    "Gemini transcription failed model=%s attempt=%s transient=%s unsupported_model=%s quota_error=%s error=%s: %s",
+                    "GEMINI_TRANSCRIPTION_FAILED model=%s attempt=%s transient=%s unsupported_model=%s quota_error=%s error_type=%s error=%s",
                     model,
                     attempt,
                     transient,
@@ -4422,8 +4440,14 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
 
     try:
         heard_text = await transcribe_voice_message(update, context)
-    except Exception:
-        logger.exception("Не смог распознать голосовое сообщение")
+    except Exception as e:
+        logger.exception(
+            "VOICE_REMIND_FAILED user_id=%s chat_id=%s error_type=%s error=%s",
+            user.id,
+            chat.id,
+            type(e).__name__,
+            e,
+        )
         await safe_reply(
             message,
             "Не смог распознать голосовое: сервис распознавания сейчас перегружен. "
@@ -4490,8 +4514,15 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
 
     try:
         normalized = await normalize_plain_text_reminder_with_gemini(raw_text, user.id)
-    except Exception:
-        logger.exception("Не смог нормализовать обычный текст через Gemini")
+    except Exception as e:
+        logger.exception(
+            "TEXT_REMIND_FAILED user_id=%s chat_id=%s error_type=%s error=%s raw_text=%r",
+            user.id,
+            chat.id,
+            type(e).__name__,
+            e,
+            raw_text,
+        )
         normalized = _normalize_reminder_text_fallback(raw_text)
 
     normalized = (normalized or "").strip()
