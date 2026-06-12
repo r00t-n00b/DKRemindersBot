@@ -1435,11 +1435,23 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
         "Можно и без '-', но тогда нужно: 'дата [время] текст' (с пробелом)."
     )
 
+VAGUE_TIME_WORDS = {
+    "вечером": (18, 0),
+    "evening": (18, 0),
+}
+
+
 def _extract_time_from_tokens(
     tokens: List[str],
     default_hour: int = 11,
     default_minute: int = 0,
 ) -> Tuple[List[str], int, int]:
+    if tokens:
+        last_token = tokens[-1].strip(" ,.!?:;").lower()
+        if last_token in VAGUE_TIME_WORDS:
+            hour, minute = VAGUE_TIME_WORDS[last_token]
+            return tokens[:-1], hour, minute
+
     if tokens and TIME_TOKEN_RE.fullmatch(tokens[-1]):
         raw = tokens[-1]
         sep = ":" if ":" in raw else "."
@@ -2144,6 +2156,16 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     - weekend/weekday/workday/выходные/будний/рабочий - текст
     """
     expr, text = _split_expr_and_text(s)
+    # "завтра вечером купить молоко" раньше делилось как:
+    # expr="завтра", text="вечером купить молоко".
+    # Переносим vague time word в expr, чтобы получить 18:00
+    # и убрать "вечером/evening" из текста напоминания.
+    text_parts = text.strip().split(maxsplit=1)
+    if text_parts and expr.strip().lower() in {"сегодня", "завтра", "послезавтра", "today", "tomorrow"}:
+        first_text_token = text_parts[0].strip(" ,.!?:;").lower()
+        if first_text_token in VAGUE_TIME_WORDS:
+            expr = f"{expr.strip()} {first_text_token}".strip()
+            text = text_parts[1].strip() if len(text_parts) == 2 else ""
     expr_lower = expr.lower().strip()
     expr_lower = _normalize_on_at_phrase(expr_lower)
     now = now.astimezone(TZ)
