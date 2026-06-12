@@ -1,0 +1,161 @@
+import asyncio
+from types import SimpleNamespace
+
+
+class DummyMessage:
+    def __init__(self, text):
+        self.text = text
+        self.voice = None
+        self.replies = []
+
+    async def reply_text(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+
+
+def _mk_update(text, chat_type="private", user_id=123, chat_id=456):
+    message = DummyMessage(text)
+    chat = SimpleNamespace(id=chat_id, type=chat_type)
+    user = SimpleNamespace(id=user_id, username="u", first_name="U", last_name="L")
+    update = SimpleNamespace(
+        effective_chat=chat,
+        effective_message=message,
+        effective_user=user,
+        message=message,
+    )
+    context = SimpleNamespace(args=[], user_data={})
+    return update, context, message
+
+
+def test_plain_text_reminder_ignores_group_chat(main_module, monkeypatch):
+    called = False
+
+    async def fake_normalize(*args, **kwargs):
+        nonlocal called
+        called = True
+        return "завтра 18:00 - test"
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+
+    update, context, message = _mk_update(
+        "напомни завтра в 18 test",
+        chat_type="group",
+    )
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert called is False
+    assert message.replies == []
+
+
+def test_plain_text_reminder_ignores_slash_commands(main_module, monkeypatch):
+    called = False
+
+    async def fake_normalize(*args, **kwargs):
+        nonlocal called
+        called = True
+        return "завтра 18:00 - test"
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+
+    update, context, message = _mk_update("/help")
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert called is False
+    assert message.replies == []
+
+
+def test_plain_text_reminder_no_reminder_replies_with_help(main_module, monkeypatch):
+    async def fake_normalize(text, created_by):
+        assert text == "просто болтовня"
+        assert created_by == 123
+        return "NO_REMINDER"
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+
+    update, context, message = _mk_update("просто болтовня")
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert len(message.replies) == 1
+    reply, _ = message.replies[0]
+    assert "Не понял, что сделать" in reply
+    assert "/remind завтра 18:00 - поздравить Саню" in reply
+    assert "Подробнее: /help" in reply
+
+
+def test_plain_text_reminder_normalized_remind_is_proxied_to_remind_command(main_module, monkeypatch):
+    seen = {}
+
+    async def fake_normalize(text, created_by):
+        assert text == "напомни завтра поздравить Саню"
+        assert created_by == 123
+        return "/remind завтра 18:00 - поздравить Саню"
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update("напомни завтра поздравить Саню")
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == "/remind завтра 18:00 - поздравить Саню"
+    assert len(message.replies) == 1
+
+    reply, _ = message.replies[0]
+    assert "Я понял:" in reply
+    assert "завтра 18:00 - поздравить Саню" in reply
+    assert "Ок, напомню" in reply
+
+
+def test_plain_text_reminder_applies_gemini_interval_normalization_before_proxy(main_module, monkeypatch):
+    seen = {}
+
+    async def fake_normalize(text, created_by):
+        return "каждые полтора часа - попить воды"
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update("напоминай каждые полтора часа попить воды")
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == "/remind every 90 minutes - попить воды"
+
+    reply, _ = message.replies[0]
+    assert "Я понял:" in reply
+    assert "every 90 minutes - попить воды" in reply
+
+
+def test_plain_text_reminder_falls_back_when_gemini_fails(main_module, monkeypatch):
+    seen = {}
+
+    async def fake_normalize(text, created_by):
+        raise RuntimeError("gemini unavailable")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update("напомни завтра в 18:00 купить молоко")
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == "/remind завтра 18:00 - купить молоко"
+
+    reply, _ = message.replies[0]
+    assert "Я понял:" in reply
+    assert "завтра 18:00 - купить молоко" in reply
+    assert "Ок, напомню" in reply

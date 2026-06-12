@@ -1,34 +1,9 @@
-# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# macOS
-.DS_Store
-
-# Virtualenv
-venv/
-.env
-
-# Test / coverage / tools
-.coverage
+*.py[cod]
 .pytest_cache/
+.coverage
 htmlcov/
-.mutmut-cache
-mutmut_all.txt
-
-# Archives / temp
-*.zip
-
-# Local scripts / experiments
-scripts/
-
-# Tests (у тебя договоренность не пушить)
-tests/
-
-# IDE (на будущее)
-.vscode/
-.idea/
-.github/
-setup.cfg
+htmlcov.zip
+.mutmut-cache/
+.DS_Store
+*.bak
