@@ -17,10 +17,19 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
             return None
 
     class _FakeBuilder:
+        def __init__(self):
+            self.post_init_callback = None
+            self.post_shutdown_callback = None
+
         def token(self, _token):
             return self
 
         def post_init(self, _post_init):
+            self.post_init_callback = _post_init
+            return self
+
+        def post_shutdown(self, _post_shutdown):
+            self.post_shutdown_callback = _post_shutdown
             return self
 
         def build(self):

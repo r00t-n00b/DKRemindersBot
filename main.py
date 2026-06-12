@@ -6729,12 +6729,55 @@ async def reminders_nudge_worker(app: Application) -> None:
 
         await asyncio.sleep(30)
 
+BACKGROUND_WORKER_TASK_KEYS = (
+    "reminders_worker_task",
+    "reminders_nudge_worker_task",
+)
+
+
+def _start_background_worker(application: Application, task_key: str, coro_factory) -> asyncio.Task:
+    existing_task = application.bot_data.get(task_key)
+    if existing_task is not None and not existing_task.done():
+        return existing_task
+
+    task = asyncio.create_task(coro_factory())
+    application.bot_data[task_key] = task
+    return task
+
+
+async def _cancel_background_worker(task: asyncio.Task) -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 async def post_init(application: Application) -> None:
     init_db()
     migrate_alias_tables_to_owner_scope()
-    application.create_task(reminders_worker(application))
-    application.create_task(reminders_nudge_worker(application))
-    logger.info("Фоновый worker напоминаний запущен из post_init")
+
+    _start_background_worker(
+        application,
+        "reminders_worker_task",
+        lambda: reminders_worker(application),
+    )
+    _start_background_worker(
+        application,
+        "reminders_nudge_worker_task",
+        lambda: reminders_nudge_worker(application),
+    )
+
+    logger.info("Фоновые worker напоминаний запущены из post_init")
+
+
+async def post_shutdown(application: Application) -> None:
+    for task_key in BACKGROUND_WORKER_TASK_KEYS:
+        task = application.bot_data.pop(task_key, None)
+        if task is not None:
+            await _cancel_background_worker(task)
+
+    logger.info("Фоновые worker напоминаний остановлены из post_shutdown")
 
 def _nudge_threshold_minutes(nudge_count: int) -> Optional[int]:
     # кумулятивно от sent_at:
@@ -6828,6 +6871,7 @@ def main() -> None:
         Application.builder()
         .token(bot_token)
         .post_init(post_init)
+        .post_shutdown(post_shutdown)
         .build()
     )
 
