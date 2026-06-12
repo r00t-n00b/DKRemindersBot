@@ -6565,10 +6565,13 @@ async def reminders_worker(app: Application) -> None:
                 try:
                     chat_type = await _safe_get_chat_type(app, r.chat_id)
 
+                    chat_type_value = getattr(chat_type, "value", chat_type)
+                    chat_type_value = str(chat_type_value).lower() if chat_type_value is not None else None
+
                     reply_markup = (
-                        build_snooze_keyboard(r.id)
-                        if chat_type == Chat.PRIVATE
-                        else build_group_reminder_keyboard(r.id)
+                        build_group_reminder_keyboard(r.id)
+                        if chat_type_value in {"group", "supergroup", "channel"}
+                        else build_snooze_keyboard(r.id)
                     )
 
                     await app.bot.send_message(

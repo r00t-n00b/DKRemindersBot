@@ -33,6 +33,8 @@ class _FakeBot:
 
 
 def _run_worker_once(main_module, monkeypatch, *, now, bot):
+    monkeypatch.setattr(main_module, "build_snooze_keyboard", lambda reminder_id: None)
+    monkeypatch.setattr(main_module, "build_group_reminder_keyboard", lambda reminder_id: None)
     m = main_module
 
     # Worker compares to Chat.PRIVATE

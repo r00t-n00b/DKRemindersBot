@@ -6,7 +6,6 @@ import pytest
 from test_worker_keyboard_invariants import DummyApp, StopWorker, _install_one_iteration_worker, _reminder
 
 
-@pytest.mark.xfail(reason="Known bug: if get_chat type is unavailable for a private chat, worker falls back to group keyboard")
 def test_worker_does_not_show_self_remind_button_when_chat_type_is_unknown_for_private_id(main_module, monkeypatch):
     app = DummyApp()
     reminder = _reminder(reminder_id=123, chat_id=456)
