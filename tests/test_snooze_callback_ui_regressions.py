@@ -56,9 +56,18 @@ class DummyUpdate:
         self.callback_query = query
 
 
+class DummyBot:
+    def __init__(self):
+        self.edited_reply_markups = []
+
+    async def edit_message_reply_markup(self, **kwargs):
+        self.edited_reply_markups.append(kwargs)
+
+
 class DummyContext:
     def __init__(self):
         self.user_data = {}
+        self.bot = DummyBot()
 
 
 def _reminder(rid=101, text="source reminder"):

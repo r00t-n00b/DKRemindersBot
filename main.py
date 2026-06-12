@@ -182,6 +182,26 @@ def init_db() -> None:
         "CREATE INDEX IF NOT EXISTS idx_reminders_nudge ON reminders(delivered, acked, nudge_count, sent_at)"
     )
 
+    # Telegram messages that represent the same reminder.
+    # One reminder can have several messages: original delivery, nudges, etc.
+    # This lets done/snooze clear stale buttons from all visible copies.
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reminder_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reminder_id INTEGER NOT NULL,
+            chat_id INTEGER NOT NULL,
+            message_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(reminder_id, chat_id, message_id)
+        )
+        """
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reminder_messages_reminder_id ON reminder_messages(reminder_id)"
+    )
+
     # алиасы чатов
     c.execute(
         """
@@ -247,6 +267,67 @@ def init_db() -> None:
 
     conn.commit()
     conn.close()
+
+def register_reminder_message(
+    reminder_id: int,
+    chat_id: int,
+    message_id: int,
+    kind: str,
+) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT OR IGNORE INTO reminder_messages
+            (reminder_id, chat_id, message_id, kind, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            int(reminder_id),
+            int(chat_id),
+            int(message_id),
+            kind,
+            get_now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_reminder_messages(reminder_id: int) -> list[dict]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT reminder_id, chat_id, message_id, kind, created_at
+        FROM reminder_messages
+        WHERE reminder_id = ?
+        ORDER BY id ASC
+        """,
+        (int(reminder_id),),
+    )
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return rows
+
+async def clear_reminder_message_keyboards(bot, reminder_id: int) -> None:
+    rows = get_reminder_messages(reminder_id)
+
+    for row in rows:
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=int(row["chat_id"]),
+                message_id=int(row["message_id"]),
+                reply_markup=None,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to clear reminder message keyboard reminder_id=%s chat_id=%s message_id=%s",
+                reminder_id,
+                row.get("chat_id"),
+                row.get("message_id"),
+            )
 
 def migrate_alias_tables_to_owner_scope() -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -6402,6 +6483,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             if rid is not None:
                 mark_reminder_acked(rid)
+                await clear_reminder_message_keyboards(context.bot, rid)
 
             # исходный текст сообщения
             original_text = query.message.text if query.message and query.message.text else ""
@@ -6472,6 +6554,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             # УСПЕШНЫЙ snooze = реакция пользователя
             mark_reminder_acked(rid)
+            await clear_reminder_message_keyboards(context.bot, rid)
 
             add_reminder(
                 chat_id=r.chat_id,
@@ -6557,6 +6640,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             # успешный picktime - реакция
             mark_reminder_acked(rid)
+            await clear_reminder_message_keyboards(context.bot, rid)
 
             add_reminder(
                 chat_id=r.chat_id,
@@ -6640,11 +6724,20 @@ async def reminders_worker(app: Application) -> None:
                         else build_snooze_keyboard(r.id)
                     )
 
-                    await app.bot.send_message(
+                    sent_message = await app.bot.send_message(
                         chat_id=r.chat_id,
                         text=r.text,
                         reply_markup=reply_markup,
                     )
+
+                    sent_message_id = getattr(sent_message, "message_id", None)
+                    if sent_message_id is not None:
+                        register_reminder_message(
+                            reminder_id=r.id,
+                            chat_id=r.chat_id,
+                            message_id=sent_message_id,
+                            kind="delivery",
+                        )
 
                     mark_reminder_sent(r.id, sent_at=now)
 
@@ -6715,11 +6808,20 @@ async def reminders_nudge_worker(app: Application) -> None:
 
                     reply_markup = build_snooze_keyboard(r["id"])
 
-                    await app.bot.send_message(
+                    sent_message = await app.bot.send_message(
                         chat_id=r["chat_id"],
                         text=text,
                         reply_markup=reply_markup,
                     )
+
+                    sent_message_id = getattr(sent_message, "message_id", None)
+                    if sent_message_id is not None:
+                        register_reminder_message(
+                            reminder_id=int(r["id"]),
+                            chat_id=int(r["chat_id"]),
+                            message_id=sent_message_id,
+                            kind="nudge",
+                        )
 
                     increment_nudge_count(r["id"])
                 except Exception:
