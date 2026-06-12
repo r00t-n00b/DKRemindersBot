@@ -5167,6 +5167,11 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     # Одиночная строка
     raw_single = raw_args.strip()
+    raw_single_tokens = raw_single.strip().split(maxsplit=1)
+    if raw_single_tokens:
+        first_token = raw_single_tokens[0].strip(" ,.!?:;").lower()
+        if first_token in {"напомни", "напомнить", "remind"} and len(raw_single_tokens) == 2:
+            raw_single = raw_single_tokens[1].strip()
 
     # Сначала пробуем как recurring
     if looks_like_recurring(raw_single):

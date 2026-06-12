@@ -194,3 +194,53 @@ def test_remind_gemini_fallback_exception_keeps_old_error(main_module, monkeypat
 
     assert len(message.replies) == 1
     assert "Не смог понять дату и текст:" in message.replies[0][0]
+
+
+def test_remind_command_strips_nested_remind_word_before_alias_routing(main_module, monkeypatch):
+    created = []
+    calls = []
+    real_parse = main_module.parse_date_time_smart
+
+    def fake_parse(raw, now):
+        if raw == "завтра вечером купить молоко":
+            raise ValueError("forced strict parse failure")
+        return real_parse(raw, now)
+
+    async def fake_normalize(text, created_by):
+        calls.append((text, created_by))
+        return "завтра 18:00 - купить молоко"
+
+    monkeypatch.setattr(main_module, "parse_date_time_smart", fake_parse)
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+    monkeypatch.setattr(main_module, "get_now", lambda: datetime(2026, 6, 12, 10, 0, tzinfo=TZ))
+    monkeypatch.setattr(
+        main_module,
+        "add_reminder",
+        lambda chat_id, text, remind_at, created_by=None, template_id=None: created.append(
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "remind_at": remind_at,
+                "created_by": created_by,
+                "template_id": template_id,
+            }
+        ) or 777,
+    )
+
+    update, context, message = _mk_private("/remind напомни завтра вечером купить молоко")
+
+    asyncio.run(main_module.remind_command(update, context))
+
+    assert calls == [("завтра вечером купить молоко", 123)]
+    assert created == [
+        {
+            "chat_id": 456,
+            "text": "купить молоко",
+            "remind_at": datetime(2026, 6, 13, 18, 0, tzinfo=TZ),
+            "created_by": 123,
+            "template_id": None,
+        }
+    ]
+    assert message.replies
+    assert "Ок, напомню" in message.replies[0][0]
+    assert "Алиаса" not in message.replies[0][0]
