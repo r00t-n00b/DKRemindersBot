@@ -22,10 +22,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install pytest pytest-cov
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           else
-            pip install pytest pytest-cov python-telegram-bot apscheduler google-genai
+            pip install python-telegram-bot apscheduler google-genai
           fi
 
       - name: Run tests
