@@ -5229,15 +5229,39 @@ async def remind_command(update: Update, context: CTX) -> None:
     try:
         remind_at, text = parse_date_time_smart(raw_single, now)
     except ValueError as e:
-        logger.warning(
-            "REMIND parse failed chat_id=%s user_id=%s raw_single=%r error=%s",
-            chat.id,
-            user.id,
-            raw_single,
-            e,
-        )
-        await safe_reply(message, f"Не смог понять дату и текст: {e}")
-        return
+        original_error = e
+        normalized_single = None
+
+        try:
+            created_by = user.id if user else None
+            gemini_result = await normalize_plain_text_reminder_with_gemini(raw_single, created_by)
+            if gemini_result and gemini_result.strip().upper() != "NO_REMINDER":
+                normalized_single = gemini_result.strip()
+
+                if normalized_single.startswith("/remind"):
+                    normalized_single = normalized_single[len("/remind"):].strip()
+
+                normalized_single = normalize_gemini_reminder_command_text(normalized_single)
+                normalized_single = _normalize_reminder_text_fallback(normalized_single)
+
+                if normalized_single.startswith("/remind"):
+                    normalized_single = normalized_single[len("/remind"):].strip()
+
+                remind_at, text = parse_date_time_smart(normalized_single, now)
+            else:
+                raise original_error
+        except Exception as fallback_error:
+            logging.info(
+                "REMIND parse failed user=%s chat=%s raw=%r normalized=%r error=%s fallback_error=%s",
+                getattr(user, "id", None),
+                chat.id,
+                raw_single,
+                normalized_single,
+                original_error,
+                fallback_error,
+            )
+            await safe_reply(message, f"Не смог понять дату и текст: {original_error}")
+            return
 
     reminder_id = add_reminder(
         chat_id=target_chat_id,
