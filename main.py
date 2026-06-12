@@ -4981,6 +4981,26 @@ async def remind_command(update: Update, context: CTX) -> None:
                 target_chat_id = target
                 used_alias = first_token  # просто чтобы показать в ответе, кого выбрали
 
+    # Если пользователь пишет "/remind напомни ...", это не alias "напомни",
+    # а вложенный командный префикс. Убираем его до alias-routing.
+    if is_private:
+        first_line = raw_args.splitlines()[0].lstrip() if raw_args else ""
+        nested_tokens = first_line.split(maxsplit=1)
+        if nested_tokens:
+            nested_first = nested_tokens[0].strip(" ,.!?:;").lower()
+            if nested_first in {"напомни", "напомнить", "remind"} and len(nested_tokens) == 2:
+                rest_first_line = nested_tokens[1].strip()
+                rest_lines = "\n".join(raw_args.splitlines()[1:])
+
+                parts = []
+                if rest_first_line:
+                    parts.append(rest_first_line)
+                if rest_lines.strip():
+                    parts.append(rest_lines)
+
+                raw_args = "\n".join(parts).strip()
+                had_newline = "\n" in raw_args
+
     # В личке допускаем alias первым словом / первой строкой
     if is_private:
         first_line = raw_args.splitlines()[0].lstrip()
@@ -5167,11 +5187,6 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     # Одиночная строка
     raw_single = raw_args.strip()
-    raw_single_tokens = raw_single.strip().split(maxsplit=1)
-    if raw_single_tokens:
-        first_token = raw_single_tokens[0].strip(" ,.!?:;").lower()
-        if first_token in {"напомни", "напомнить", "remind"} and len(raw_single_tokens) == 2:
-            raw_single = raw_single_tokens[1].strip()
 
     # Сначала пробуем как recurring
     if looks_like_recurring(raw_single):

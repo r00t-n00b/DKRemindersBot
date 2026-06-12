@@ -201,6 +201,14 @@ def test_remind_command_strips_nested_remind_word_before_alias_routing(main_modu
     calls = []
     real_parse = main_module.parse_date_time_smart
 
+    def fake_user_alias(alias, user_id):
+        assert alias != "напомни"
+        return None
+
+    def fake_chat_alias(alias, user_id):
+        assert alias != "напомни"
+        return None
+
     def fake_parse(raw, now):
         if raw == "завтра вечером купить молоко":
             raise ValueError("forced strict parse failure")
@@ -210,6 +218,8 @@ def test_remind_command_strips_nested_remind_word_before_alias_routing(main_modu
         calls.append((text, created_by))
         return "завтра 18:00 - купить молоко"
 
+    monkeypatch.setattr(main_module, "get_user_alias_chat_id_for_user", fake_user_alias)
+    monkeypatch.setattr(main_module, "get_chat_id_by_alias_for_user", fake_chat_alias)
     monkeypatch.setattr(main_module, "parse_date_time_smart", fake_parse)
     monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
     monkeypatch.setattr(main_module, "get_now", lambda: datetime(2026, 6, 12, 10, 0, tzinfo=TZ))
