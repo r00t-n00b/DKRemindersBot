@@ -1397,9 +1397,10 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
     if m:
         return m.group(1).strip(), m.group(2).strip()
 
-    # 5) in/через N units
+    # 5) in/через N units, плюс русские формы с подразумеваемой единицей:
+    # "через час", "через неделю", "через день", "через минуту"
     m = re.match(
-        r"^\s*((?:in|через)\s+\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|минут|минуты|час|часа|часов|день|дня|дней|неделю|недели|недель))\s+(.+)\s*$",
+        r"^\s*((?:in|через)\s+(?:\d+\s+)?(?:minute|minutes|hour|hours|day|days|week|weeks|минуту|минут|минуты|час|часа|часов|день|дня|дней|неделю|недели|недель))\s+(.+)\s*$",
         raw,
         flags=re.IGNORECASE,
     )
@@ -1474,14 +1475,20 @@ def _parse_in_expression(tokens: List[str], now: datetime) -> Optional[datetime]
     first = tokens[0]
     if first not in {"in", "через"}:
         return None
-    if len(tokens) < 3:
+    if len(tokens) < 2:
         return None
 
-    try:
-        amount = int(tokens[1])
-    except ValueError:
+    if len(tokens) >= 3:
+        try:
+            amount = int(tokens[1])
+        except ValueError:
+            return None
+        unit = tokens[2]
+    elif first == "через":
+        amount = 1
+        unit = tokens[1]
+    else:
         return None
-    unit = tokens[2]
 
     # английские варианты
     en_minutes = {"minute", "minutes", "min", "mins", "m"}
@@ -1685,9 +1692,42 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
 
     local = now.astimezone(TZ)
 
-    next_words = {"next", "следующий", "следующая", "следующее", "следующие"}
-    this_words = {"this", "coming", "этот", "эта", "это", "эти", "ближайший", "ближайшая", "ближайшее", "ближайшие"}
-    ru_prefix_v = {"в"}  # "в четверг ..."
+    next_words = {
+        "next",
+        "следующий",
+        "следующая",
+        "следующее",
+        "следующие",
+        "следующую",
+        "следующей",
+        "следующем",
+        "следующими",
+    }
+    this_words = {
+        "this",
+        "coming",
+        "этот",
+        "эта",
+        "это",
+        "эти",
+        "эту",
+        "этой",
+        "этом",
+        "ближайший",
+        "ближайшая",
+        "ближайшее",
+        "ближайшие",
+        "ближайшую",
+        "ближайшей",
+        "ближайшем",
+    }
+
+    # Русские предлоги не должны менять смысл:
+    # "в следующую среду" == "следующую среду"
+    # "на следующей неделе" == "следующей неделе"
+    # "в четверг" == "четверг"
+    if len(tokens) >= 2 and tokens[0] in {"в", "во", "на"}:
+        tokens = tokens[1:]
 
     first = tokens[0]
 
@@ -1704,10 +1744,6 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     elif first in this_words:
         mode = "this"
         start_idx = 1
-    elif first in ru_prefix_v and len(tokens) >= 2 and (tokens[1] in WEEKDAY_RU):
-        # "в четверг ..."
-        mode = "this"
-        start_idx = 1
     else:
         # без префикса: попробуем weekday
         mode = "this"
@@ -1719,7 +1755,7 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     second = tokens[start_idx]
 
     # next week / следующая неделя
-    if mode in {"next", "this"} and second in {"week", "неделя", "неделю"}:
+    if mode in {"next", "this"} and second in {"week", "неделя", "неделю", "неделе", "недели"}:
         base = local.date()
         cur_wd = base.weekday()
         days_until_next_monday = (7 - cur_wd) % 7
