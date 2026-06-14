@@ -1511,12 +1511,25 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
         if month_token in MONTH_EN:
             return expr, text
 
+    # 7) standalone vague time word without explicit date:
+    # "утром посмотреть ссылку"
+    # "morning check link"
+    m = re.match(
+        r"^\s*((?:утром|morning|вечером|evening))\s+(.+)\s*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
     raise ValueError(
         "Не смог понять дату и текст: ожидаю формат 'дата время - текст'. "
         "Можно и без '-', но тогда нужно: 'дата [время] текст' (с пробелом)."
     )
 
 VAGUE_TIME_WORDS = {
+    "утром": (10, 0),
+    "morning": (10, 0),
     "вечером": (18, 0),
     "evening": (18, 0),
 }
@@ -1659,6 +1672,26 @@ def _parse_today_tomorrow(expr: str, now: datetime) -> Optional[datetime]:
         return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     return None
 
+def _parse_standalone_vague_time(expr: str, now: datetime) -> Optional[datetime]:
+    s = expr.lower().strip()
+    if s not in VAGUE_TIME_WORDS:
+        return None
+
+    hour, minute = VAGUE_TIME_WORDS[s]
+    now_local = now.astimezone(TZ)
+    target_date = now_local.date()
+
+    if (now_local.hour, now_local.minute) >= (hour, minute):
+        target_date += timedelta(days=1)
+
+    return datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        hour,
+        minute,
+        tzinfo=TZ,
+    )
 
 WEEKDAY_EN = {
     "monday": 0,
@@ -2250,6 +2283,10 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     expr_lower = expr.lower().strip()
     expr_lower = _normalize_on_at_phrase(expr_lower)
     now = now.astimezone(TZ)
+
+    dt = _parse_standalone_vague_time(expr_lower, now)
+    if dt is not None:
+        return dt, text
 
     tokens = expr_lower.split()
     dt = _parse_in_expression(tokens, now)
