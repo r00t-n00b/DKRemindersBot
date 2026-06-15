@@ -286,3 +286,43 @@ def test_remind_gemini_fallback_timeout_keeps_old_error(main_module, monkeypatch
     assert len(message.replies) == 1
     assert "Не смог понять дату и текст:" in message.replies[0][0]
     assert "forced strict parse failure" in message.replies[0][0]
+
+
+def test_invalid_english_monthly_recurring_does_not_call_gemini(main_module, monkeypatch):
+    async def fail_normalize(*args, **kwargs):
+        raise AssertionError("Gemini fallback must not be called for obvious recurring input")
+
+    def fail_add_reminder(*args, **kwargs):
+        raise AssertionError("add_reminder must not be called for invalid recurring input")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fail_normalize)
+    monkeypatch.setattr(main_module, "add_reminder", fail_add_reminder)
+    monkeypatch.setattr(main_module, "get_now", lambda: datetime(2026, 6, 15, 16, 6, tzinfo=TZ))
+
+    update, context, message = _mk_private("/remind on the 35th of every month - новый джонкейк")
+
+    asyncio.run(main_module.remind_command(update, context))
+
+    assert len(message.replies) == 1
+    assert "Не смог понять повторяющийся формат:" in message.replies[0][0]
+    assert "Неверный день месяца" in message.replies[0][0]
+
+
+def test_invalid_russian_monthly_recurring_does_not_call_gemini(main_module, monkeypatch):
+    async def fail_normalize(*args, **kwargs):
+        raise AssertionError("Gemini fallback must not be called for obvious recurring input")
+
+    def fail_add_reminder(*args, **kwargs):
+        raise AssertionError("add_reminder must not be called for invalid recurring input")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fail_normalize)
+    monkeypatch.setattr(main_module, "add_reminder", fail_add_reminder)
+    monkeypatch.setattr(main_module, "get_now", lambda: datetime(2026, 6, 15, 16, 6, tzinfo=TZ))
+
+    update, context, message = _mk_private("/remind восьмидесятого числа каждого месяца - первый раз")
+
+    asyncio.run(main_module.remind_command(update, context))
+
+    assert len(message.replies) == 1
+    assert "Не смог понять повторяющийся формат:" in message.replies[0][0]
+    assert "Не понял повторяющийся формат" in message.replies[0][0]

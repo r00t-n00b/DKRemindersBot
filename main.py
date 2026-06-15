@@ -5533,7 +5533,14 @@ async def remind_command(update: Update, context: CTX) -> None:
         try:
             first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
         except ValueError as e:
-            await safe_reply(message,f"Не смог понять повторяющийся формат: {e}")
+            logger.info(
+                "REMIND recurring parse failed user=%s chat=%s raw=%r error=%s",
+                user.id,
+                chat.id,
+                raw_single,
+                e,
+            )
+            await safe_reply(message, f"Не смог понять повторяющийся формат: {e}")
             return
 
         tpl_id = create_recurring_template(
@@ -5607,6 +5614,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                     raw_single,
                 )
                 raise original_error
+
             if gemini_result and gemini_result.strip().upper() != "NO_REMINDER":
                 normalized_single = gemini_result.strip()
 
