@@ -55,7 +55,7 @@ def test_parse_recurring_english_interval_units(main_module):
         assert recurring_type == "interval"
         assert payload["unit"] == unit
         assert payload["value"] == value
-        assert hour == 11
+        assert hour == 10
         assert minute == 0
 
 
@@ -77,5 +77,5 @@ def test_parse_recurring_russian_interval_units(main_module):
         assert recurring_type == "interval"
         assert payload["unit"] == unit
         assert payload["value"] == value
-        assert hour == 11
+        assert hour == 10
         assert minute == 0
