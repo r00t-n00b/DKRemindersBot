@@ -348,3 +348,53 @@ def test_parse_monthly_thirty_first_day_ru_compound_word(main_module):
     assert payload == {"day": 31}
     assert (hour, minute) == (10, 0)
 
+
+def test_looks_like_recurring_for_en_on_the_monthly_ordinal(main_module):
+    assert main_module.looks_like_recurring("on the 25th of every month - новый джонкейк")
+    assert main_module.looks_like_recurring("on 25th of every month - новый джонкейк")
+    assert main_module.looks_like_recurring("25th of every month - новый джонкейк")
+
+
+def test_parse_monthly_on_the_25th_of_every_month(main_module):
+    now = datetime(2026, 6, 15, 15, 18, tzinfo=TZ)
+
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "on the 25th of every month - новый джонкейк",
+        now,
+    )
+
+    assert first_dt == datetime(2026, 6, 25, 10, 0, tzinfo=TZ)
+    assert text == "новый джонкейк"
+    assert pattern_type == "monthly"
+    assert payload == {"day": 25}
+    assert (hour, minute) == (10, 0)
+
+
+def test_parse_monthly_on_25th_of_every_month(main_module):
+    now = datetime(2026, 6, 15, 15, 18, tzinfo=TZ)
+
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "on 25th of every month - новый джонкейк",
+        now,
+    )
+
+    assert first_dt == datetime(2026, 6, 25, 10, 0, tzinfo=TZ)
+    assert text == "новый джонкейк"
+    assert pattern_type == "monthly"
+    assert payload == {"day": 25}
+    assert (hour, minute) == (10, 0)
+
+
+def test_parse_monthly_25th_of_every_month(main_module):
+    now = datetime(2026, 6, 15, 15, 18, tzinfo=TZ)
+
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "25th of every month - новый джонкейк",
+        now,
+    )
+
+    assert first_dt == datetime(2026, 6, 25, 10, 0, tzinfo=TZ)
+    assert text == "новый джонкейк"
+    assert pattern_type == "monthly"
+    assert payload == {"day": 25}
+    assert (hour, minute) == (10, 0)

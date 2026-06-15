@@ -2364,6 +2364,15 @@ def looks_like_recurring(raw: str) -> bool:
     if re.search(r"\bраз\s+в\s+(?:две|2)\s+недел", s):
         return True
 
+    if re.search(r"\bon\s+the\s+\d+(?:st|nd|rd|th)\s+of\s+every\s+month", s):
+        return True
+
+    if re.search(r"\bon\s+\d+(?:st|nd|rd|th)\s+of\s+every\s+month", s):
+        return True
+
+    if re.search(r"\b\d+(?:st|nd|rd|th)\s+of\s+every\s+month", s):
+        return True
+
     return False
 
 
@@ -2765,6 +2774,21 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
         elif len(tokens_no_time) >= 5 and first == "every":
             parsed = _parse_day_token(tokens_no_time[1])
             if parsed is not None and tokens_no_time[2:] == ["of", "the", "month"]:
+                day = parsed
+        
+        elif len(tokens_no_time) >= 6 and first == "on" and tokens_no_time[1] == "the":
+            parsed = _parse_day_token(tokens_no_time[2])
+            if parsed is not None and tokens_no_time[3:] == ["of", "every", "month"]:
+                day = parsed
+
+        elif len(tokens_no_time) >= 5 and first == "on":
+            parsed = _parse_day_token(tokens_no_time[1])
+            if parsed is not None and tokens_no_time[2:] == ["of", "every", "month"]:
+                day = parsed
+
+        elif len(tokens_no_time) >= 4 and tokens_no_time[1:] == ["of", "every", "month"]:
+            parsed = _parse_day_token(tokens_no_time[0])
+            if parsed is not None:
                 day = parsed
 
         elif len(tokens_no_time) >= 4:
@@ -5570,7 +5594,19 @@ async def remind_command(update: Update, context: CTX) -> None:
 
         try:
             created_by = user.id if user else None
-            gemini_result = await normalize_plain_text_reminder_with_gemini(raw_single, created_by)
+            try:
+                gemini_result = await asyncio.wait_for(
+                    normalize_plain_text_reminder_with_gemini(raw_single, created_by),
+                    timeout=float(os.environ.get("GEMINI_REMINDER_PARSE_TIMEOUT_SECONDS", "10")),
+                )
+            except asyncio.TimeoutError:
+                logging.warning(
+                    "REMIND Gemini fallback timed out user=%s chat=%s raw=%r",
+                    getattr(user, "id", None),
+                    chat.id,
+                    raw_single,
+                )
+                raise original_error
             if gemini_result and gemini_result.strip().upper() != "NO_REMINDER":
                 normalized_single = gemini_result.strip()
 

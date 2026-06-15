@@ -254,3 +254,35 @@ def test_remind_command_strips_nested_remind_word_before_alias_routing(main_modu
     assert message.replies
     assert "Ок, напомню" in message.replies[0][0]
     assert "Алиаса" not in message.replies[0][0]
+
+def test_remind_gemini_fallback_timeout_keeps_old_error(main_module, monkeypatch):
+    real_parse = main_module.parse_date_time_smart
+    calls = []
+
+    def fake_parse(raw, now):
+        if raw == "gemini hangs forever":
+            raise ValueError("forced strict parse failure")
+        return real_parse(raw, now)
+
+    async def fake_normalize(text, created_by):
+        calls.append((text, created_by))
+        await asyncio.sleep(1)
+        return "завтра 18:00 - should not happen"
+
+    def fail_add_reminder(*args, **kwargs):
+        raise AssertionError("add_reminder must not be called after Gemini timeout")
+
+    monkeypatch.setenv("GEMINI_REMINDER_PARSE_TIMEOUT_SECONDS", "0.01")
+    monkeypatch.setattr(main_module, "parse_date_time_smart", fake_parse)
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fake_normalize)
+    monkeypatch.setattr(main_module, "add_reminder", fail_add_reminder)
+    monkeypatch.setattr(main_module, "get_now", lambda: datetime(2026, 6, 12, 10, 0, tzinfo=TZ))
+
+    update, context, message = _mk_private("/remind gemini hangs forever")
+
+    asyncio.run(main_module.remind_command(update, context))
+
+    assert calls == [("gemini hangs forever", 123)]
+    assert len(message.replies) == 1
+    assert "Не смог понять дату и текст:" in message.replies[0][0]
+    assert "forced strict parse failure" in message.replies[0][0]
