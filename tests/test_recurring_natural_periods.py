@@ -298,3 +298,53 @@ def test_monthly_next_occurrence_keeps_31_when_month_has_31_days(main_module):
 
     assert next_dt == datetime(2026, 5, 31, 10, 0, tzinfo=TZ)
 
+def test_looks_like_recurring_for_ru_monthly_ordinal_phrases(main_module):
+    assert main_module.looks_like_recurring("третьего числа каждого месяца - новый джонкейк")
+    assert main_module.looks_like_recurring("четырнадцатого числа каждого месяца - новый джонкейк")
+    assert main_module.looks_like_recurring("тридцать первого числа каждого месяца - новый джонкейк")
+
+
+def test_parse_monthly_third_day_ru_word(main_module):
+    now = datetime(2026, 6, 15, 15, 18, tzinfo=TZ)
+
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "третьего числа каждого месяца - новый джонкейк",
+        now,
+    )
+
+    assert first_dt == datetime(2026, 7, 3, 10, 0, tzinfo=TZ)
+    assert text == "новый джонкейк"
+    assert pattern_type == "monthly"
+    assert payload == {"day": 3}
+    assert (hour, minute) == (10, 0)
+
+
+def test_parse_monthly_fourteenth_day_ru_word(main_module):
+    now = datetime(2026, 6, 15, 15, 18, tzinfo=TZ)
+
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "четырнадцатого числа каждого месяца - новый джонкейк",
+        now,
+    )
+
+    assert first_dt == datetime(2026, 7, 14, 10, 0, tzinfo=TZ)
+    assert text == "новый джонкейк"
+    assert pattern_type == "monthly"
+    assert payload == {"day": 14}
+    assert (hour, minute) == (10, 0)
+
+
+def test_parse_monthly_thirty_first_day_ru_compound_word(main_module):
+    now = datetime(2026, 6, 15, 15, 18, tzinfo=TZ)
+
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "тридцать первого числа каждого месяца - новый джонкейк",
+        now,
+    )
+
+    assert first_dt == datetime(2026, 6, 30, 10, 0, tzinfo=TZ)
+    assert text == "новый джонкейк"
+    assert pattern_type == "monthly"
+    assert payload == {"day": 31}
+    assert (hour, minute) == (10, 0)
+

@@ -2330,8 +2330,41 @@ def looks_like_recurring(raw: str) -> bool:
     s = raw.strip().lower()
     if not s:
         return False
+
     first = s.split(maxsplit=1)[0]
-    return first in {"every", "everyday", "каждый", "каждую", "каждое", "каждые"}
+    if first in {
+        "every",
+        "everyday",
+        "daily",
+        "weekly",
+        "biweekly",
+        "fortnightly",
+        "monthly",
+        "yearly",
+        "weekdays",
+        "weekday",
+        "workdays",
+        "workday",
+        "weekends",
+        "weekend",
+        "каждый",
+        "каждую",
+        "каждое",
+        "каждые",
+        "каждого",
+    }:
+        return True
+
+    if re.search(r"\b(?:число|числа)\s+кажд\w*\s+месяц", s):
+        return True
+
+    if re.search(r"\bпо\s+(?:будням|выходным|рабочим)", s):
+        return True
+
+    if re.search(r"\bраз\s+в\s+(?:две|2)\s+недел", s):
+        return True
+
+    return False
 
 
 def compute_next_occurrence(
@@ -2662,6 +2695,22 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
             "восьмого": 8,
             "девятого": 9,
             "десятого": 10,
+            "одиннадцатого": 11,
+            "двенадцатого": 12,
+            "тринадцатого": 13,
+            "четырнадцатого": 14,
+            "пятнадцатого": 15,
+            "шестнадцатого": 16,
+            "семнадцатого": 17,
+            "восемнадцатого": 18,
+            "девятнадцатого": 19,
+            "двадцатого": 20,
+            "тридцатого": 30,
+        }
+
+        ordinal_ru_compound_tens = {
+            "двадцать": 20,
+            "тридцать": 30,
         }
 
         def _parse_day_token(token: str) -> Optional[int]:
@@ -2673,6 +2722,21 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
                 return int(m.group(1))
 
             return ordinal_ru.get(token)
+
+        def _parse_day_from_tokens(tokens: list[str], start: int = 0) -> tuple[Optional[int], int]:
+            if start >= len(tokens):
+                return None, 0
+
+            single = _parse_day_token(tokens[start])
+            if single is not None:
+                return single, 1
+
+            if start + 1 < len(tokens) and tokens[start] in ordinal_ru_compound_tens:
+                tail = _parse_day_token(tokens[start + 1])
+                if tail is not None and 1 <= tail <= 9:
+                    return ordinal_ru_compound_tens[tokens[start]] + tail, 2
+
+            return None, 0
 
         day = None
 
@@ -2694,8 +2758,8 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
                     day = parsed
 
         elif len(tokens_no_time) >= 4 and tokens_no_time[0] in {"каждое", "каждый", "каждого"}:
-            parsed = _parse_day_token(tokens_no_time[1])
-            if parsed is not None and tokens_no_time[2] in {"число", "числа"}:
+            parsed, consumed = _parse_day_from_tokens(tokens_no_time, 1)
+            if parsed is not None and 1 + consumed < len(tokens_no_time) and tokens_no_time[1 + consumed] in {"число", "числа"}:
                 day = parsed
 
         elif len(tokens_no_time) >= 5 and first == "every":
@@ -2704,8 +2768,8 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
                 day = parsed
 
         elif len(tokens_no_time) >= 4:
-            parsed = _parse_day_token(tokens_no_time[0])
-            if parsed is not None and tokens_no_time[1] in {"число", "числа"} and any(t.startswith("месяц") for t in tokens_no_time[2:]):
+            parsed, consumed = _parse_day_from_tokens(tokens_no_time, 0)
+            if parsed is not None and consumed < len(tokens_no_time) and tokens_no_time[consumed] in {"число", "числа"} and any(t.startswith("месяц") for t in tokens_no_time[consumed + 1:]):
                 day = parsed
 
         if day is not None:
