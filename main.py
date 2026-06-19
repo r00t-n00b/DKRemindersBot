@@ -4871,9 +4871,19 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
 
     for model in models:
         try:
-            result = client.models.generate_content(
-                model=model,
-                contents=[prompt],
+            model_timeout = float(
+                os.environ.get(
+                    "GEMINI_MODEL_CALL_TIMEOUT_SECONDS",
+                    os.environ.get("GEMINI_REMINDER_PARSE_TIMEOUT_SECONDS", "10"),
+                )
+            )
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model,
+                    contents=[prompt],
+                ),
+                timeout=model_timeout,
             )
             normalized = (getattr(result, "text", "") or "").strip()
             if normalized:
@@ -4886,6 +4896,15 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
                 )
                 return normalized
             last_error = RuntimeError(f"Gemini model {model} returned empty text normalization")
+        except asyncio.TimeoutError as e:
+            last_error = e
+            logger.warning(
+                "GEMINI_TEXT_NORMALIZE_TIMEOUT model=%s timeout=%s raw_len=%s",
+                model,
+                model_timeout,
+                len(raw),
+            )
+            continue        
         except Exception as e:
             last_error = e
 
