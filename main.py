@@ -1430,6 +1430,16 @@ from typing import Tuple
 def _split_expr_and_text(s: str) -> Tuple[str, str]:
     raw = (s or "").strip()
 
+    # Russian month name date without dash must be checked before
+    # generic numeric/time splitting, otherwise "1 октября ..." becomes "01:00 - october ...".
+    m = re.match(
+        r"^\s*(\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+(?:в\s+)?\d{1,2}[:.]\d{2})?)\s+(.+)\s*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
     # Нормальный путь: есть дефис-разделитель
     m = re.search(r"\s-\s", raw)
     if m:
@@ -2037,7 +2047,7 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
             return None
         return h, m_
 
-    if len(tokens) >= 2 and tokens[-2] == "at":
+    if len(tokens) >= 2 and tokens[-2] in {"at", "в"}:
         parsed = _try_parse_time_token(tokens[-1])
         if parsed is not None:
             hour, minute = parsed
@@ -2052,14 +2062,32 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
     if len(tokens) < 2:
         return None
 
+    month_names = dict(MONTH_EN)
+    month_names.update(
+        {
+            "января": 1,
+            "февраля": 2,
+            "марта": 3,
+            "апреля": 4,
+            "мая": 5,
+            "июня": 6,
+            "июля": 7,
+            "августа": 8,
+            "сентября": 9,
+            "октября": 10,
+            "ноября": 11,
+            "декабря": 12,
+        }
+    )
+
     # Вариант A: "<month> <day>"
-    if tokens[0] in MONTH_EN and tokens[1].isdigit():
-        month = int(MONTH_EN[tokens[0]])
+    if tokens[0] in month_names and tokens[1].isdigit():
+        month = int(month_names[tokens[0]])
         day = int(tokens[1])
     # Вариант B: "<day> <month>"
-    elif tokens[1] in MONTH_EN and tokens[0].isdigit():
+    elif tokens[1] in month_names and tokens[0].isdigit():
         day = int(tokens[0])
-        month = int(MONTH_EN[tokens[1]])
+        month = int(month_names[tokens[1]])
     else:
         return None
 
@@ -5020,6 +5048,55 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
     await remind_command(proxy_update, context)
 
 
+
+def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:
+    """Fast local path for plain text reminders before Gemini.
+
+    Converts simple natural messages like:
+    "напомни 1 октября пересчитать страховку"
+    into:
+    "1 октября - пересчитать страховку"
+
+    Returns None if local parser cannot confidently split date/time and text.
+    """
+    candidate = (raw_text or "").strip()
+    if not candidate:
+        return None
+
+    candidate = re.sub(
+        r"^\s*(?:напомни(?:\s+мне)?|напомнить(?:\s+мне)?|remind(?:\s+me)?(?:\s+to)?)\s+",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if not candidate:
+        return None
+
+    # Keep this local fast path deliberately narrow.
+    # Broader phrases like "напомни завтра поздравить Саню" should still go to Gemini,
+    # because Gemini may add useful default time details such as 18:00.
+    if not re.match(
+        r"^\s*\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+(?:в\s+)?\d{1,2}[:.]\d{2})?\s+.+$",
+        candidate,
+        flags=re.IGNORECASE,
+    ):
+        return None
+
+    try:
+        expr, reminder_text = _split_expr_and_text(candidate)
+        parse_date_time_smart(candidate, get_now())
+    except Exception:
+        return None
+
+    expr = expr.strip()
+    reminder_text = reminder_text.strip()
+    if not expr or not reminder_text:
+        return None
+
+    return f"{expr} - {reminder_text}"
+
+
 async def plain_text_remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -5040,18 +5117,21 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
     if raw_text.startswith("/"):
         return
 
-    try:
-        normalized = await normalize_plain_text_reminder_with_gemini(raw_text, user.id)
-    except Exception as e:
-        logger.exception(
-            "TEXT_REMIND_FAILED user_id=%s chat_id=%s error_type=%s error=%s raw_text=%r",
-            user.id,
-            chat.id,
-            type(e).__name__,
-            e,
-            raw_text,
-        )
-        normalized = _normalize_reminder_text_fallback(raw_text)
+    normalized = _normalize_plain_text_reminder_locally(raw_text)
+
+    if not normalized:
+        try:
+            normalized = await normalize_plain_text_reminder_with_gemini(raw_text, user.id)
+        except Exception as e:
+            logger.exception(
+                "TEXT_REMIND_FAILED user_id=%s chat_id=%s error_type=%s error=%s raw_text=%r",
+                user.id,
+                chat.id,
+                type(e).__name__,
+                e,
+                raw_text,
+            )
+            normalized = _normalize_reminder_text_fallback(raw_text)
 
     normalized = (normalized or "").strip()
     normalized = normalize_gemini_reminder_command_text(normalized)

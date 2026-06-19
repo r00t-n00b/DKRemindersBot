@@ -159,3 +159,33 @@ def test_plain_text_reminder_falls_back_when_gemini_fails(main_module, monkeypat
     assert "Я понял:" in reply
     assert "завтра 18:00 - купить молоко" in reply
     assert "Ок, напомню" in reply
+
+
+def test_plain_text_russian_month_name_uses_local_normalizer_without_gemini(main_module, monkeypatch):
+    seen = {}
+
+    async def fail_normalize(*args, **kwargs):
+        raise AssertionError("Gemini must not be called for explicit Russian month-name date")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fail_normalize)
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update(
+        "напомни 1 октября пересчитать стоимость начинки квартиры и поменять в страховке"
+    )
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == (
+        "/remind 1 октября - пересчитать стоимость начинки квартиры и поменять в страховке"
+    )
+
+    assert len(message.replies) == 1
+    reply, _ = message.replies[0]
+    assert "Я понял:" in reply
+    assert "1 октября - пересчитать стоимость начинки квартиры и поменять в страховке" in reply
+    assert "Ок, напомню" in reply
