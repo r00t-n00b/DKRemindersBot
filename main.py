@@ -1432,13 +1432,33 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
 
     # Russian month name date without dash must be checked before
     # generic numeric/time splitting, otherwise "1 октября ..." becomes "01:00 - october ...".
+    # Check explicit time forms first, otherwise "1 октября в 12:30 - ..." can be split
+    # as expr="1 октября" and text="в 12:30 - ...".
     m = re.match(
-        r"^\s*(\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+(?:в\s+)?\d{1,2}[:.]\d{2})?)\s+(.+)\s*$",
+        r"^\s*(\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(?:в\s+)?\d{1,2}[:.]\d{2})\s+(?![-–—])(.+)$",
         raw,
         flags=re.IGNORECASE,
     )
     if m:
         return m.group(1).strip(), m.group(2).strip()
+
+    m = re.match(
+        r"^\s*(\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря))\s+(?![-–—]|(?:в\s+)?\d{1,2}[:.]\d{2}\b)(.+)$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
+
+    m = re.match(
+        r"^\s*(\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря))\s+(?![-–—]|(?:в\s+)?\d{1,2}[:.]\d{2}\b)(.+)$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
 
     # Нормальный путь: есть дефис-разделитель
     m = re.search(r"\s-\s", raw)
