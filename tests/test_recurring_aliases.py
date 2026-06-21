@@ -154,3 +154,89 @@ def test_recurring_aliases_without_dash_show_recurring_hint(main_module):
 
         assert message.replies
         assert message.replies[-1][0] == m.msg_recurring_missing_dash(is_private=True)
+
+
+def _expected_for_simple_alias(alias, main_module):
+    from parser_lexicon import (
+        RECURRING_DAILY_ALIASES,
+        RECURRING_HOURLY_ALIASES,
+        RECURRING_MONTHLY_ALIASES,
+        RECURRING_WEEKLY_ALIASES,
+    )
+
+    if alias in RECURRING_HOURLY_ALIASES:
+        return "interval", {"value": 1, "unit": "hours"}
+
+    if alias in RECURRING_DAILY_ALIASES:
+        return "daily", {}
+
+    if alias in RECURRING_WEEKLY_ALIASES:
+        return "weekly", {"weekday": 6}
+
+    if alias in RECURRING_MONTHLY_ALIASES:
+        return "monthly", {"day": 21}
+
+    raise AssertionError(f"Unknown simple recurring alias in lexicon: {alias}")
+
+
+def test_all_simple_recurring_aliases_from_lexicon_route_through_remind_command(main_module, monkeypatch):
+    from parser_lexicon import RECURRING_SIMPLE_ALIASES
+
+    m = main_module
+
+    created_templates = []
+    created_reminders = []
+
+    monkeypatch.setattr(m, "get_now", lambda: m.datetime(2026, 6, 21, 23, 15, tzinfo=m.TZ))
+    monkeypatch.setattr(m, "create_recurring_template", lambda **kwargs: created_templates.append(kwargs) or 501)
+    monkeypatch.setattr(m, "add_reminder", lambda **kwargs: created_reminders.append(kwargs) or 901)
+    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard", lambda *args, **kwargs: None)
+
+    for alias in sorted(RECURRING_SIMPLE_ALIASES):
+        expected_pattern, expected_payload = _expected_for_simple_alias(alias, m)
+        expected_text = f"smoke {alias}"
+        raw = f"/remind {alias} - {expected_text}"
+
+        message = FakeMessage(raw)
+        update = SimpleNamespace(
+            effective_message=message,
+            effective_chat=FakePrivateChat(12345),
+            effective_user=FakeUser(1000),
+        )
+        context = SimpleNamespace(args=raw.split()[1:], user_data={})
+
+        m.asyncio.run(m.remind_command(update, context))
+
+        assert message.replies
+        assert "Ок, создал повторяющееся напоминание." in message.replies[-1][0]
+        assert "Не смог понять дату и текст" not in message.replies[-1][0]
+
+        tpl = created_templates[-1]
+        assert tpl["text"] == expected_text
+        assert tpl["pattern_type"] == expected_pattern
+        assert tpl["payload"] == expected_payload
+
+        reminder = created_reminders[-1]
+        assert reminder["text"] == expected_text
+        assert reminder["template_id"] == 501
+
+
+def test_all_simple_recurring_aliases_from_lexicon_without_dash_show_hint(main_module):
+    from parser_lexicon import RECURRING_SIMPLE_ALIASES
+
+    m = main_module
+
+    for alias in sorted(RECURRING_SIMPLE_ALIASES):
+        raw = f"/remind {alias} smoke {alias}"
+        message = FakeMessage(raw)
+        update = SimpleNamespace(
+            effective_message=message,
+            effective_chat=FakePrivateChat(12345),
+            effective_user=FakeUser(1000),
+        )
+        context = SimpleNamespace(args=raw.split()[1:], user_data={})
+
+        m.asyncio.run(m.remind_command(update, context))
+
+        assert message.replies
+        assert message.replies[-1][0] == m.msg_recurring_missing_dash(is_private=True)

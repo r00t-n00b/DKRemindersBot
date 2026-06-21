@@ -138,6 +138,16 @@ from messages import (
     msg_user_has_not_started_bot,
 )
 
+from parser_lexicon import (
+    RECURRING_DAILY_ALIASES,
+    RECURRING_FIRST_TOKENS,
+    RECURRING_HOURLY_ALIASES,
+    RECURRING_MONTHLY_ALIASES,
+    RECURRING_WEEKLY_ALIASES,
+    is_recurring_missing_dash_candidate,
+    tokens_match_alias,
+)
+
 # ===== Модель данных =====
 
 @dataclass
@@ -2434,27 +2444,7 @@ def looks_like_recurring(raw: str) -> bool:
         return False
 
     first = s.split(maxsplit=1)[0]
-    if first in {
-        "every",
-        "everyday",
-        "daily",
-        "weekly",
-        "biweekly",
-        "fortnightly",
-        "monthly",
-        "yearly",
-        "weekdays",
-        "weekday",
-        "workdays",
-        "workday",
-        "weekends",
-        "weekend",
-        "каждый",
-        "каждую",
-        "каждое",
-        "каждые",
-        "каждого",
-    }:
+    if first in RECURRING_FIRST_TOKENS:
         return True
 
     if re.search(r"\b(?:число|числа)\s+кажд\w*\s+месяц", s):
@@ -2693,7 +2683,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     }
 
     # interval: every 3 days / каждые 3 дня / hourly / biweekly / every other week / раз в две недели
-    if tokens_no_time in (["hourly"], ["ежечасно"]):
+    if tokens_match_alias(tokens_no_time, RECURRING_HOURLY_ALIASES):
         pattern_type = "interval"
         payload = {"value": 1, "unit": "hours"}
     elif tokens_no_time in (["biweekly"], ["fortnightly"]):
@@ -2741,8 +2731,9 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
             payload = {"value": 1, "unit": interval_units_ru[second]}
 
     # daily
-    if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
-        len(tokens_no_time) == 1 and first in {"everyday", "daily", "ежедневно"}
+    if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or tokens_match_alias(
+        tokens_no_time,
+        RECURRING_DAILY_ALIASES,
     ):
         # every day / everyday
         pattern_type = "daily"
@@ -2759,7 +2750,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
     # weekly
     if pattern_type is None:
-        if tokens_no_time in (["weekly"], ["еженедельно"]):
+        if tokens_match_alias(tokens_no_time, RECURRING_WEEKLY_ALIASES):
             pattern_type = "weekly"
             payload = {"weekday": now.astimezone(TZ).weekday()}
         elif len(tokens_no_time) >= 2:
@@ -2873,7 +2864,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
         day = None
 
-        if tokens_no_time in (["monthly"], ["ежемесячно"]):
+        if tokens_match_alias(tokens_no_time, RECURRING_MONTHLY_ALIASES):
             day = now.astimezone(TZ).day
 
         elif len(tokens_no_time) >= 2 and first == "every" and tokens_no_time[1] in {"month", "months"}:
@@ -5559,11 +5550,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                     )
                     return
 
-    if re.match(
-        r"^(every|daily|weekly|monthly|hourly|ежечасно|ежедневно|еженедельно|ежемесячно|кажд\w*)\b",
-        raw_args.strip(),
-        flags=re.IGNORECASE,
-    ) and " - " not in raw_args:
+    if is_recurring_missing_dash_candidate(raw_args) and " - " not in raw_args:
         await safe_reply(message, msg_recurring_missing_dash(is_private))
         return
 
@@ -5862,11 +5849,7 @@ async def remind_command(update: Update, context: CTX) -> None:
     raw_single = raw_args.strip()
 
     # Сначала пробуем как recurring
-    if looks_like_recurring(raw_single) or re.match(
-        r"^(hourly|daily|weekly|monthly|ежечасно|ежедневно|еженедельно|ежемесячно)\b",
-        raw_single.strip(),
-        flags=re.IGNORECASE,
-    ):
+    if looks_like_recurring(raw_single):
         try:
             first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
         except ValueError as e:
