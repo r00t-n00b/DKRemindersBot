@@ -5559,7 +5559,11 @@ async def remind_command(update: Update, context: CTX) -> None:
                     )
                     return
 
-    if re.match(r"^(every|daily|weekly|monthly|кажд\w*)\b", raw_args.strip(), flags=re.IGNORECASE) and " - " not in raw_args:
+    if re.match(
+        r"^(every|daily|weekly|monthly|hourly|ежечасно|ежедневно|еженедельно|ежемесячно|кажд\w*)\b",
+        raw_args.strip(),
+        flags=re.IGNORECASE,
+    ) and " - " not in raw_args:
         await safe_reply(message, msg_recurring_missing_dash(is_private))
         return
 
@@ -5858,7 +5862,11 @@ async def remind_command(update: Update, context: CTX) -> None:
     raw_single = raw_args.strip()
 
     # Сначала пробуем как recurring
-    if looks_like_recurring(raw_single):
+    if looks_like_recurring(raw_single) or re.match(
+        r"^(hourly|daily|weekly|monthly|ежечасно|ежедневно|еженедельно|ежемесячно)\b",
+        raw_single.strip(),
+        flags=re.IGNORECASE,
+    ):
         try:
             first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
         except ValueError as e:
