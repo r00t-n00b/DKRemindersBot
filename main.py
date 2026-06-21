@@ -139,6 +139,9 @@ from messages import (
 )
 
 from parser_lexicon import (
+    MONTH_EN,
+    WEEKDAY_RU,
+    WEEKDAY_EN,
     RECURRING_DAILY_ALIASES,
     RECURRING_FIRST_TOKENS,
     RECURRING_HOURLY_ALIASES,
@@ -1786,67 +1789,6 @@ def _parse_standalone_vague_time(expr: str, now: datetime) -> Optional[datetime]
         minute,
         tzinfo=TZ,
     )
-
-WEEKDAY_EN = {
-    "monday": 0,
-    "mon": 0,
-    "tuesday": 1,
-    "tue": 1,
-    "tues": 1,
-    "wednesday": 2,
-    "wed": 2,
-    "thursday": 3,
-    "thu": 3,
-    "thur": 3,
-    "thurs": 3,
-    "friday": 4,
-    "fri": 4,
-    "saturday": 5,
-    "sat": 5,
-    "sunday": 6,
-    "sun": 6,
-}
-
-WEEKDAY_RU = {
-    "понедельник": 0,
-    "понедельника": 0,
-    "пн": 0,
-    "вторник": 1,
-    "вторника": 1,
-    "вт": 1,
-    "среда": 2,
-    "среду": 2,
-    "среды": 2,
-    "ср": 2,
-    "четверг": 3,
-    "четверга": 3,
-    "чт": 3,
-    "пятница": 4,
-    "пятницу": 4,
-    "пятницы": 4,
-    "пт": 4,
-    "суббота": 5,
-    "субботу": 5,
-    "сб": 5,
-    "воскресенье": 6,
-    "воскресенья": 6,
-    "вс": 6,
-}
-
-MONTH_EN = {
-    "january": 1, "jan": 1,
-    "february": 2, "feb": 2,
-    "march": 3, "mar": 3,
-    "april": 4, "apr": 4,
-    "may": 5,
-    "june": 6, "jun": 6,
-    "july": 7, "jul": 7,
-    "august": 8, "aug": 8,
-    "september": 9, "sep": 9, "sept": 9,
-    "october": 10, "oct": 10,
-    "november": 11, "nov": 11,
-    "december": 12, "dec": 12,
-}
 
 def _normalize_on_at_phrase(expr_lower: str) -> str:
     """
