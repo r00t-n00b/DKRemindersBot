@@ -167,9 +167,9 @@ def msg_recurring_missing_dash(is_private: bool) -> str:
             "Не понял повторяющееся напоминание.\n"
             "Для повтора нужен дефис между правилом и текстом.\n\n"
             "Для ежечасного повтора напиши так:\n"
-            "/remind every 1 hour - привет\n\n"
+            "/remind every hour - привет\n\n"
             "Или в личке свободным текстом:\n"
-            "/remind every 1 hour - привет"
+            "/remind every hour - привет"
         )
 
     return (
@@ -177,10 +177,10 @@ def msg_recurring_missing_dash(is_private: bool) -> str:
         "В группе повторяющееся напоминание ставится только командой.\n"
         "Для повтора нужен дефис между правилом и текстом.\n\n"
         "Для ежечасного повтора напиши так:\n"
-        "/remind every 1 hour - привет\n\n"
+        "/remind every hour - привет\n\n"
         "Свободное «напомни ...» в группе не работает.\n"
         "Если хочешь поставить это в группу из лички, используй alias группы:\n"
-        "/remind <alias> every 1 hour - привет"
+        "/remind <alias> every hour - привет"
     )
 
 
@@ -189,9 +189,9 @@ def msg_recurring_parse_failed(is_private: bool) -> str:
         return (
             "Не понял правило повтора.\n\n"
             "Для ежечасного повтора используй число:\n"
-            "/remind every 1 hour - привет\n\n"
-            "Формат every hour без числа сейчас не поддерживается.\n\n"
-            "Формат every hour без числа сейчас не поддерживается.\n\n"
+            "/remind every hour - привет\n\n"
+            ""
+            ""
         "Для еженедельного повтора:\n"
             "/remind every Monday 10:00 - проверить документы"
         )
@@ -200,7 +200,7 @@ def msg_recurring_parse_failed(is_private: bool) -> str:
         "Не понял правило повтора.\n"
         "В группе повторяющееся напоминание ставится только командой.\n\n"
         "Для ежечасного повтора используй число:\n"
-        "/remind every 1 hour - привет\n\n"
+        "/remind every hour - привет\n\n"
         "Для еженедельного повтора:\n"
         "/remind every Monday 10:00 - проверить документы"
     )
@@ -2849,6 +2849,17 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
         }:
             pattern_type = "interval"
             payload = {"value": 2, "unit": "weeks"}
+
+    # interval shorthand: every hour / every minute / каждый час / каждую минуту
+    # Важно: НЕ трогаем every day/week/month - ниже у них есть отдельная семантика.
+    if pattern_type is None and len(tokens_no_time) >= 2:
+        second = tokens_no_time[1]
+        if first == "every" and second in {"minute", "minutes", "min", "mins", "hour", "hours"}:
+            pattern_type = "interval"
+            payload = {"value": 1, "unit": interval_units_en[second]}
+        elif first.startswith("кажд") and second in {"минута", "минуту", "минуты", "минут", "мин", "час", "часа", "часов"}:
+            pattern_type = "interval"
+            payload = {"value": 1, "unit": interval_units_ru[second]}
 
     # daily
     if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
@@ -7004,10 +7015,9 @@ async def undo_callback(update: Update, context: CTX) -> None:
         suffix = f"  🔁 {human}" if human else "  🔁"
         count = len(restored) if isinstance(restored, list) else 0
 
-        if query.message:
-            await query.message.reply_text(
-                f"Вернул серию: {series_text}{suffix} (инстансов: {count})"
-            )
+        await query.edit_message_text(
+            f"Вернул серию: {series_text}{suffix} (инстансов: {count})"
+        )
         return
 
     # single
@@ -7018,14 +7028,20 @@ async def undo_callback(update: Update, context: CTX) -> None:
         tpl_payload,
     )
 
-    if query.message:
-        reply_markup = None
-        if isinstance(restored, int):
-            reply_markup = build_created_reminder_actions_keyboard(
-                int(restored),
-                is_recurring=bool(tpl),
-            )
-        await query.message.reply_text(f"Вернул: {restored_text}", reply_markup=reply_markup)
+    restored_id = None
+    try:
+        restored_id = int(restored)
+    except (TypeError, ValueError):
+        restored_id = None
+
+    reply_markup = None
+    if restored_id is not None:
+        reply_markup = build_created_reminder_actions_keyboard(
+            restored_id,
+            is_recurring=bool(tpl),
+        )
+
+    await query.edit_message_text(f"Вернул: {restored_text}", reply_markup=reply_markup)
 
 # ===== SNOOZE callback =====
 

@@ -31,42 +31,72 @@ def test_undo_callback_restores_single_reply(main_module, monkeypatch):
     async def fake_answer(*a, **k):
         return None
 
-    replies = []
+    edited = {}
 
-    async def fake_reply_text(text, **k):
-        replies.append(text)
+    async def fake_edit_message_text(text, **kwargs):
+        edited["text"] = text
+        edited["kwargs"] = kwargs
 
     snapshot = {
         "kind": "single",
-        "chat_id": 1,
-        "reminder": {"text": "hi", "remind_at": "2025-01-01T10:00:00+01:00", "template_id": None},
+        "reminder": {
+            "chat_id": 1,
+            "text": "task",
+            "remind_at": "2025-01-01T10:00:00+01:00",
+        },
         "template": None,
     }
 
-    monkeypatch.setattr(main_module, "restore_deleted_snapshot", lambda snap: "hi")
+    monkeypatch.setattr(main_module, "restore_deleted_snapshot", lambda snap: 77)
+
+    keyboard = SimpleNamespace(
+        inline_keyboard=[
+            [
+                SimpleNamespace(callback_data="created_del:77"),
+                SimpleNamespace(callback_data="created_resched:77"),
+            ]
+        ]
+    )
+    keyboard_calls = []
+
+    def fake_created_actions_keyboard(reminder_id, *, is_recurring=False):
+        keyboard_calls.append((reminder_id, is_recurring))
+        return keyboard
+
+    monkeypatch.setattr(
+        main_module,
+        "build_created_reminder_actions_keyboard",
+        fake_created_actions_keyboard,
+    )
 
     cbq = SimpleNamespace(
         data="undo:t1",
         answer=fake_answer,
-        message=SimpleNamespace(reply_text=fake_reply_text),
+        edit_message_text=fake_edit_message_text,
+        message=SimpleNamespace(),
     )
     upd = SimpleNamespace(callback_query=cbq)
     ctx = SimpleNamespace(user_data={"undo_tokens": {"t1": snapshot}})
 
     asyncio.run(main_module.undo_callback(upd, ctx))
 
-    assert replies
-    assert replies[0].startswith("Вернул:")
-
+    assert edited["text"].startswith("Вернул: ")
+    keyboard = edited["kwargs"]["reply_markup"]
+    assert keyboard is not None
+    assert keyboard_calls == [(77, False)]
+    assert keyboard.inline_keyboard[0][0].callback_data == "created_del:77"
+    assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:77"
+    assert ctx.user_data["undo_tokens"] == {}
 
 def test_undo_callback_restores_series_reply(main_module, monkeypatch):
     async def fake_answer(*a, **k):
         return None
 
-    replies = []
+    edited = {}
 
-    async def fake_reply_text(text, **k):
-        replies.append(text)
+    async def fake_edit_message_text(text, **kwargs):
+        edited["text"] = text
+        edited["kwargs"] = kwargs
 
     snapshot = {
         "kind": "series",
@@ -83,12 +113,13 @@ def test_undo_callback_restores_series_reply(main_module, monkeypatch):
     cbq = SimpleNamespace(
         data="undo:t2",
         answer=fake_answer,
-        message=SimpleNamespace(reply_text=fake_reply_text),
+        edit_message_text=fake_edit_message_text,
+        message=SimpleNamespace(),
     )
     upd = SimpleNamespace(callback_query=cbq)
     ctx = SimpleNamespace(user_data={"undo_tokens": {"t2": snapshot}})
 
     asyncio.run(main_module.undo_callback(upd, ctx))
 
-    assert replies
-    assert replies[0].startswith("Вернул серию:")
+    assert edited["text"] == "Вернул серию: series  🔁 daily (инстансов: 2)"
+    assert ctx.user_data["undo_tokens"] == {}

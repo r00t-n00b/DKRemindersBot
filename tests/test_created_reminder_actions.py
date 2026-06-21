@@ -343,14 +343,6 @@ def test_created_snooze_custom_calendar_uses_created_prefix(main_module, monkeyp
     assert not any(cb.startswith("snooze_pickdate:123:") for cb in callbacks)
 
 
-class FakeUndoMessage:
-    def __init__(self):
-        self.replies = []
-
-    async def reply_text(self, text, **kwargs):
-        self.replies.append((text, kwargs))
-
-
 def test_undo_single_restores_created_actions_keyboard(main_module, monkeypatch):
     m = main_module
     _patch_keyboard_classes(m, monkeypatch)
@@ -371,16 +363,13 @@ def test_undo_single_restores_created_actions_keyboard(main_module, monkeypatch)
     monkeypatch.setattr(m, "format_deleted_human", lambda *args, **kwargs: "22.06 18:00 - test task")
 
     query = FakeQuery("undo:tok123")
-    query.message = FakeUndoMessage()
     update = SimpleNamespace(callback_query=query)
     context = SimpleNamespace(user_data={"undo_tokens": {"tok123": snapshot}})
 
     asyncio.run(m.undo_callback(update, context))
 
-    assert query.message.replies
-    text, kwargs = query.message.replies[0]
-    assert text == "Вернул: 22.06 18:00 - test task"
+    assert query.edited_text == "Вернул: 22.06 18:00 - test task"
 
-    keyboard = kwargs["reply_markup"]
+    keyboard = query.edited_text_kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "created_del:999"
     assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:999"

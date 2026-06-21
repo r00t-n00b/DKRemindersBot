@@ -171,10 +171,10 @@ def test_group_username_error_does_not_suggest_plain_text_remind(main_module):
 def test_group_recurring_missing_dash_does_not_suggest_plain_text_remind(main_module):
     msg = main_module.msg_recurring_missing_dash(is_private=False)
 
-    assert "/remind every 1 hour - привет" in msg
+    assert "/remind every hour - привет" in msg
     assert "Свободное «напомни ...» в группе не работает" in msg
     assert "напомни каждый час - привет" not in msg
-    assert "/remind <alias> every 1 hour - привет" in msg
+    assert "/remind <alias> every hour - привет" in msg
 
 
 def test_group_recurring_missing_dash_runtime_message_is_group_aware(main_module):
@@ -199,13 +199,13 @@ def test_group_recurring_missing_dash_runtime_message_is_group_aware(main_module
 def test_recurring_parse_failed_runtime_message_is_informative(main_module):
     m = main_module
 
-    message = FakeReminderMessageForRecurring("/remind every hour - привет")
+    message = FakeReminderMessageForRecurring("/remind every banana - привет")
     update = SimpleNamespace(
         effective_message=message,
         effective_chat=FakePrivateChatForRecurring(12345),
         effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
     )
-    context = SimpleNamespace(args=["every", "hour", "-", "привет"], user_data={})
+    context = SimpleNamespace(args=["every", "banana", "-", "привет"], user_data={})
 
     asyncio.run(m.remind_command(update, context))
 
@@ -213,7 +213,7 @@ def test_recurring_parse_failed_runtime_message_is_informative(main_module):
     reply, _ = message.replies[0]
     assert reply == m.msg_recurring_parse_failed(is_private=True)
     assert "Не смог понять повторяющийся формат" not in reply
-    assert "/remind every 1 hour - привет" in reply
+    assert "/remind every hour - привет" in reply
 
 
 def test_plain_text_not_understood_mentions_help(main_module):
@@ -229,8 +229,8 @@ def test_recurring_messages_do_not_suggest_unsupported_every_hour(main_module):
     ]
 
     for msg in messages:
-        assert "/remind every 1 hour - привет" in msg
-        assert "/remind every hour - привет" not in msg
+        assert "/remind every hour - привет" in msg
+        assert "every 1 hour" not in msg
 
 
 def test_user_has_not_started_message_has_no_artificial_newline(main_module):
@@ -263,8 +263,8 @@ def test_recurring_messages_do_not_suggest_unsupported_every_hour(main_module):
     ]
 
     for msg in messages:
-        assert "/remind every 1 hour - привет" in msg
-        assert "/remind every hour - привет" not in msg
+        assert "/remind every hour - привет" in msg
+        assert "every 1 hour" not in msg
 
 
 def test_user_has_not_started_message_has_no_artificial_newline(main_module):
@@ -297,8 +297,8 @@ def test_recurring_messages_do_not_suggest_unsupported_every_hour(main_module):
     ]
 
     for msg in messages:
-        assert "/remind every 1 hour - привет" in msg
-        assert "/remind every hour - привет" not in msg
+        assert "/remind every hour - привет" in msg
+        assert "every 1 hour" not in msg
 
 
 def test_user_has_not_started_message_has_no_artificial_newline(main_module):
@@ -316,3 +316,45 @@ def test_callback_error_messages_are_actionable(main_module):
     assert "/list" in main_module.MSG_USER_CONTEXT_MISSING
     assert "обычное личное напоминание" in main_module.MSG_EVENT_DATE_NOT_FOUND
     assert "выбери время заново" in main_module.MSG_UNKNOWN_TIME_OPTION.lower()
+
+
+def test_recurring_messages_suggest_supported_every_hour(main_module):
+    messages = [
+        main_module.msg_recurring_missing_dash(is_private=True),
+        main_module.msg_recurring_missing_dash(is_private=False),
+        main_module.msg_recurring_parse_failed(is_private=True),
+        main_module.msg_recurring_parse_failed(is_private=False),
+    ]
+
+    for msg in messages:
+        assert "/remind every hour - привет" in msg
+        assert "every 1 hour" not in msg
+        assert "без числа сейчас не поддерживается" not in msg
+
+
+def test_parse_recurring_supports_every_hour_without_explicit_number(main_module, fixed_now):
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "every hour - привет",
+        fixed_now,
+    )
+
+    assert text == "привет"
+    assert pattern_type == "interval"
+    assert payload == {"value": 1, "unit": "hours"}
+    assert hour == 10
+    assert minute == 0
+    assert first_dt == fixed_now.replace(second=0, microsecond=0) + main_module.timedelta(hours=1)
+
+
+def test_parse_recurring_supports_russian_every_hour_without_explicit_number(main_module, fixed_now):
+    first_dt, text, pattern_type, payload, hour, minute = main_module.parse_recurring(
+        "каждый час - привет",
+        fixed_now,
+    )
+
+    assert text == "привет"
+    assert pattern_type == "interval"
+    assert payload == {"value": 1, "unit": "hours"}
+    assert hour == 10
+    assert minute == 0
+    assert first_dt == fixed_now.replace(second=0, microsecond=0) + main_module.timedelta(hours=1)
