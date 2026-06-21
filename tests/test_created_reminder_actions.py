@@ -61,7 +61,8 @@ def test_build_created_reschedule_keyboard_has_back_without_hide(main_module, mo
     assert any(b.callback_data == "snooze:123:1h" for b in flattened)
     assert any(b.callback_data == "snooze:123:3h" for b in flattened)
     assert any(b.callback_data == "snooze:123:tomorrow" for b in flattened)
-    assert any(b.callback_data == "snooze:123:custom" for b in flattened)
+    assert any(b.callback_data == "created_snooze_custom:123" for b in flattened)
+    assert all(b.callback_data != "snooze:123:custom" for b in flattened)
     assert keyboard.inline_keyboard[-1][0].text == "⬅️ Назад"
     assert keyboard.inline_keyboard[-1][0].callback_data == "created_back:123"
 
@@ -199,5 +200,81 @@ def test_recurring_reminder_success_has_created_actions_keyboard(main_module, mo
     assert keyboard is not None
     assert keyboard.inline_keyboard[0][0].text == "❌ Удалить"
     assert keyboard.inline_keyboard[0][0].callback_data.startswith("created_del:")
-    assert keyboard.inline_keyboard[0][1].text == "⏰ Перенести"
+    assert keyboard.inline_keyboard[0][1].text == "⏰ Перенести ближайшее"
     assert keyboard.inline_keyboard[0][1].callback_data.startswith("created_resched:")
+
+
+def test_build_created_reminder_actions_keyboard_for_recurring_says_nearest(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    keyboard = m.build_created_reminder_actions_keyboard(123, is_recurring=True)
+
+    assert keyboard.inline_keyboard[0][0].text == "❌ Удалить"
+    assert keyboard.inline_keyboard[0][0].callback_data == "created_del:123"
+    assert keyboard.inline_keyboard[0][1].text == "⏰ Перенести ближайшее"
+    assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:123"
+
+
+def test_created_delete_callback_for_recurring_shows_one_or_series_choice(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    deleted = []
+
+    monkeypatch.setattr(m, "get_reminder_row", lambda rid: {"id": rid, "chat_id": 777, "template_id": 999})
+    monkeypatch.setattr(
+        m,
+        "delete_single_reminder_with_snapshot",
+        lambda rid, chat_id: deleted.append((rid, chat_id)),
+    )
+
+    query = FakeQuery("created_del:456")
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(m.created_delete_callback(update, context))
+
+    assert deleted == []
+    assert query.answers
+    assert query.edited_reply_markup is not None
+
+    keyboard = query.edited_reply_markup
+    assert keyboard.inline_keyboard[0][0].text == "🗑 Удалить только ближайший"
+    assert keyboard.inline_keyboard[0][0].callback_data == "del_one:456"
+    assert keyboard.inline_keyboard[0][1].text == "🧨 Удалить всю серию"
+    assert keyboard.inline_keyboard[0][1].callback_data == "del_series:999"
+
+
+def test_created_reschedule_keyboard_uses_created_custom_callback(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    keyboard = m.build_created_reschedule_keyboard(123)
+
+    flattened = [button for row in keyboard.inline_keyboard for button in row]
+    assert any(button.callback_data == "created_snooze_custom:123" for button in flattened)
+    assert all(button.callback_data != "snooze:123:custom" for button in flattened)
+
+
+def test_created_snooze_cancel_returns_created_reschedule_keyboard(main_module, monkeypatch):
+    m = main_module
+    created_keyboard = object()
+    seen = []
+
+    def fake_build_created_reschedule_keyboard(rid):
+        seen.append(rid)
+        return created_keyboard
+
+    monkeypatch.setattr(m, "build_created_reschedule_keyboard", fake_build_created_reschedule_keyboard)
+    monkeypatch.setattr(m, "mark_reminder_acked", lambda rid: (_ for _ in ()).throw(AssertionError("must not ack on cancel")))
+
+    query = FakeQuery("created_snooze_cancel:789")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_snooze_cancel_callback(update, SimpleNamespace()))
+
+    assert seen == [789]
+    assert query.answers
+    assert query.answers[0][0] == "Вернул варианты"
+    assert query.edited_reply_markup is created_keyboard

@@ -3125,39 +3125,19 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
 # ===== SNOOZE клавиатуры =====
 
-def build_created_reminder_actions_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool = False) -> Optional[InlineKeyboardMarkup]:
     try:
+        reschedule_text = "⏰ Перенести ближайшее" if is_recurring else "⏰ Перенести"
         return InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton("❌ Удалить", callback_data=f"created_del:{reminder_id}"),
-                    InlineKeyboardButton("⏰ Перенести", callback_data=f"created_resched:{reminder_id}"),
+                    InlineKeyboardButton(reschedule_text, callback_data=f"created_resched:{reminder_id}"),
                 ]
             ]
         )
     except TypeError:
         return None
-
-
-def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
-    buttons: List[List[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
-            InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
-        ],
-        [
-            InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
-            InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
-        ],
-        [
-            InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
-            InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
-        ],
-        [
-            InlineKeyboardButton("✅ Mark complete", callback_data=f"done:{reminder_id}"),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
 
 def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     try:
@@ -3172,10 +3152,33 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
             ],
             [
                 InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
-                InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
+                InlineKeyboardButton("📝 Кастом", callback_data=f"created_snooze_custom:{reminder_id}"),
             ],
             [
                 InlineKeyboardButton("⬅️ Назад", callback_data=f"created_back:{reminder_id}"),
+            ],
+        ]
+        return InlineKeyboardMarkup(buttons)
+    except TypeError:
+        return None
+
+def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+    try:
+        buttons: List[List[InlineKeyboardButton]] = [
+            [
+                InlineKeyboardButton("✅ Mark complete", callback_data=f"done:{reminder_id}"),
+            ],
+            [
+                InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
+                InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
+            ],
+            [
+                InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
+                InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+            ],
+            [
+                InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
             ],
         ]
         return InlineKeyboardMarkup(buttons)
@@ -5755,15 +5758,16 @@ async def remind_command(update: Update, context: CTX) -> None:
         human = format_recurring_human(pattern_type, payload)
         freq_part = f"\nПовтор: {human}" if human else ""
 
+        created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id, is_recurring=True)
         if used_alias:
             await safe_reply(
                 message,
                 f"Ок, создал повторяющееся напоминание в чате '{used_alias}'.\n"
                 f"Первое напоминание будет {when_str}: {text}"
-                f"{freq_part}"
+                f"{freq_part}",
+                reply_markup=created_actions_keyboard,
             )
         else:
-            created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id)
             await safe_reply(
                 message,
                 f"Ок, создал повторяющееся напоминание.\n"
@@ -6150,6 +6154,18 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
         await query.edit_message_text("Напоминание уже удалено.", reply_markup=None)
         return
 
+    template_id = row["template_id"] if "template_id" in row.keys() else None
+    if template_id is not None:
+        keyboard = InlineKeyboardMarkup(
+            [[
+                InlineKeyboardButton("🗑 Удалить только ближайший", callback_data=f"del_one:{reminder_id}"),
+                InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}"),
+            ]]
+        )
+        await query.answer()
+        await query.edit_message_reply_markup(reply_markup=keyboard)
+        return
+
     snapshot = delete_single_reminder_with_snapshot(reminder_id, int(row["chat_id"]))
     if not snapshot:
         await query.answer("Уже удалено", show_alert=True)
@@ -6190,6 +6206,55 @@ async def created_reschedule_callback(update: Update, context: CTX) -> None:
         return
 
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
+
+
+async def created_snooze_custom_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+
+    try:
+        reminder_id = int(query.data.split(":", 1)[1])
+    except Exception:
+        await query.answer("Некорректный reminder id", show_alert=True)
+        return
+
+    keyboard = build_custom_date_keyboard(reminder_id, callback_prefix="snooze")
+
+    try:
+        rows = []
+        for row in keyboard.inline_keyboard:
+            new_row = []
+            for button in row:
+                callback_data = getattr(button, "callback_data", None)
+                if callback_data == f"snooze_cancel:{reminder_id}":
+                    callback_data = f"created_snooze_cancel:{reminder_id}"
+                new_row.append(
+                    InlineKeyboardButton(
+                        getattr(button, "text", ""),
+                        callback_data=callback_data,
+                    )
+                )
+            rows.append(new_row)
+        keyboard = InlineKeyboardMarkup(rows)
+    except TypeError:
+        pass
+
+    await query.edit_message_reply_markup(reply_markup=keyboard)
+    await query.answer("Выбери дату")
+    return
+
+
+async def created_snooze_cancel_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+
+    try:
+        reminder_id = int(query.data.split(":", 1)[1])
+    except Exception:
+        await query.answer("Некорректный reminder id", show_alert=True)
+        return
+
+    await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
+    await query.answer("Вернул варианты")
+    return
 
 
 async def created_back_callback(update: Update, context: CTX) -> None:
@@ -7530,6 +7595,8 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
+    application.add_handler(CallbackQueryHandler(created_snooze_custom_callback, pattern=r"^created_snooze_custom:\d+$"))
+    application.add_handler(CallbackQueryHandler(created_snooze_cancel_callback, pattern=r"^created_snooze_cancel:\d+$"))
     application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
