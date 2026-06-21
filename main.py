@@ -2625,8 +2625,16 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
     - каждый месяц 15 10:00 - текст
     - every 3 days - текст
     - every 2 hours - текст
+    - hourly - текст
+    - daily - текст
+    - weekly - текст
+    - monthly - текст
     - каждые 3 дня - текст
     - каждые 2 часа - текст
+    - ежечасно - текст
+    - ежедневно - текст
+    - еженедельно - текст
+    - ежемесячно - текст
     """
     expr, text = _split_expr_and_text(raw)
     expr_lower = expr.lower().strip()
@@ -2684,8 +2692,11 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
         "месяцев": "months",
     }
 
-    # interval: every 3 days / каждые 3 дня / biweekly / every other week / раз в две недели
-    if tokens_no_time in (["biweekly"], ["fortnightly"]):
+    # interval: every 3 days / каждые 3 дня / hourly / biweekly / every other week / раз в две недели
+    if tokens_no_time in (["hourly"], ["ежечасно"]):
+        pattern_type = "interval"
+        payload = {"value": 1, "unit": "hours"}
+    elif tokens_no_time in (["biweekly"], ["fortnightly"]):
         pattern_type = "interval"
         payload = {"value": 2, "unit": "weeks"}
     elif len(tokens_no_time) >= 3:
@@ -2731,7 +2742,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
     # daily
     if (first == "every" and len(tokens_no_time) >= 2 and tokens_no_time[1] == "day") or (
-        len(tokens_no_time) == 1 and first in {"everyday", "daily"}
+        len(tokens_no_time) == 1 and first in {"everyday", "daily", "ежедневно"}
     ):
         # every day / everyday
         pattern_type = "daily"
@@ -2748,7 +2759,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
     # weekly
     if pattern_type is None:
-        if tokens_no_time == ["weekly"]:
+        if tokens_no_time in (["weekly"], ["еженедельно"]):
             pattern_type = "weekly"
             payload = {"weekday": now.astimezone(TZ).weekday()}
         elif len(tokens_no_time) >= 2:
@@ -2862,7 +2873,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
         day = None
 
-        if tokens_no_time in (["monthly"],):
+        if tokens_no_time in (["monthly"], ["ежемесячно"]):
             day = now.astimezone(TZ).day
 
         elif len(tokens_no_time) >= 2 and first == "every" and tokens_no_time[1] in {"month", "months"}:
