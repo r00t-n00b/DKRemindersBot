@@ -67,4 +67,12 @@ def test_plain_text_local_normalizer_leaves_tomorrow_with_time_for_existing_flow
 
     assert main_module._normalize_plain_text_reminder_locally(
         "напомни завтра в 18:00 купить молоко"
-    ) is None
+    ) == "завтра 18:00 - купить молоко"
+
+    assert main_module._normalize_plain_text_reminder_locally(
+        "напомни сегодня в 18:00 купить молоко"
+    ) == "сегодня 18:00 - купить молоко"
+
+    assert main_module._normalize_plain_text_reminder_locally(
+        "напомни послезавтра в 9:00 проверить документы"
+    ) == "послезавтра 9:00 - проверить документы"

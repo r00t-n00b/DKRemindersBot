@@ -5096,6 +5096,22 @@ def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:
     # Keep this local fast path deliberately narrow.
     # Broader phrases like "напомни завтра поздравить Саню" should still go to Gemini,
     # because Gemini may add useful default time details such as 18:00.
+    m = re.match(
+        r"^\s*((?:сегодня|завтра|послезавтра|today|tomorrow|day after tomorrow)\s+(?:в|at)\s+\d{1,2}[:.]\d{2})\s+(.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        expr = re.sub(r"\s+(?:в|at)\s+", " ", m.group(1).strip(), flags=re.IGNORECASE)
+        reminder_text = m.group(2).strip()
+        if not expr or not reminder_text:
+            return None
+        try:
+            parse_date_time_smart(f"{expr} - {reminder_text}", get_now())
+        except Exception:
+            return None
+        return f"{expr} - {reminder_text}"
+
     if not re.match(
         r"^\s*\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+(?:в\s+)?\d{1,2}[:.]\d{2})?\s+.+$",
         candidate,
