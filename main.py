@@ -128,22 +128,25 @@ MSG_NOT_UNDERSTOOD_PLAIN_TEXT = (
     "Напиши проще, например:\n"
     "напомни завтра в 18:00 поздравить Саню\n\n"
     "Или командой:\n"
-    "/remind завтра 18:00 - поздравить Саню"
+    "/remind завтра 18:00 - поздравить Саню\n\n"
+    "Все варианты ремайндеров есть в /help."
 )
 
 MSG_GROUP_USERNAME_PREFIX_FORBIDDEN = (
     "В группе нельзя ставить личное напоминание другому человеку через @username в начале команды.\n"
     "Так бот не поймёт, что это личный адресат.\n\n"
-    "Если хочешь поставить напоминание в этот чат, напиши проще:\n"
-    "напомни 2 февраля test\n\n"
+    "Если хочешь поставить напоминание в этот чат, используй команду:\n"
+    "/remind 02.02 - test\n\n"
+    "Свободное «напомни ...» в группе не работает.\n\n"
     "Если хочешь поставить личное напоминание пользователю, напиши боту в личку:\n"
     "/remind @someone 02.02 - test"
 )
 
 MSG_GROUP_ALIAS_PREFIX_FORBIDDEN = (
-    "В группе нельзя начинать напоминание с alias.\n"
-    "Если хочешь поставить напоминание в этот чат, напиши проще:\n"
-    "напомни 2 февраля текст\n\n"
+    "В группе нельзя начинать команду с alias.\n\n"
+    "Если хочешь поставить напоминание в этот чат, используй команду:\n"
+    "/remind 02.02 - текст\n\n"
+    "Свободное «напомни ...» в группе не работает.\n\n"
     "Если хочешь поставить напоминание в другой чат через alias, напиши боту в личку:\n"
     "/remind <alias> 02.02 - текст"
 )
@@ -158,20 +161,95 @@ MSG_DELETE_FAILED_TEXT = "Не смог удалить напоминание."
 MSG_RESCHEDULE_OPEN_FAILED_TEXT = "Не смог открыть перенос напоминания."
 
 
-MSG_RECURRING_MISSING_DASH = (
-    "Не понял повторяющееся напоминание.\n"
-    "Для повтора нужен текст после дефиса.\n\n"
-    "Например:\n"
-    "/remind every hour - привет\n"
-    "или:\n"
-    "напомни каждый час - привет"
+def msg_recurring_missing_dash(is_private: bool) -> str:
+    if is_private:
+        return (
+            "Не понял повторяющееся напоминание.\n"
+            "Для повтора нужен дефис между правилом и текстом.\n\n"
+            "Для ежечасного повтора напиши так:\n"
+            "/remind every 1 hour - привет\n\n"
+            "Или в личке свободным текстом:\n"
+            "/remind every 1 hour - привет"
+        )
+
+    return (
+        "Не понял повторяющееся напоминание.\n"
+        "В группе повторяющееся напоминание ставится только командой.\n"
+        "Для повтора нужен дефис между правилом и текстом.\n\n"
+        "Для ежечасного повтора напиши так:\n"
+        "/remind every 1 hour - привет\n\n"
+        "Свободное «напомни ...» в группе не работает.\n"
+        "Если хочешь поставить это в группу из лички, используй alias группы:\n"
+        "/remind <alias> every 1 hour - привет"
+    )
+
+
+def msg_recurring_parse_failed(is_private: bool) -> str:
+    if is_private:
+        return (
+            "Не понял правило повтора.\n\n"
+            "Для ежечасного повтора используй число:\n"
+            "/remind every 1 hour - привет\n\n"
+            "Формат every hour без числа сейчас не поддерживается.\n\n"
+            "Формат every hour без числа сейчас не поддерживается.\n\n"
+        "Для еженедельного повтора:\n"
+            "/remind every Monday 10:00 - проверить документы"
+        )
+
+    return (
+        "Не понял правило повтора.\n"
+        "В группе повторяющееся напоминание ставится только командой.\n\n"
+        "Для ежечасного повтора используй число:\n"
+        "/remind every 1 hour - привет\n\n"
+        "Для еженедельного повтора:\n"
+        "/remind every Monday 10:00 - проверить документы"
+    )
+
+
+MSG_PARSE_DATE_TEXT_FAILED = (
+    "Не смог понять дату и текст.\n"
+    "Напиши в формате: дата - текст.\n"
+    "Например: /remind завтра 18:00 - купить молоко"
 )
 
-MSG_RECURRING_PARSE_FAILED = (
-    "Не понял повторяющееся напоминание.\n"
-    "Попробуй написать с дефисом между правилом и текстом.\n\n"
-    "Например:\n"
-    "/remind every Monday 10:00 - проверить документы"
+MSG_UNEXPECTED_CALLBACK_ERROR = (
+    "Не смог обработать кнопку. Возможно, сообщение устарело.\n"
+    "Открой список заново через /list и попробуй ещё раз."
+)
+
+MSG_DELETE_SERIES_FAILED = (
+    "Не смог удалить серию. Возможно, она уже удалена или кнопка устарела.\n"
+    "Открой список заново через /list и попробуй ещё раз."
+)
+
+MSG_UNDO_EXPIRED = (
+    "Вернуть уже нельзя: эта кнопка одноразовая или сообщение устарело.\n"
+    "Проверь актуальные напоминания через /list."
+)
+
+MSG_UNDO_RESTORE_FAILED = (
+    "Не смог восстановить напоминание. Возможно, оно уже восстановлено или данные устарели.\n"
+    "Проверь актуальные напоминания через /list."
+)
+
+MSG_USER_CONTEXT_MISSING = (
+    "Не смог определить, кто нажал кнопку.\n"
+    "Открой список заново через /list и попробуй ещё раз."
+)
+
+MSG_EVENT_DATE_NOT_FOUND = (
+    "Я не смог понять дату события из текста.\n"
+    "Можно поставить обычное личное напоминание или выбрать время вручную."
+)
+
+MSG_UNKNOWN_SELF_REMIND_MODE = (
+    "Не понял выбранный режим личного напоминания.\n"
+    "Открой варианты заново и попробуй ещё раз."
+)
+
+MSG_UNKNOWN_TIME_OPTION = (
+    "Не понял выбранный вариант времени.\n"
+    "Выбери время заново или нажми «Кастом»."
 )
 
 MSG_RESCHEDULE_UNKNOWN_ACTION = "Не понял, как перенести напоминание"
@@ -4094,6 +4172,8 @@ async def linkchat_command(update: Update, context: CTX) -> None:
         message,
         f"Ок, запомнил этот чат как '{alias}' для тебя.\n"
         f"Теперь в личке можно писать:\n"
+        f"напомни {alias} 28.11 12:00 завтра футбол\n"
+        f"или командой:\n"
         f"/remind {alias} 28.11 12:00 - завтра футбол"
     )
 
@@ -4572,6 +4652,10 @@ def _normalize_voice_ru_months(s: str) -> str:
 
     return result
 
+def _format_english_relative_interval(value: int, singular: str, plural: str) -> str:
+    unit = singular if int(value) == 1 else plural
+    return f"{int(value)} {unit}"
+
 def _normalize_plain_text_relative_reminder_locally(text: str) -> str:
     raw = (text or "").strip()
     if not raw:
@@ -4611,10 +4695,10 @@ def _normalize_plain_text_relative_reminder_locally(text: str) -> str:
             return ""
 
         if unit.startswith("минут"):
-            return f"in {value} minutes - {reminder_text}"
+            return f"in {_format_english_relative_interval(value, 'minute', 'minutes')} - {reminder_text}"
 
         if unit.startswith("час"):
-            return f"in {value} hours - {reminder_text}"
+            return f"in {_format_english_relative_interval(value, 'hour', 'hours')} - {reminder_text}"
 
     # EN:
     # "in a minute test"
@@ -4643,10 +4727,10 @@ def _normalize_plain_text_relative_reminder_locally(text: str) -> str:
             return ""
 
         if unit.startswith("minute"):
-            return f"in {value} minutes - {reminder_text}"
+            return f"in {_format_english_relative_interval(value, 'minute', 'minutes')} - {reminder_text}"
 
         if unit.startswith("hour"):
-            return f"in {value} hours - {reminder_text}"
+            return f"in {_format_english_relative_interval(value, 'hour', 'hours')} - {reminder_text}"
 
     return ""
 
@@ -5386,12 +5470,15 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
     if raw_text.startswith("/"):
         return
 
+    normalization_source = "local"
     normalized = _normalize_plain_text_reminder_locally(raw_text)
 
     if not normalized:
+        normalization_source = "local_relative"
         normalized = _normalize_plain_text_relative_reminder_locally(raw_text)
 
     if not normalized:
+        normalization_source = "gemini"
         try:
             normalized = await normalize_plain_text_reminder_with_gemini(raw_text, user.id)
         except Exception as e:
@@ -5403,6 +5490,7 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
                 e,
                 raw_text,
             )
+            normalization_source = "fallback"
             normalized = _normalize_reminder_text_fallback(raw_text)
 
     normalized = (normalized or "").strip()
@@ -5419,7 +5507,8 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
         normalized = normalized[len("/remind "):].strip()
 
     logger.info(
-        "TEXT_REMIND_NORMALIZED user_id=%s chat_id=%s raw_len=%s normalized_len=%s",
+        "TEXT_REMIND_NORMALIZED source=%s user_id=%s chat_id=%s raw_len=%s normalized_len=%s",
+        normalization_source,
         user.id,
         chat.id,
         len(raw_text),
@@ -5581,7 +5670,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                     return
 
     if re.match(r"^(every|daily|weekly|monthly|кажд\w*)\b", raw_args.strip(), flags=re.IGNORECASE) and " - " not in raw_args:
-        await safe_reply(message, MSG_RECURRING_MISSING_DASH)
+        await safe_reply(message, msg_recurring_missing_dash(is_private))
         return
 
     target_chat_id = chat.id
@@ -5743,7 +5832,8 @@ async def remind_command(update: Update, context: CTX) -> None:
                             await safe_reply(
                                 message,
                                 "После alias нужно указать дату и текст.\n"
-                                f"Пример:\n/remind {first_token} 28.11 12:00 - завтра футбол"
+                                f"Пример:\nнапомни {first_token} 28.11 12:00 завтра футбол\n"
+                                f"или командой:\n/remind {first_token} 28.11 12:00 - завтра футбол"
                             )
                             return
                     else:
@@ -5889,7 +5979,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 raw_single,
                 e,
             )
-            await safe_reply(message, f"Не смог понять повторяющийся формат: {e}")
+            await safe_reply(message, msg_recurring_parse_failed(is_private))
             return
 
         tpl_id = create_recurring_template(
@@ -5992,7 +6082,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 original_error,
                 fallback_error,
             )
-            await safe_reply(message, f"Не смог понять дату и текст: {original_error}")
+            await safe_reply(message, MSG_PARSE_DATE_TEXT_FAILED)
             return
 
     reminder_id = add_reminder(
@@ -6564,7 +6654,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
     except Exception:
         logger.exception("Ошибка в created_snooze_callback")
         try:
-            await query.answer("Произошла ошибка", show_alert=True)
+            await query.answer(MSG_UNEXPECTED_CALLBACK_ERROR, show_alert=True)
         except Exception:
             pass
 
@@ -6788,7 +6878,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
 
         snapshot = delete_recurring_series_with_snapshot(tpl_id, int(target_chat_id))
         if not snapshot:
-            await query.answer("Не смог удалить серию", show_alert=True)
+            await query.answer(MSG_DELETE_SERIES_FAILED, show_alert=True)
             return
 
         removed_ids = {int(r["id"]) for r in (snapshot.get("reminders") or []) if r.get("id") is not None}
@@ -6891,7 +6981,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
     store = context.user_data.get("undo_tokens") or {}
     snapshot = store.get(token)
     if not snapshot:
-        await query.answer("Undo уже недоступен", show_alert=True)
+        await query.answer(MSG_UNDO_EXPIRED, show_alert=True)
         return
 
     # одноразовый undo
@@ -6900,7 +6990,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
 
     restored = restore_deleted_snapshot(snapshot)
     if not restored:
-        await query.answer("Не смог восстановить", show_alert=True)
+        await query.answer(MSG_UNDO_RESTORE_FAILED, show_alert=True)
         return
 
     tpl = snapshot.get("template") or {}
@@ -6929,7 +7019,13 @@ async def undo_callback(update: Update, context: CTX) -> None:
     )
 
     if query.message:
-        await query.message.reply_text(f"Вернул: {restored_text}")
+        reply_markup = None
+        if isinstance(restored, int):
+            reply_markup = build_created_reminder_actions_keyboard(
+                int(restored),
+                is_recurring=bool(tpl),
+            )
+        await query.message.reply_text(f"Вернул: {restored_text}", reply_markup=reply_markup)
 
 # ===== SNOOZE callback =====
 
@@ -6959,7 +7055,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             user_id = getattr(query.from_user, "id", None)
             if user_id is None:
-                await query.answer("Не удалось определить пользователя", show_alert=True)
+                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
                 return
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
@@ -7031,7 +7127,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             user_id = getattr(query.from_user, "id", None)
             if user_id is None:
-                await query.answer("Не удалось определить пользователя", show_alert=True)
+                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
                 return
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
@@ -7059,11 +7155,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
                 if event_at is None:
                     await query.edit_message_text(
-                        "Я не смог понять дату события из текста.\n"
-                        "Ты можешь поставить себе обычный ремайндер:",
+                        MSG_EVENT_DATE_NOT_FOUND,
                         reply_markup=build_self_remind_choice_keyboard(rid),
                     )
-                    await query.answer("Не смог понять дату события")
+                    await query.answer("Не смог понять дату события. Выбери обычное напоминание или время вручную.")
                     return
 
                 event_str = event_at.strftime("%d.%m %H:%M")
@@ -7075,7 +7170,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Выбери время")
                 return
 
-            await query.answer("Неизвестный режим", show_alert=True)
+            await query.answer(MSG_UNKNOWN_SELF_REMIND_MODE, show_alert=True)
             return
 
         if data.startswith("selfremind:event_custom:"):
@@ -7108,7 +7203,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             user_id = getattr(query.from_user, "id", None)
             if user_id is None:
-                await query.answer("Не удалось определить пользователя", show_alert=True)
+                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
                 return
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
@@ -7124,12 +7219,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             base_now = get_self_remind_event_base(src)
             event_at = extract_event_datetime_from_text(src.text, base_now)
             if event_at is None:
-                await query.answer("Я не смог понять дату события из текста", show_alert=True)
+                await query.answer(MSG_EVENT_DATE_NOT_FOUND, show_alert=True)
                 return
 
             remind_at = compute_event_before_time(option, event_at)
             if remind_at is None:
-                await query.answer("Неизвестный вариант времени", show_alert=True)
+                await query.answer(MSG_UNKNOWN_TIME_OPTION, show_alert=True)
                 return
 
             if remind_at <= get_now():
@@ -7163,7 +7258,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             user_id = getattr(query.from_user, "id", None)
             if user_id is None:
-                await query.answer("Не удалось определить пользователя", show_alert=True)
+                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
                 return
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
@@ -7251,7 +7346,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             user_id = getattr(query.from_user, "id", None)
             if user_id is None:
-                await query.answer("Не удалось определить пользователя", show_alert=True)
+                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
                 return
 
             target_chat_id = get_user_chat_id_by_user_id(user_id)
@@ -7552,7 +7647,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
     except Exception:
         logger.exception("Ошибка в snooze_callback")
         try:
-            await query.answer("Произошла ошибка", show_alert=True)
+            await query.answer(MSG_UNEXPECTED_CALLBACK_ERROR, show_alert=True)
         except Exception:
             pass
 

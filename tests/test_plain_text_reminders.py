@@ -222,7 +222,7 @@ def test_plain_text_relative_minute_reminder_uses_local_normalizer(main_module):
 
     assert (
         m._normalize_plain_text_relative_reminder_locally("напомни через минуту тест")
-        == "in 1 minutes - тест"
+        == "in 1 minute - тест"
     )
     assert (
         m._normalize_plain_text_relative_reminder_locally("напомни через 5 минут тест")
@@ -230,7 +230,7 @@ def test_plain_text_relative_minute_reminder_uses_local_normalizer(main_module):
     )
     assert (
         m._normalize_plain_text_relative_reminder_locally("напомни через час тест")
-        == "in 1 hours - тест"
+        == "in 1 hour - тест"
     )
     assert (
         m._normalize_plain_text_relative_reminder_locally("напомни через 2 часа тест")
@@ -243,7 +243,7 @@ def test_plain_text_relative_english_reminder_uses_local_normalizer(main_module)
 
     assert (
         m._normalize_plain_text_relative_reminder_locally("remind me in a minute test")
-        == "in 1 minutes - test"
+        == "in 1 minute - test"
     )
     assert (
         m._normalize_plain_text_relative_reminder_locally("remind me in 10 minutes test")
@@ -251,5 +251,75 @@ def test_plain_text_relative_english_reminder_uses_local_normalizer(main_module)
     )
     assert (
         m._normalize_plain_text_relative_reminder_locally("remind me in an hour test")
-        == "in 1 hours - test"
+        == "in 1 hour - test"
     )
+
+
+def test_plain_text_relative_local_normalizer_uses_singular_forms(main_module):
+    m = main_module
+
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через минуту тест")
+        == "in 1 minute - тест"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через 5 минут тест")
+        == "in 5 minutes - тест"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через час тест")
+        == "in 1 hour - тест"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через 2 часа тест")
+        == "in 2 hours - тест"
+    )
+
+
+def test_plain_text_relative_local_normalizer_does_not_call_gemini(main_module, monkeypatch):
+    seen = {}
+
+    async def fail_normalize(*args, **kwargs):
+        raise AssertionError("Gemini must not be called for simple relative reminders")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fail_normalize)
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update("напомни через минуту тест")
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == "/remind in 1 minute - тест"
+    reply, _ = message.replies[0]
+    assert "Я понял:" in reply
+    assert "in 1 minute - тест" in reply
+
+
+def test_linkchat_and_alias_examples_include_natural_language(main_module):
+    # Static smoke: these exact fragments are user-facing examples.
+    source = open("main.py").read()
+
+    assert "напомни {alias} 28.11 12:00 завтра футбол" in source
+    assert "напомни {first_token} 28.11 12:00 завтра футбол" in source
+    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source
+
+
+def test_linkchat_and_alias_examples_include_natural_language(main_module):
+    # Static smoke: these exact fragments are user-facing examples.
+    source = open("main.py").read()
+
+    assert "напомни {alias} 28.11 12:00 завтра футбол" in source
+    assert "напомни {first_token} 28.11 12:00 завтра футбол" in source
+    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source
+
+
+def test_linkchat_and_alias_examples_include_natural_language(main_module):
+    source = open("main.py").read()
+
+    assert "напомни {alias} 28.11 12:00 завтра футбол" in source
+    assert "напомни {first_token} 28.11 12:00 завтра футбол" in source
+    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source

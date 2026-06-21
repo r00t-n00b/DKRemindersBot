@@ -107,7 +107,9 @@ class FakePrivateChat:
 def test_group_username_error_message_is_not_misleading(main_module):
     msg = main_module.MSG_GROUP_USERNAME_PREFIX_FORBIDDEN
 
-    assert "напомни 2 февраля test" in msg
+    assert "/remind 02.02 - test" in msg
+    assert "Свободное «напомни ...» в группе не работает" in msg
+    assert "напомни 2 февраля test" not in msg
     assert "/remind @someone 02.02 - test" in msg
     assert "/remind 02.02 - текст @someone" not in msg
 
@@ -128,5 +130,189 @@ def test_recurring_missing_dash_uses_human_message(main_module, monkeypatch):
 
     assert message.replies
     reply, kwargs = message.replies[0]
-    assert reply == m.MSG_RECURRING_MISSING_DASH
+    assert reply == m.msg_recurring_missing_dash(is_private=True)
     assert "Не смог понять дату и текст" not in reply
+
+
+class FakeGroupChatForRecurring:
+    PRIVATE = "private"
+
+    def __init__(self, chat_id=-100):
+        self.id = chat_id
+        self.type = "group"
+
+
+class FakePrivateChatForRecurring:
+    PRIVATE = "private"
+
+    def __init__(self, chat_id=12345):
+        self.id = chat_id
+        self.type = "private"
+
+
+class FakeReminderMessageForRecurring:
+    def __init__(self, text):
+        self.text = text
+        self.replies = []
+
+    async def reply_text(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+
+
+def test_group_username_error_does_not_suggest_plain_text_remind(main_module):
+    msg = main_module.MSG_GROUP_USERNAME_PREFIX_FORBIDDEN
+
+    assert "/remind 02.02 - test" in msg
+    assert "Свободное «напомни ...» в группе не работает" in msg
+    assert "напомни 2 февраля test" not in msg
+    assert "/remind 02.02 - текст @someone" not in msg
+
+
+def test_group_recurring_missing_dash_does_not_suggest_plain_text_remind(main_module):
+    msg = main_module.msg_recurring_missing_dash(is_private=False)
+
+    assert "/remind every 1 hour - привет" in msg
+    assert "Свободное «напомни ...» в группе не работает" in msg
+    assert "напомни каждый час - привет" not in msg
+    assert "/remind <alias> every 1 hour - привет" in msg
+
+
+def test_group_recurring_missing_dash_runtime_message_is_group_aware(main_module):
+    m = main_module
+
+    message = FakeReminderMessageForRecurring("/remind every hour привет")
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_chat=FakeGroupChatForRecurring(-100),
+        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
+    )
+    context = SimpleNamespace(args=["every", "hour", "привет"], user_data={})
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    reply, _ = message.replies[0]
+    assert reply == m.msg_recurring_missing_dash(is_private=False)
+    assert "напомни каждый час - привет" not in reply
+
+
+def test_recurring_parse_failed_runtime_message_is_informative(main_module):
+    m = main_module
+
+    message = FakeReminderMessageForRecurring("/remind every hour - привет")
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_chat=FakePrivateChatForRecurring(12345),
+        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
+    )
+    context = SimpleNamespace(args=["every", "hour", "-", "привет"], user_data={})
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    reply, _ = message.replies[0]
+    assert reply == m.msg_recurring_parse_failed(is_private=True)
+    assert "Не смог понять повторяющийся формат" not in reply
+    assert "/remind every 1 hour - привет" in reply
+
+
+def test_plain_text_not_understood_mentions_help(main_module):
+    assert "Все варианты ремайндеров есть в /help." in main_module.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
+
+
+def test_recurring_messages_do_not_suggest_unsupported_every_hour(main_module):
+    messages = [
+        main_module.msg_recurring_missing_dash(is_private=True),
+        main_module.msg_recurring_missing_dash(is_private=False),
+        main_module.msg_recurring_parse_failed(is_private=True),
+        main_module.msg_recurring_parse_failed(is_private=False),
+    ]
+
+    for msg in messages:
+        assert "/remind every 1 hour - привет" in msg
+        assert "/remind every hour - привет" not in msg
+
+
+def test_user_has_not_started_message_has_no_artificial_newline(main_module):
+    msg = main_module.msg_user_has_not_started_bot("@someone")
+
+    assert "написать @someone в личку" in msg
+    assert "написать \n" not in msg
+
+
+def test_callback_error_messages_are_actionable(main_module):
+    assert "/list" in main_module.MSG_UNEXPECTED_CALLBACK_ERROR
+    assert "/list" in main_module.MSG_DELETE_SERIES_FAILED
+    assert "/list" in main_module.MSG_UNDO_EXPIRED
+    assert "/list" in main_module.MSG_UNDO_RESTORE_FAILED
+    assert "/list" in main_module.MSG_USER_CONTEXT_MISSING
+    assert "обычное личное напоминание" in main_module.MSG_EVENT_DATE_NOT_FOUND
+    assert "выбери время заново" in main_module.MSG_UNKNOWN_TIME_OPTION.lower()
+
+
+def test_plain_text_not_understood_mentions_help(main_module):
+    assert "Все варианты ремайндеров есть в /help." in main_module.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
+
+
+def test_recurring_messages_do_not_suggest_unsupported_every_hour(main_module):
+    messages = [
+        main_module.msg_recurring_missing_dash(is_private=True),
+        main_module.msg_recurring_missing_dash(is_private=False),
+        main_module.msg_recurring_parse_failed(is_private=True),
+        main_module.msg_recurring_parse_failed(is_private=False),
+    ]
+
+    for msg in messages:
+        assert "/remind every 1 hour - привет" in msg
+        assert "/remind every hour - привет" not in msg
+
+
+def test_user_has_not_started_message_has_no_artificial_newline(main_module):
+    msg = main_module.msg_user_has_not_started_bot("@someone")
+
+    assert "написать @someone в личку" in msg
+    assert "написать \n" not in msg
+
+
+def test_callback_error_messages_are_actionable(main_module):
+    assert "/list" in main_module.MSG_UNEXPECTED_CALLBACK_ERROR
+    assert "/list" in main_module.MSG_DELETE_SERIES_FAILED
+    assert "/list" in main_module.MSG_UNDO_EXPIRED
+    assert "/list" in main_module.MSG_UNDO_RESTORE_FAILED
+    assert "/list" in main_module.MSG_USER_CONTEXT_MISSING
+    assert "обычное личное напоминание" in main_module.MSG_EVENT_DATE_NOT_FOUND
+    assert "выбери время заново" in main_module.MSG_UNKNOWN_TIME_OPTION.lower()
+
+
+def test_plain_text_not_understood_mentions_help(main_module):
+    assert "Все варианты ремайндеров есть в /help." in main_module.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
+
+
+def test_recurring_messages_do_not_suggest_unsupported_every_hour(main_module):
+    messages = [
+        main_module.msg_recurring_missing_dash(is_private=True),
+        main_module.msg_recurring_missing_dash(is_private=False),
+        main_module.msg_recurring_parse_failed(is_private=True),
+        main_module.msg_recurring_parse_failed(is_private=False),
+    ]
+
+    for msg in messages:
+        assert "/remind every 1 hour - привет" in msg
+        assert "/remind every hour - привет" not in msg
+
+
+def test_user_has_not_started_message_has_no_artificial_newline(main_module):
+    msg = main_module.msg_user_has_not_started_bot("@someone")
+
+    assert "написать @someone в личку" in msg
+    assert "написать \n" not in msg
+
+
+def test_callback_error_messages_are_actionable(main_module):
+    assert "/list" in main_module.MSG_UNEXPECTED_CALLBACK_ERROR
+    assert "/list" in main_module.MSG_DELETE_SERIES_FAILED
+    assert "/list" in main_module.MSG_UNDO_EXPIRED
+    assert "/list" in main_module.MSG_UNDO_RESTORE_FAILED
+    assert "/list" in main_module.MSG_USER_CONTEXT_MISSING
+    assert "обычное личное напоминание" in main_module.MSG_EVENT_DATE_NOT_FOUND
+    assert "выбери время заново" in main_module.MSG_UNKNOWN_TIME_OPTION.lower()

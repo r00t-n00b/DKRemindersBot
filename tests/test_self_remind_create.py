@@ -358,7 +358,7 @@ def test_self_remind_mode_event_without_parseable_event_falls_back_to_regular_ke
     asyncio.run(m.snooze_callback(upd, ctx))
 
     assert query.answers
-    assert query.answers[-1] == ("Не смог понять дату события", False)
+    assert query.answers[-1] == ("Не смог понять дату события. Выбери обычное напоминание или время вручную.", False)
     assert choice_keyboard_calls == [123]
 
 
@@ -654,7 +654,7 @@ def test_selfremind_picktime_without_user_id_shows_alert(main_module):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Не удалось определить пользователя", True)]
+    assert query.answers == [(m.MSG_USER_CONTEXT_MISSING, True)]
     assert query.edited_text == []
 
 

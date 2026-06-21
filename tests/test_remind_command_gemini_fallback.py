@@ -163,7 +163,7 @@ def test_remind_gemini_fallback_no_reminder_keeps_old_error(main_module, monkeyp
     asyncio.run(main_module.remind_command(update, context))
 
     assert len(message.replies) == 1
-    assert "Не смог понять дату и текст:" in message.replies[0][0]
+    assert message.replies[0][0] == main_module.MSG_PARSE_DATE_TEXT_FAILED
 
 
 def test_remind_gemini_fallback_bad_normalized_text_keeps_old_error(main_module, monkeypatch):
@@ -178,7 +178,7 @@ def test_remind_gemini_fallback_bad_normalized_text_keeps_old_error(main_module,
     asyncio.run(main_module.remind_command(update, context))
 
     assert len(message.replies) == 1
-    assert "Не смог понять дату и текст:" in message.replies[0][0]
+    assert message.replies[0][0] == main_module.MSG_PARSE_DATE_TEXT_FAILED
 
 
 def test_remind_gemini_fallback_exception_keeps_old_error(main_module, monkeypatch):
@@ -193,7 +193,7 @@ def test_remind_gemini_fallback_exception_keeps_old_error(main_module, monkeypat
     asyncio.run(main_module.remind_command(update, context))
 
     assert len(message.replies) == 1
-    assert "Не смог понять дату и текст:" in message.replies[0][0]
+    assert message.replies[0][0] == main_module.MSG_PARSE_DATE_TEXT_FAILED
 
 
 def test_remind_command_strips_nested_remind_word_before_alias_routing(main_module, monkeypatch):
@@ -284,8 +284,8 @@ def test_remind_gemini_fallback_timeout_keeps_old_error(main_module, monkeypatch
 
     assert calls == [("gemini hangs forever", 123)]
     assert len(message.replies) == 1
-    assert "Не смог понять дату и текст:" in message.replies[0][0]
-    assert "forced strict parse failure" in message.replies[0][0]
+    assert message.replies[0][0] == main_module.MSG_PARSE_DATE_TEXT_FAILED
+    assert "forced strict parse failure" not in message.replies[0][0]
 
 
 def test_invalid_english_monthly_recurring_does_not_call_gemini(main_module, monkeypatch):
@@ -304,8 +304,8 @@ def test_invalid_english_monthly_recurring_does_not_call_gemini(main_module, mon
     asyncio.run(main_module.remind_command(update, context))
 
     assert len(message.replies) == 1
-    assert "Не смог понять повторяющийся формат:" in message.replies[0][0]
-    assert "Неверный день месяца" in message.replies[0][0]
+    assert message.replies[0][0] == main_module.msg_recurring_parse_failed(is_private=True)
+    assert "Gemini fallback must not be called" not in message.replies[0][0]
 
 
 def test_invalid_russian_monthly_recurring_does_not_call_gemini(main_module, monkeypatch):
@@ -324,5 +324,66 @@ def test_invalid_russian_monthly_recurring_does_not_call_gemini(main_module, mon
     asyncio.run(main_module.remind_command(update, context))
 
     assert len(message.replies) == 1
-    assert "Не смог понять повторяющийся формат:" in message.replies[0][0]
-    assert "Неверный день месяца" in message.replies[0][0]
+    assert message.replies[0][0] == main_module.msg_recurring_parse_failed(is_private=True)
+
+def test_date_parse_failure_uses_human_message(main_module, monkeypatch):
+    m = main_module
+
+    async def fail_gemini(*args, **kwargs):
+        return "NO_REMINDER"
+
+    monkeypatch.setattr(m, "normalize_plain_text_reminder_with_gemini", fail_gemini)
+
+    message = DummyMessage("/remind nonsense")
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_chat=DummyChat(12345, "private"),
+        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
+    )
+    context = SimpleNamespace(args=["nonsense"], user_data={})
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    assert message.replies[0][0] == m.MSG_PARSE_DATE_TEXT_FAILED
+    assert "Не понял дату/время" not in message.replies[0][0]
+
+
+def test_date_parse_failure_uses_human_message(main_module, monkeypatch):
+    m = main_module
+
+    async def fail_gemini(*args, **kwargs):
+        return "NO_REMINDER"
+
+    monkeypatch.setattr(m, "normalize_plain_text_reminder_with_gemini", fail_gemini)
+
+    message = DummyMessage("/remind nonsense")
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_chat=DummyChat(12345, "private"),
+        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
+    )
+    context = SimpleNamespace(args=["nonsense"], user_data={})
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    assert message.replies[0][0] == m.MSG_PARSE_DATE_TEXT_FAILED
+    assert "Не понял дату/время" not in message.replies[0][0]
+
+
+def test_date_parse_failure_uses_human_message(main_module, monkeypatch):
+    m = main_module
+
+    async def fail_gemini(*args, **kwargs):
+        return "NO_REMINDER"
+
+    monkeypatch.setattr(m, "normalize_plain_text_reminder_with_gemini", fail_gemini)
+
+    update, context, message = _mk_private("/remind nonsense")
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    assert message.replies[0][0] == m.MSG_PARSE_DATE_TEXT_FAILED
+    assert "Не понял дату/время" not in message.replies[0][0]
