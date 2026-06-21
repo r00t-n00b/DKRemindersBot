@@ -112,7 +112,7 @@ def test_self_remind_set_20m_creates_private_reminder(main_module, monkeypatch):
     assert query.edited_text == ['Ок, напомню 01.03 10:20: Из чата "Тест-группа для бота": group reminder text']
 
 
-def test_self_remind_set_tomorrow11_creates_private_reminder(main_module, monkeypatch):
+def test_self_remind_set_tomorrow10_creates_private_reminder(main_module, monkeypatch):
     m = main_module
 
     now = datetime(2026, 3, 1, 10, 0, tzinfo=TZ)
@@ -159,13 +159,13 @@ def test_self_remind_set_tomorrow11_creates_private_reminder(main_module, monkey
 
     assert chat_id == 555
     assert text == 'Из чата "Тест-группа для бота": group reminder text'
-    assert remind_at == datetime(2026, 3, 2, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2026, 3, 2, 10, 0, tzinfo=TZ)
     assert created_by == 42
     assert template_id is None
 
     assert query.answers
     assert query.answers[-1][0] == "Личное напоминание создано"
-    assert query.edited_text == ['Ок, напомню 02.03 11:00: Из чата "Тест-группа для бота": group reminder text']
+    assert query.edited_text == ['Ок, напомню 02.03 10:00: Из чата "Тест-группа для бота": group reminder text']
 
 def test_self_remind_set_nextmon_creates_private_reminder(main_module, monkeypatch):
     m = main_module
@@ -214,13 +214,13 @@ def test_self_remind_set_nextmon_creates_private_reminder(main_module, monkeypat
 
     assert chat_id == 555
     assert text == 'Из чата "Тест-группа для бота": group reminder text'
-    assert remind_at == datetime(2026, 3, 2, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2026, 3, 2, 10, 0, tzinfo=TZ)
     assert created_by == 42
     assert template_id is None
 
     assert query.answers
     assert query.answers[-1][0] == "Личное напоминание создано"
-    assert query.edited_text == ['Ок, напомню 02.03 11:00: Из чата "Тест-группа для бота": group reminder text']
+    assert query.edited_text == ['Ок, напомню 02.03 10:00: Из чата "Тест-группа для бота": group reminder text']
 
 def test_self_remind_picktime_creates_private_reminder_and_replaces_text(main_module, monkeypatch):
     m = main_module

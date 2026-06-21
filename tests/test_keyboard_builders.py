@@ -66,3 +66,20 @@ def test_build_custom_time_keyboard_has_times(main_module, monkeypatch):
     buttons = _flatten(markup)
     assert any(b.callback_data.startswith("snooze_picktime:7:2025-01-01:") for b in buttons)
     assert any(b.callback_data.startswith("snooze_picktime:7:2025-01-01:") for b in buttons)
+
+def test_snooze_keyboards_use_10_as_default_day_time(main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "InlineKeyboardButton", _Btn)
+    monkeypatch.setattr(main_module, "InlineKeyboardMarkup", _Markup)
+
+    snooze = main_module.build_snooze_keyboard(123)
+    created = main_module.build_created_reschedule_keyboard(123)
+    self_remind = main_module.build_self_remind_choice_keyboard(123)
+
+    texts = [b.text for b in _flatten(snooze)]
+    texts += [b.text for b in _flatten(created)]
+    texts += [b.text for b in _flatten(self_remind)]
+
+    assert "📅 Завтра (10:00)" in texts
+    assert "📅 Следующий понедельник (10:00)" in texts
+    assert "📅 Завтра (11:00)" not in texts
+    assert "📅 Следующий понедельник (11:00)" not in texts

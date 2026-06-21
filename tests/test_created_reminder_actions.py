@@ -242,8 +242,8 @@ def test_created_delete_callback_for_recurring_shows_one_or_series_choice(main_m
     keyboard = query.edited_reply_markup
     assert keyboard.inline_keyboard[0][0].text == "🗑 Удалить только ближайший"
     assert keyboard.inline_keyboard[0][0].callback_data == "del_one:456"
-    assert keyboard.inline_keyboard[0][1].text == "🧨 Удалить всю серию"
-    assert keyboard.inline_keyboard[0][1].callback_data == "del_series:999"
+    assert keyboard.inline_keyboard[1][0].text == "🧨 Удалить всю серию"
+    assert keyboard.inline_keyboard[1][0].callback_data == "del_series:999"
 
 
 def test_created_reschedule_keyboard_uses_created_custom_callback(main_module, monkeypatch):

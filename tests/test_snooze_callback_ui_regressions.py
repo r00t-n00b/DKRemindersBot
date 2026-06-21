@@ -123,7 +123,7 @@ def test_snooze_20m_creates_new_reminder_acks_and_edits_message(main_module, mon
     assert query.answers == [("Отложено до 12.06 10:20", False)]
 
 
-def test_snooze_tomorrow_sets_11_00(main_module, monkeypatch):
+def test_snooze_tomorrow_sets_10_00(main_module, monkeypatch):
     m = main_module
     created = []
 
@@ -142,11 +142,11 @@ def test_snooze_tomorrow_sets_11_00(main_module, monkeypatch):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert created == [datetime(2026, 6, 13, 11, 0, tzinfo=TZ)]
-    assert query.answers == [("Отложено до 13.06 11:00", False)]
+    assert created == [datetime(2026, 6, 13, 10, 0, tzinfo=TZ)]
+    assert query.answers == [("Отложено до 13.06 10:00", False)]
 
 
-def test_snooze_nextmon_sets_next_monday_11_00(main_module, monkeypatch):
+def test_snooze_nextmon_sets_next_monday_10_00(main_module, monkeypatch):
     m = main_module
     created = []
 
@@ -167,8 +167,8 @@ def test_snooze_nextmon_sets_next_monday_11_00(main_module, monkeypatch):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert created == [datetime(2026, 6, 15, 11, 0, tzinfo=TZ)]
-    assert query.answers == [("Отложено до 15.06 11:00", False)]
+    assert created == [datetime(2026, 6, 15, 10, 0, tzinfo=TZ)]
+    assert query.answers == [("Отложено до 15.06 10:00", False)]
 
 
 def test_snooze_custom_replaces_markup_with_calendar_and_acks(main_module, monkeypatch):

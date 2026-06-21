@@ -3148,10 +3148,10 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
             ],
             [
                 InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
             ],
             [
-                InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
                 InlineKeyboardButton("📝 Кастом", callback_data=f"created_snooze_custom:{reminder_id}"),
             ],
             [
@@ -3174,10 +3174,10 @@ def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
             ],
             [
                 InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
             ],
             [
-                InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
                 InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
             ],
         ]
@@ -3233,10 +3233,10 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("⏰ +3 часа", callback_data=f"selfremind:set:{reminder_id}:3h"),
-            InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"selfremind:set:{reminder_id}:tomorrow11"),
+            InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"selfremind:set:{reminder_id}:tomorrow11"),
         ],
         [
-            InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"selfremind:set:{reminder_id}:nextmon"),
+            InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"selfremind:set:{reminder_id}:nextmon"),
             InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
         ],
         [
@@ -3284,7 +3284,7 @@ def compute_self_remind_time(option: str, now: datetime) -> datetime:
             tomorrow.year,
             tomorrow.month,
             tomorrow.day,
-            11,
+            10,
             0,
             tzinfo=TZ,
         )
@@ -3300,7 +3300,7 @@ def compute_self_remind_time(option: str, now: datetime) -> datetime:
             target.year,
             target.month,
             target.day,
-            11,
+            10,
             0,
             tzinfo=TZ,
         )
@@ -5918,6 +5918,105 @@ async def linkuser_command(update: Update, context: CTX) -> None:
 
     await safe_reply(message, f"Ок, alias '{alias}' теперь указывает на {username}.")
 
+
+def _active_reminder_row_value(row, key: str, index: int, default=None):
+    if isinstance(row, dict):
+        return row.get(key, default)
+
+    if hasattr(row, "keys"):
+        try:
+            if key in row.keys():
+                return row[key]
+        except Exception:
+            pass
+
+    try:
+        return row[key]
+    except Exception:
+        pass
+
+    try:
+        return row[index]
+    except Exception:
+        return default
+
+
+def build_list_delete_keyboard(count: int) -> InlineKeyboardMarkup:
+    buttons: List[List[InlineKeyboardButton]] = []
+    row: List[InlineKeyboardButton] = []
+
+    for idx in range(1, count + 1):
+        row.append(
+            InlineKeyboardButton(
+                text=f"❌{idx}",
+                callback_data=f"del:{idx}",
+            )
+        )
+        if len(row) == 5:
+            buttons.append(row)
+            row = []
+
+    if row:
+        buttons.append(row)
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_active_reminders_list_response(rows, header: str) -> Tuple[str, List[int], InlineKeyboardMarkup]:
+    lines: List[str] = []
+    ids: List[int] = []
+    last_section: Optional[str] = None
+
+    now_local = get_now()
+    today = now_local.date()
+    tomorrow = today + timedelta(days=1)
+
+    for idx, row in enumerate(rows, start=1):
+        rid = int(_active_reminder_row_value(row, "id", 0))
+        reminder_text = str(_active_reminder_row_value(row, "text", 1) or "")
+        remind_at_str = str(_active_reminder_row_value(row, "remind_at", 2) or "")
+        template_id = _active_reminder_row_value(row, "template_id", 3)
+        tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
+        tpl_payload_raw = _active_reminder_row_value(row, "payload", 5)
+
+        dt = datetime.fromisoformat(remind_at_str)
+
+        if dt.date() == today:
+            section = "Сегодня"
+            ts = dt.strftime("%H:%M")
+        elif dt.date() == tomorrow:
+            section = "Завтра"
+            ts = dt.strftime("%H:%M")
+        else:
+            section = "Позже"
+            ts = dt.strftime("%d.%m %H:%M")
+
+        if section != last_section:
+            if lines:
+                lines.append("")
+            lines.append(section)
+            last_section = section
+
+        suffix = ""
+        if template_id is not None:
+            tpl_payload: Dict[str, Any] = {}
+            if isinstance(tpl_payload_raw, dict):
+                tpl_payload = tpl_payload_raw
+            elif tpl_payload_raw:
+                try:
+                    tpl_payload = json.loads(tpl_payload_raw)
+                except Exception:
+                    tpl_payload = {}
+
+            human = format_recurring_human(tpl_pattern_type, tpl_payload)
+            suffix = f"  🔁 {human}" if human else "  🔁"
+
+        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}")
+        ids.append(rid)
+
+    reply = header + "\n\n" + "\n".join(lines)
+    return reply, ids, build_list_delete_keyboard(len(ids))
+
 async def list_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -6072,71 +6171,13 @@ async def list_command(update: Update, context: CTX) -> None:
             )
         return
 
-    lines = []
-    ids: List[int] = []
-    last_section: Optional[str] = None
-    now_local = get_now()
-    today = now_local.date()
-    tomorrow = today + timedelta(days=1)
-
-    for idx, (rid, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
-        dt = datetime.fromisoformat(remind_at_str)
-
-        if dt.date() == today:
-            section = "Сегодня"
-            ts = dt.strftime("%H:%M")
-        elif dt.date() == tomorrow:
-            section = "Завтра"
-            ts = dt.strftime("%H:%M")
-        else:
-            section = "Позже"
-            ts = dt.strftime("%d.%m %H:%M")
-
-        if section != last_section:
-            if lines:
-                lines.append("")
-            lines.append(section)
-            last_section = section
-
-        suffix = ""
-        if template_id is not None:
-            tpl_payload: Dict[str, Any] = {}
-            if tpl_payload_json:
-                try:
-                    tpl_payload = json.loads(tpl_payload_json)
-                except Exception:
-                    tpl_payload = {}
-            human = format_recurring_human(tpl_pattern_type, tpl_payload)
-            suffix = f"  🔁 {human}"
-
-        lines.append(f"{idx}. {ts} - {text}{suffix}")
-        ids.append(rid)
+    header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"
+    reply, ids, keyboard = build_active_reminders_list_response(rows, header=header)
 
     context.user_data["list_ids"] = ids
     context.user_data["list_chat_id"] = target_chat_id
 
-    if used_alias:
-        reply = f"Активные напоминания для чата '{used_alias}':\n\n" + "\n".join(lines)
-    else:
-        reply = "Активные напоминания:\n\n" + "\n".join(lines)
-
-    buttons: List[List[InlineKeyboardButton]] = []
-    row: List[InlineKeyboardButton] = []
-    for idx in range(1, len(ids) + 1):
-        row.append(
-            InlineKeyboardButton(
-                text=f"❌{idx}",
-                callback_data=f"del:{idx}",
-            )
-        )
-        if len(row) == 5:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-
-    keyboard = InlineKeyboardMarkup(buttons)
-    await safe_reply(message,reply, reply_markup=keyboard)
+    await safe_reply(message, reply, reply_markup=keyboard)
 
 async def created_delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
@@ -6157,10 +6198,10 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
     template_id = row["template_id"] if "template_id" in row.keys() else None
     if template_id is not None:
         keyboard = InlineKeyboardMarkup(
-            [[
-                InlineKeyboardButton("🗑 Удалить только ближайший", callback_data=f"del_one:{reminder_id}"),
-                InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}"),
-            ]]
+            [
+                [InlineKeyboardButton("🗑 Удалить только ближайший", callback_data=f"del_one:{reminder_id}")],
+                [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}")],
+            ]
         )
         await query.answer()
         await query.edit_message_reply_markup(reply_markup=keyboard)
@@ -6368,43 +6409,11 @@ async def delete_callback(update: Update, context: CTX) -> None:
         rows = c.fetchall()
         conn.close()
 
-        lines = []
-        for new_idx, (rid2, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
-            dt = datetime.fromisoformat(remind_at_str)
-            ts = dt.strftime("%d.%m %H:%M")
-
-            suffix = ""
-            if template_id is not None:
-                tpl_payload: Dict[str, Any] = {}
-                if tpl_payload_json:
-                    try:
-                        tpl_payload = json.loads(tpl_payload_json)
-                    except Exception:
-                        tpl_payload = {}
-                human = format_recurring_human(tpl_pattern_type, tpl_payload)
-                suffix = f"  🔁 {human}" if human else "  🔁"
-
-            lines.append(f"{new_idx}. {ts} - {text}{suffix}")
-
-        reply = "Активные напоминания:\n\n" + "\n".join(lines)
-
-        buttons: List[List[InlineKeyboardButton]] = []
-        row: List[InlineKeyboardButton] = []
-        for new_idx in range(1, len(ids) + 1):
-            row.append(
-                InlineKeyboardButton(
-                    text=f"❌{new_idx}",
-                    callback_data=f"del:{new_idx}",
-                )
-            )
-            if len(row) == 5:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
+        reply, ids, keyboard = build_active_reminders_list_response(rows, header="Активные напоминания:")
+        context.user_data["list_ids"] = ids
 
         if query.message:
-            await query.edit_message_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
+            await query.edit_message_text(reply, reply_markup=keyboard)
 
     tpl = snapshot.get("template") or {}
     tpl_pattern_type = tpl.get("pattern_type")
@@ -6515,43 +6524,11 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
         rows = c.fetchall()
         conn.close()
 
-        lines = []
-        for new_idx, (rid2, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
-            dt = datetime.fromisoformat(remind_at_str)
-            ts = dt.strftime("%d.%m %H:%M")
-
-            suffix = ""
-            if template_id is not None:
-                tpl_payload: Dict[str, Any] = {}
-                if tpl_payload_json:
-                    try:
-                        tpl_payload = json.loads(tpl_payload_json)
-                    except Exception:
-                        tpl_payload = {}
-                human = format_recurring_human(tpl_pattern_type, tpl_payload)
-                suffix = f"  🔁 {human}" if human else "  🔁"
-
-            lines.append(f"{new_idx}. {ts} - {text}{suffix}")
-
-        reply = "Активные напоминания:\n\n" + "\n".join(lines)
-
-        buttons: List[List[InlineKeyboardButton]] = []
-        row: List[InlineKeyboardButton] = []
-        for new_idx in range(1, len(ids) + 1):
-            row.append(
-                InlineKeyboardButton(
-                    text=f"❌{new_idx}",
-                    callback_data=f"del:{new_idx}",
-                )
-            )
-            if len(row) == 5:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
+        reply, ids, keyboard = build_active_reminders_list_response(rows, header="Активные напоминания:")
+        context.user_data["list_ids"] = ids
 
         if query.message:
-            await query.edit_message_text(reply, reply_markup=InlineKeyboardMarkup(buttons))
+            await query.edit_message_text(reply, reply_markup=keyboard)
 
     if not snapshot:
         return
@@ -7136,7 +7113,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 new_dt = now + timedelta(hours=3)
             elif action == "tomorrow":
                 base = (now + timedelta(days=1)).astimezone(TZ).date()
-                new_dt = datetime(base.year, base.month, base.day, 11, 0, tzinfo=TZ)
+                new_dt = datetime(base.year, base.month, base.day, 10, 0, tzinfo=TZ)
             elif action == "nextmon":
                 base = now.astimezone(TZ).date()
                 cur_wd = base.weekday()
@@ -7144,7 +7121,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 if delta == 0:
                     delta = 7
                 target = base + timedelta(days=delta)
-                new_dt = datetime(target.year, target.month, target.day, 11, 0, tzinfo=TZ)
+                new_dt = datetime(target.year, target.month, target.day, 10, 0, tzinfo=TZ)
             elif action == "custom":
                 # ACK на вход в кастомный flow тоже считаем реакцией
                 mark_reminder_acked(rid)
