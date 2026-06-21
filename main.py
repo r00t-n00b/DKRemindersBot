@@ -151,14 +151,31 @@ MSG_GROUP_ALIAS_PREFIX_FORBIDDEN = (
     "/remind <alias> 02.02 - текст"
 )
 
-MSG_INVALID_REMINDER_ID = "Некорректный reminder id"
-MSG_REMINDER_NOT_FOUND = "Напоминание не найдено"
-MSG_SOURCE_REMINDER_NOT_FOUND = "Исходное напоминание не найдено"
+MSG_INVALID_REMINDER_ID = (
+    "Не понял, к какому напоминанию относится эта кнопка. "
+    "Открой список заново через /list и попробуй ещё раз."
+)
+MSG_REMINDER_NOT_FOUND = (
+    "Напоминание не найдено. Возможно, оно уже удалено. "
+    "Проверь актуальный список через /list."
+)
+MSG_SOURCE_REMINDER_NOT_FOUND = (
+    "Исходное напоминание не найдено. Возможно, оно уже удалено. "
+    "Проверь актуальный список через /list."
+)
 MSG_REMINDER_ALREADY_DELETED_ALERT = "Уже удалено"
-MSG_REMINDER_ALREADY_DELETED_TEXT = "Напоминание уже удалено."
-MSG_DELETE_FAILED_SHORT = "Не смог удалить"
-MSG_DELETE_FAILED_TEXT = "Не смог удалить напоминание."
-MSG_RESCHEDULE_OPEN_FAILED_TEXT = "Не смог открыть перенос напоминания."
+MSG_REMINDER_ALREADY_DELETED_TEXT = "Напоминание уже удалено. Проверь актуальный список через /list."
+MSG_DELETE_FAILED_SHORT = (
+    "Не смог удалить напоминание. Открой список через /list и попробуй ещё раз."
+)
+MSG_DELETE_FAILED_TEXT = (
+    "Не смог удалить напоминание. Возможно, оно уже удалено или кнопка устарела. "
+    "Проверь актуальный список через /list."
+)
+MSG_RESCHEDULE_OPEN_FAILED_TEXT = (
+    "Не смог открыть перенос напоминания. Возможно, оно уже удалено или кнопка устарела. "
+    "Проверь актуальный список через /list."
+)
 
 
 def msg_recurring_missing_dash(is_private: bool) -> str:
@@ -188,18 +205,16 @@ def msg_recurring_parse_failed(is_private: bool) -> str:
     if is_private:
         return (
             "Не понял правило повтора.\n\n"
-            "Для ежечасного повтора используй число:\n"
+            "Для ежечасного повтора:\n"
             "/remind every hour - привет\n\n"
-            ""
-            ""
-        "Для еженедельного повтора:\n"
+            "Для еженедельного повтора:\n"
             "/remind every Monday 10:00 - проверить документы"
         )
 
     return (
         "Не понял правило повтора.\n"
         "В группе повторяющееся напоминание ставится только командой.\n\n"
-        "Для ежечасного повтора используй число:\n"
+        "Для ежечасного повтора:\n"
         "/remind every hour - привет\n\n"
         "Для еженедельного повтора:\n"
         "/remind every Monday 10:00 - проверить документы"
@@ -252,8 +267,12 @@ MSG_UNKNOWN_TIME_OPTION = (
     "Выбери время заново или нажми «Кастом»."
 )
 
-MSG_RESCHEDULE_UNKNOWN_ACTION = "Не понял, как перенести напоминание"
-MSG_RESCHEDULE_BAD_DATETIME = "Не смог понять дату и время"
+MSG_RESCHEDULE_UNKNOWN_ACTION = (
+    "Не понял, как перенести напоминание. Выбери вариант заново или открой список через /list."
+)
+MSG_RESCHEDULE_BAD_DATETIME = (
+    "Не смог понять дату и время для переноса. Выбери дату и время заново."
+)
 MSG_RESCHEDULE_PAST_TIME = "Это время уже прошло. Выбери другое время."
 
 def msg_after_me_requires_date_and_text(example: str) -> str:

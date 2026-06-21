@@ -685,7 +685,7 @@ def test_selfremind_picktime_missing_source_reminder_shows_alert(main_module, mo
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Исходное напоминание не найдено", True)]
+    assert query.answers == [(m.MSG_SOURCE_REMINDER_NOT_FOUND, True)]
     assert query.edited_text == []
 
 
@@ -818,7 +818,7 @@ def test_selfremind_event_cancel_bad_id_shows_alert(main_module):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Некорректный reminder id", True)]
+    assert query.answers == [(m.MSG_INVALID_REMINDER_ID, True)]
     assert query.edited_text == []
 
 
@@ -832,5 +832,5 @@ def test_selfremind_event_cancel_missing_source_shows_alert(main_module, monkeyp
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Исходное напоминание не найдено", True)]
+    assert query.answers == [(m.MSG_SOURCE_REMINDER_NOT_FOUND, True)]
     assert query.edited_text == []

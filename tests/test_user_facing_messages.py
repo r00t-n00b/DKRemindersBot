@@ -358,3 +358,40 @@ def test_parse_recurring_supports_russian_every_hour_without_explicit_number(mai
     assert hour == 10
     assert minute == 0
     assert first_dt == fixed_now.replace(second=0, microsecond=0) + main_module.timedelta(hours=1)
+
+
+def test_core_error_messages_are_human_and_actionable(main_module):
+    messages = [
+        main_module.MSG_INVALID_REMINDER_ID,
+        main_module.MSG_REMINDER_NOT_FOUND,
+        main_module.MSG_SOURCE_REMINDER_NOT_FOUND,
+        main_module.MSG_REMINDER_ALREADY_DELETED_TEXT,
+        main_module.MSG_DELETE_FAILED_SHORT,
+        main_module.MSG_DELETE_FAILED_TEXT,
+        main_module.MSG_RESCHEDULE_OPEN_FAILED_TEXT,
+        main_module.MSG_RESCHEDULE_UNKNOWN_ACTION,
+        main_module.MSG_RESCHEDULE_BAD_DATETIME,
+    ]
+
+    for msg in messages:
+        assert "reminder id" not in msg
+        assert "Некорректный" not in msg
+        assert "Произошла ошибка" not in msg
+
+    assert "/list" in main_module.MSG_INVALID_REMINDER_ID
+    assert "/list" in main_module.MSG_REMINDER_NOT_FOUND
+    assert "/list" in main_module.MSG_DELETE_FAILED_TEXT
+    assert "Выбери дату и время заново" in main_module.MSG_RESCHEDULE_BAD_DATETIME
+
+
+def test_recurring_parse_failed_no_longer_requires_number_for_every_hour(main_module):
+    messages = [
+        main_module.msg_recurring_parse_failed(is_private=True),
+        main_module.msg_recurring_parse_failed(is_private=False),
+    ]
+
+    for msg in messages:
+        assert "/remind every hour - привет" in msg
+        assert "используй число" not in msg
+        assert "every 1 hour" not in msg
+        assert '""' not in msg

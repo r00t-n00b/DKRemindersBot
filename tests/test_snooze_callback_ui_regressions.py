@@ -218,7 +218,7 @@ def test_snooze_missing_reminder_shows_alert(main_module, monkeypatch):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Напоминание не найдено", True)]
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, True)]
     assert query.edited_text == []
 
 
@@ -329,7 +329,7 @@ def test_snooze_picktime_missing_reminder_shows_alert(main_module, monkeypatch):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Напоминание не найдено", True)]
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, True)]
 
 
 def test_snooze_picktime_bad_datetime_shows_alert(main_module, monkeypatch):
@@ -389,7 +389,7 @@ def test_snooze_cancel_bad_id_shows_alert(main_module):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Некорректный reminder id", True)]
+    assert query.answers == [(m.MSG_INVALID_REMINDER_ID, True)]
 
 
 def test_snooze_noop_only_answers(main_module):

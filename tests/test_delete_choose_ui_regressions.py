@@ -252,7 +252,7 @@ def test_delete_choose_missing_snapshot_shows_alert(main_module, monkeypatch):
 
     assert query.answers == [
         (None, False),
-        ("Не смог удалить", True),
+        (main_module.MSG_DELETE_FAILED_SHORT, True),
     ]
     assert query.edits == []
     assert query.message.replies == []
