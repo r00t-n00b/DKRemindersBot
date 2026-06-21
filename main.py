@@ -4572,6 +4572,84 @@ def _normalize_voice_ru_months(s: str) -> str:
 
     return result
 
+def _normalize_plain_text_relative_reminder_locally(text: str) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+
+    s = re.sub(r"\s+", " ", raw).strip()
+    s = _strip_voice_reminder_prefix(s)
+
+    # RU:
+    # "через минуту тест"
+    # "через 1 минуту тест"
+    # "через 5 минут тест"
+    # "через час тест"
+    # "через 2 часа тест"
+    m = re.match(
+        r"^через\s+"
+        r"(?:(?P<num>\d{1,3})\s+)?"
+        r"(?P<unit>минуту|минуты|минут|час|часа|часов)\s+"
+        r"(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        num_raw = m.group("num")
+        unit = m.group("unit").lower()
+        reminder_text = m.group("text").strip()
+
+        if not reminder_text:
+            return ""
+
+        if num_raw is None:
+            value = 1
+        else:
+            value = int(num_raw)
+
+        if value <= 0:
+            return ""
+
+        if unit.startswith("минут"):
+            return f"in {value} minutes - {reminder_text}"
+
+        if unit.startswith("час"):
+            return f"in {value} hours - {reminder_text}"
+
+    # EN:
+    # "in a minute test"
+    # "in 1 minute test"
+    # "in 5 minutes test"
+    # "in an hour test"
+    # "in 2 hours test"
+    m = re.match(
+        r"^in\s+"
+        r"(?:(?P<num>\d{1,3}|a|an)\s+)?"
+        r"(?P<unit>minute|minutes|hour|hours)\s+"
+        r"(?P<text>.+)$",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        num_raw = (m.group("num") or "1").lower()
+        unit = m.group("unit").lower()
+        reminder_text = m.group("text").strip()
+
+        if not reminder_text:
+            return ""
+
+        value = 1 if num_raw in {"a", "an"} else int(num_raw)
+        if value <= 0:
+            return ""
+
+        if unit.startswith("minute"):
+            return f"in {value} minutes - {reminder_text}"
+
+        if unit.startswith("hour"):
+            return f"in {value} hours - {reminder_text}"
+
+    return ""
+
 def normalize_gemini_reminder_command_text(text: str) -> str:
     """
     Детерминированно дочищает Gemini output перед передачей в /remind.
@@ -5309,6 +5387,9 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
         return
 
     normalized = _normalize_plain_text_reminder_locally(raw_text)
+
+    if not normalized:
+        normalized = _normalize_plain_text_relative_reminder_locally(raw_text)
 
     if not normalized:
         try:

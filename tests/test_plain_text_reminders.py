@@ -215,3 +215,41 @@ def test_plain_text_relative_day_with_explicit_time_uses_local_normalizer_withou
     assert "Я понял:" in reply
     assert "завтра 18:00 - купить молоко" in reply
     assert "Ок, напомню" in reply
+
+
+def test_plain_text_relative_minute_reminder_uses_local_normalizer(main_module):
+    m = main_module
+
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через минуту тест")
+        == "in 1 minutes - тест"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через 5 минут тест")
+        == "in 5 minutes - тест"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через час тест")
+        == "in 1 hours - тест"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("напомни через 2 часа тест")
+        == "in 2 hours - тест"
+    )
+
+
+def test_plain_text_relative_english_reminder_uses_local_normalizer(main_module):
+    m = main_module
+
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("remind me in a minute test")
+        == "in 1 minutes - test"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("remind me in 10 minutes test")
+        == "in 10 minutes - test"
+    )
+    assert (
+        m._normalize_plain_text_relative_reminder_locally("remind me in an hour test")
+        == "in 1 hours - test"
+    )
