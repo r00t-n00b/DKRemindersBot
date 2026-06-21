@@ -3125,6 +3125,20 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
 # ===== SNOOZE клавиатуры =====
 
+def build_created_reminder_actions_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+    try:
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Удалить", callback_data=f"created_del:{reminder_id}"),
+                    InlineKeyboardButton("Перенести", callback_data=f"created_resched:{reminder_id}"),
+                ]
+            ]
+        )
+    except TypeError:
+        return None
+
+
 def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
@@ -5802,21 +5816,25 @@ async def remind_command(update: Update, context: CTX) -> None:
     )
 
     when_str = remind_at.strftime("%d.%m %H:%M")
+    created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id)
     if used_alias:
         await safe_reply(
             message,
-            f"Ок, напомню в чате '{used_alias}' {when_str}: {text}"
+            f"Ок, напомню в чате '{used_alias}' {when_str}: {text}",
+            reply_markup=created_actions_keyboard,
         )
     else:
         if target_chat_id != chat.id and chat.type == Chat.PRIVATE:
             await safe_reply(
                 message,
-                f"Ок, напомню этому человеку {when_str}: {text}"
+                f"Ок, напомню этому человеку {when_str}: {text}",
+                reply_markup=created_actions_keyboard,
             )
         else:
             await safe_reply(
                 message,
-                f"Ок, напомню {when_str}: {text}"
+                f"Ок, напомню {when_str}: {text}",
+                reply_markup=created_actions_keyboard,
             )
 
 async def linkuser_command(update: Update, context: CTX) -> None:
@@ -6089,6 +6107,33 @@ async def list_command(update: Update, context: CTX) -> None:
 
     keyboard = InlineKeyboardMarkup(buttons)
     await safe_reply(message,reply, reply_markup=keyboard)
+
+async def created_delete_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    await query.answer("Удалено")
+
+    try:
+        reminder_id = int(query.data.split(":", 1)[1])
+    except Exception:
+        await query.edit_message_text("Не смог удалить напоминание.", reply_markup=None)
+        return
+
+    mark_reminder_acked(reminder_id)
+    await query.edit_message_text("Удалил напоминание.", reply_markup=None)
+
+
+async def created_reschedule_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        reminder_id = int(query.data.split(":", 1)[1])
+    except Exception:
+        await query.edit_message_text("Не смог открыть перенос напоминания.", reply_markup=None)
+        return
+
+    await query.edit_message_reply_markup(reply_markup=build_snooze_keyboard(reminder_id))
+
 
 async def delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
@@ -7413,6 +7458,8 @@ def main() -> None:
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
+    application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
+    application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
