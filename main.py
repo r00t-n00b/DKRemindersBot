@@ -3176,7 +3176,6 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
             ],
             [
                 InlineKeyboardButton("⬅️ Назад", callback_data=f"created_back:{reminder_id}"),
-                InlineKeyboardButton("Скрыть", callback_data=f"created_hide:{reminder_id}"),
             ],
         ]
         return InlineKeyboardMarkup(buttons)
@@ -5764,11 +5763,13 @@ async def remind_command(update: Update, context: CTX) -> None:
                 f"{freq_part}"
             )
         else:
+            created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id)
             await safe_reply(
                 message,
                 f"Ок, создал повторяющееся напоминание.\n"
                 f"Первое напоминание будет {when_str}: {text}"
-                f"{freq_part}"
+                f"{freq_part}",
+                reply_markup=created_actions_keyboard,
             )
         return
 
@@ -6202,12 +6203,6 @@ async def created_back_callback(update: Update, context: CTX) -> None:
         return
 
     await query.edit_message_reply_markup(reply_markup=build_created_reminder_actions_keyboard(reminder_id))
-
-
-async def created_hide_callback(update: Update, context: CTX) -> None:
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_reply_markup(reply_markup=None)
 
 
 async def delete_callback(update: Update, context: CTX) -> None:
@@ -7536,7 +7531,6 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
     application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
-    application.add_handler(CallbackQueryHandler(created_hide_callback, pattern=r"^created_hide:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))

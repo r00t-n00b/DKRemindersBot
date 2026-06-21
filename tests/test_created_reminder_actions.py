@@ -49,7 +49,7 @@ def test_build_created_reminder_actions_keyboard(main_module, monkeypatch):
     assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:123"
 
 
-def test_build_created_reschedule_keyboard_has_back_and_hide(main_module, monkeypatch):
+def test_build_created_reschedule_keyboard_has_back_without_hide(main_module, monkeypatch):
     m = main_module
     _patch_keyboard_classes(m, monkeypatch)
 
@@ -64,8 +64,10 @@ def test_build_created_reschedule_keyboard_has_back_and_hide(main_module, monkey
     assert any(b.callback_data == "snooze:123:custom" for b in flattened)
     assert keyboard.inline_keyboard[-1][0].text == "⬅️ Назад"
     assert keyboard.inline_keyboard[-1][0].callback_data == "created_back:123"
-    assert keyboard.inline_keyboard[-1][1].text == "Скрыть"
-    assert keyboard.inline_keyboard[-1][1].callback_data == "created_hide:123"
+
+    flattened = [button for row in keyboard.inline_keyboard for button in row]
+    assert all(button.callback_data != "created_hide:123" for button in flattened)
+    assert all(button.text != "Скрыть" for button in flattened)
 
 
 def test_created_delete_callback_soft_deletes_and_shows_undo(main_module, monkeypatch):
@@ -154,11 +156,48 @@ def test_created_back_callback_restores_created_actions_keyboard(main_module, mo
     assert query.edited_reply_markup is created_actions_keyboard
 
 
-def test_created_hide_callback_removes_keyboard(main_module):
-    query = FakeQuery("created_hide:789")
-    update = SimpleNamespace(callback_query=query)
 
-    asyncio.run(main_module.created_hide_callback(update, SimpleNamespace()))
 
-    assert query.answers
-    assert query.edited_reply_markup is None
+class FakeMessage:
+    def __init__(self, text):
+        self.text = text
+        self.replies = []
+
+    async def reply_text(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+
+
+class FakeChat:
+    PRIVATE = "private"
+
+    def __init__(self, chat_id=12345):
+        self.id = chat_id
+        self.type = "private"
+
+
+def test_recurring_reminder_success_has_created_actions_keyboard(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    monkeypatch.setattr(m, "Chat", FakeChat)
+
+    message = FakeMessage("/remind every day - recurring task")
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_chat=FakeChat(12345),
+        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
+    )
+    context = SimpleNamespace(args=["every", "day", "-", "recurring", "task"], user_data={})
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    reply, kwargs = message.replies[0]
+    assert "Ок, создал повторяющееся напоминание." in reply
+
+    keyboard = kwargs.get("reply_markup")
+    assert keyboard is not None
+    assert keyboard.inline_keyboard[0][0].text == "❌ Удалить"
+    assert keyboard.inline_keyboard[0][0].callback_data.startswith("created_del:")
+    assert keyboard.inline_keyboard[0][1].text == "⏰ Перенести"
+    assert keyboard.inline_keyboard[0][1].callback_data.startswith("created_resched:")

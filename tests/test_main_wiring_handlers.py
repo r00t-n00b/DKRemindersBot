@@ -93,7 +93,6 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
     assert r"^created_del:\d+$" in callback_patterns
     assert r"^created_resched:\d+$" in callback_patterns
     assert r"^created_back:\d+$" in callback_patterns
-    assert r"^created_hide:\d+$" in callback_patterns
 
     snooze_pattern = m.build_snooze_callback_pattern()
     assert snooze_pattern in callback_patterns
