@@ -20,6 +20,7 @@ class MockMarkup:
 class DummyMessage:
     def __init__(self, chat_id=456):
         self.chat = SimpleNamespace(id=chat_id)
+        self.message_id = 999
         self.replies = []
 
     async def reply_text(self, text, **kwargs):
@@ -40,6 +41,15 @@ class DummyQuery:
         self.edits.append((text, kwargs))
 
 
+
+class DummyBot:
+    def __init__(self):
+        self.edits = []
+
+    async def edit_message_text(self, **kwargs):
+        self.edits.append(kwargs)
+
+
 class DummyUpdate:
     def __init__(self, query):
         self.callback_query = query
@@ -50,7 +60,8 @@ def _ctx(list_ids, list_chat_id=456):
         user_data={
             "list_ids": list_ids,
             "list_chat_id": list_chat_id,
-        }
+        },
+        bot=DummyBot(),
     )
 
 
@@ -139,7 +150,8 @@ def test_delete_choose_del_one_empty_list_replaces_message_with_undo(main_module
 
 
 
-def test_delete_choose_del_one_replaces_message_with_undo_even_when_list_has_remaining_items(main_module, monkeypatch):
+
+def test_delete_choose_del_one_from_list_updates_original_list_and_edits_choice_to_undo(main_module, monkeypatch):
     monkeypatch.setattr(main_module, "InlineKeyboardButton", MockButton, raising=False)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", MockMarkup, raising=False)
     monkeypatch.setattr(main_module, "make_undo_token", lambda: "undo-token-2")
@@ -159,27 +171,30 @@ def test_delete_choose_del_one_replaces_message_with_undo_even_when_list_has_rem
     query = DummyQuery("del_one:101")
     update = DummyUpdate(query)
     context = _ctx(list_ids=[101, remaining_id], list_chat_id=456)
+    context.user_data["delete_choice_source"] = "list"
+    context.user_data["list_message_ref"] = {"chat_id": 456, "message_id": 999}
 
     asyncio.run(main_module.delete_choose_callback(update, context))
 
     assert context.user_data["list_ids"] == [remaining_id]
+    assert len(context.bot.edits) == 1
+    assert context.bot.edits[0]["chat_id"] == 456
+    assert context.bot.edits[0]["message_id"] == 999
+    assert "remaining reminder" in context.bot.edits[0]["text"]
+    assert "old reminder" not in context.bot.edits[0]["text"]
+
     assert query.message.replies == []
     assert len(query.edits) == 1
-
     edited_text, kwargs = query.edits[0]
     assert edited_text.startswith("Удалил ближайший из серии: ")
     assert "old reminder" in edited_text
-    assert "remaining reminder" not in edited_text
-    assert "Активные напоминания:" not in edited_text
-    assert "Напоминаний больше нет" not in edited_text
 
     buttons = [button for row in kwargs["reply_markup"].keyboard for button in row]
     assert any(button.callback_data == "undo:undo-token-2" for button in buttons)
+    assert "delete_choice_source" not in context.user_data
 
-    assert "undo-token-2" in context.user_data["undo_tokens"]
-    assert context.user_data["undo_tokens"]["undo-token-2"]["kind"] == "one"
 
-def test_delete_choose_del_series_empty_list_replaces_message_with_undo(main_module, monkeypatch):
+def test_delete_choose_del_series_from_list_updates_original_list_and_edits_choice_to_undo(main_module, monkeypatch):
     monkeypatch.setattr(main_module, "InlineKeyboardButton", MockButton, raising=False)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", MockMarkup, raising=False)
     monkeypatch.setattr(main_module, "make_undo_token", lambda: "undo-token-series")
@@ -192,26 +207,24 @@ def test_delete_choose_del_series_empty_list_replaces_message_with_undo(main_mod
     query = DummyQuery("del_series:77")
     update = DummyUpdate(query)
     context = _ctx(list_ids=[101, 102], list_chat_id=456)
+    context.user_data["delete_choice_source"] = "list"
+    context.user_data["list_message_ref"] = {"chat_id": 456, "message_id": 999}
 
     asyncio.run(main_module.delete_choose_callback(update, context))
 
-    assert query.answers[0] == (None, False)
     assert context.user_data["list_ids"] == []
-
-    assert "undo-token-series" in context.user_data["undo_tokens"]
-    assert context.user_data["undo_tokens"]["undo-token-series"]["kind"] == "series"
+    assert len(context.bot.edits) == 1
+    assert context.bot.edits[0]["text"] == "Напоминаний больше нет."
 
     assert query.message.replies == []
     assert len(query.edits) == 1
-
     edited_text, kwargs = query.edits[0]
     assert edited_text.startswith("Удалил всю серию: ")
     assert "first in series" in edited_text
-    assert "Напоминаний больше нет" not in edited_text
 
     buttons = [button for row in kwargs["reply_markup"].keyboard for button in row]
     assert any(button.callback_data == "undo:undo-token-series" for button in buttons)
-
+    assert "delete_choice_source" not in context.user_data
 
 def test_delete_choose_invalid_ids_do_nothing(main_module, monkeypatch):
     one_called = False
@@ -264,6 +277,7 @@ def test_delete_choose_missing_snapshot_shows_alert(main_module, monkeypatch):
     assert query.message.replies == []
 
 
+
 def test_delete_choose_del_index_for_recurring_reminder_shows_delete_mode_choice(main_module, monkeypatch):
     monkeypatch.setattr(main_module, "InlineKeyboardButton", MockButton, raising=False)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", MockMarkup, raising=False)
@@ -297,18 +311,21 @@ def test_delete_choose_del_index_for_recurring_reminder_shows_delete_mode_choice
 
     asyncio.run(main_module.delete_callback(update, context))
 
-    assert query.message.replies == []
-    assert len(query.edits) == 1
+    # /list остается списком, а вопрос удаления recurring приходит отдельным сообщением.
+    assert query.edits == []
+    assert len(query.message.replies) == 1
 
-    edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Это повторяющееся напоминание. Как удалить?")
-    assert "drink water" in edited_text
-    assert "🔁 every 2 hours" in edited_text
+    reply_text, kwargs = query.message.replies[0]
+    assert reply_text.startswith("Это повторяющееся напоминание. Как удалить?")
+    assert "drink water" in reply_text
+    assert "🔁 every 2 hours" in reply_text
+
+    assert context.user_data["delete_choice_source"] == "list"
+    assert context.user_data["list_message_ref"] == {"chat_id": 456, "message_id": 999}
 
     buttons = [button for row in kwargs["reply_markup"].keyboard for button in row]
     assert any(button.callback_data == "del_one:101" for button in buttons)
     assert any(button.callback_data == "del_series:77" for button in buttons)
-
 
 def test_delete_choose_del_index_for_missing_reminder_shows_already_deleted(main_module, monkeypatch):
     monkeypatch.setattr(main_module, "get_reminder_row", lambda rid: None)
@@ -322,6 +339,7 @@ def test_delete_choose_del_index_for_missing_reminder_shows_already_deleted(main
     assert query.answers == [(None, False), ("Уже удалено", True)]
     assert query.edits == []
     assert query.message.replies == []
+
 
 
 
@@ -366,14 +384,16 @@ def test_delete_choose_del_index_for_regular_reminder_empty_list_deletes_and_cre
 
     asyncio.run(main_module.delete_callback(update, context))
 
+    # /list обновляется на месте.
     assert context.user_data["list_ids"] == []
-    assert query.message.replies == []
     assert len(query.edits) == 1
+    assert query.edits[0][0] == "Напоминаний больше нет."
 
-    edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Удалил: ")
-    assert "regular reminder" in edited_text
-    assert "Напоминаний больше нет" not in edited_text
+    # Undo-уведомление приходит отдельным сообщением.
+    assert len(query.message.replies) == 1
+    reply_text, kwargs = query.message.replies[0]
+    assert reply_text.startswith("Удалил: ")
+    assert "regular reminder" in reply_text
 
     assert "undo-token-regular" in context.user_data["undo_tokens"]
     assert context.user_data["undo_tokens"]["undo-token-regular"]["kind"] == "single"
@@ -430,16 +450,21 @@ def test_delete_choose_del_index_for_regular_reminder_rebuilds_remaining_list(ma
 
     asyncio.run(main_module.delete_callback(update, context))
 
+    # /list остается списком и обновляется на месте.
     assert context.user_data["list_ids"] == [remaining_id]
-    assert query.message.replies == []
     assert len(query.edits) == 1
 
-    edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Удалил: ")
-    assert "deleted reminder" in edited_text
-    assert "remaining reminder" not in edited_text
-    assert "Активные напоминания:" not in edited_text
-    assert "Напоминаний больше нет" not in edited_text
+    edited_text, _kwargs = query.edits[0]
+    assert "Активные напоминания:" in edited_text
+    assert "remaining reminder" in edited_text
+    assert "deleted reminder" not in edited_text
+    assert "Удалил:" not in edited_text
+
+    # Undo-уведомление приходит отдельным сообщением.
+    assert len(query.message.replies) == 1
+    reply_text, kwargs = query.message.replies[0]
+    assert reply_text.startswith("Удалил: ")
+    assert "deleted reminder" in reply_text
 
     assert "undo-token-regular-2" in context.user_data["undo_tokens"]
     assert context.user_data["undo_tokens"]["undo-token-regular-2"]["kind"] == "single"
@@ -493,7 +518,8 @@ def test_delete_choose_del_index_invalid_number_does_nothing(main_module, monkey
     assert query.edits == []
     assert query.message.replies == []
 
-def test_delete_callback_single_reminder_from_list_replaces_message_with_undo(main_module, monkeypatch):
+
+def test_delete_callback_single_reminder_from_list_updates_list_and_sends_undo_message(main_module, monkeypatch):
     monkeypatch.setattr(main_module, "InlineKeyboardButton", MockButton, raising=False)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", MockMarkup, raising=False)
     monkeypatch.setattr(main_module, "make_undo_token", lambda: "undo-token-single")
@@ -526,19 +552,19 @@ def test_delete_callback_single_reminder_from_list_replaces_message_with_undo(ma
     asyncio.run(main_module.delete_callback(update, context))
 
     assert context.user_data["list_ids"] == []
-    assert query.message.replies == []
     assert len(query.edits) == 1
+    assert query.edits[0][0] == "Напоминаний больше нет."
 
-    edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Удалил: ")
-    assert "plain reminder" in edited_text
-    assert "Напоминаний больше нет" not in edited_text
+    assert len(query.message.replies) == 1
+    reply_text, kwargs = query.message.replies[0]
+    assert reply_text.startswith("Удалил: ")
+    assert "plain reminder" in reply_text
 
     buttons = [button for row in kwargs["reply_markup"].keyboard for button in row]
     assert any(button.callback_data == "undo:undo-token-single" for button in buttons)
 
 
-def test_delete_callback_recurring_from_list_replaces_message_with_delete_choice(main_module, monkeypatch):
+def test_delete_callback_recurring_from_list_keeps_list_and_sends_delete_choice(main_module, monkeypatch):
     monkeypatch.setattr(main_module, "InlineKeyboardButton", MockButton, raising=False)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", MockMarkup, raising=False)
 
@@ -571,13 +597,16 @@ def test_delete_callback_recurring_from_list_replaces_message_with_delete_choice
 
     asyncio.run(main_module.delete_callback(update, context))
 
-    assert query.message.replies == []
-    assert len(query.edits) == 1
+    assert query.edits == []
+    assert len(query.message.replies) == 1
 
-    edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Это повторяющееся напоминание. Как удалить?")
-    assert "recurring reminder" in edited_text
-    assert "🔁 daily" in edited_text
+    reply_text, kwargs = query.message.replies[0]
+    assert reply_text.startswith("Это повторяющееся напоминание. Как удалить?")
+    assert "recurring reminder" in reply_text
+    assert "🔁 daily" in reply_text
+
+    assert context.user_data["delete_choice_source"] == "list"
+    assert context.user_data["list_message_ref"] == {"chat_id": 456, "message_id": 999}
 
     buttons = [button for row in kwargs["reply_markup"].keyboard for button in row]
     assert any(button.callback_data == "del_one:101" for button in buttons)

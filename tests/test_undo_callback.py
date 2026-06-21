@@ -110,6 +110,26 @@ def test_undo_callback_restores_series_reply(main_module, monkeypatch):
 
     monkeypatch.setattr(main_module, "restore_deleted_snapshot", lambda snap: [1, 2])
 
+    keyboard = SimpleNamespace(
+        inline_keyboard=[
+            [
+                SimpleNamespace(callback_data="created_del:1"),
+                SimpleNamespace(callback_data="created_resched:1"),
+            ]
+        ]
+    )
+    keyboard_calls = []
+
+    def fake_created_actions_keyboard(reminder_id, *, is_recurring=False):
+        keyboard_calls.append((reminder_id, is_recurring))
+        return keyboard
+
+    monkeypatch.setattr(
+        main_module,
+        "build_created_reminder_actions_keyboard",
+        fake_created_actions_keyboard,
+    )
+
     cbq = SimpleNamespace(
         data="undo:t2",
         answer=fake_answer,
@@ -122,4 +142,6 @@ def test_undo_callback_restores_series_reply(main_module, monkeypatch):
     asyncio.run(main_module.undo_callback(upd, ctx))
 
     assert edited["text"] == "Вернул серию: series  🔁 daily (инстансов: 2)"
+    assert edited["kwargs"]["reply_markup"] is keyboard
+    assert keyboard_calls == [(1, True)]
     assert ctx.user_data["undo_tokens"] == {}

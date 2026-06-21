@@ -6381,6 +6381,8 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
                 [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}")],
             ]
         )
+        context.user_data["delete_choice_source"] = "created"
+
         await query.answer()
         await query.edit_message_reply_markup(reply_markup=keyboard)
         return
@@ -6599,6 +6601,59 @@ async def created_back_callback(update: Update, context: CTX) -> None:
     await query.edit_message_reply_markup(reply_markup=build_created_reminder_actions_keyboard(reminder_id))
 
 
+
+def _build_active_list_response_for_ids(ids):
+    if not ids:
+        return "Напоминаний больше нет.", None, ids
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    qmarks = ",".join("?" for _ in ids)
+    c.execute(
+        f"""
+        SELECT
+            r.id,
+            r.text,
+            r.remind_at,
+            r.template_id,
+            rt.pattern_type,
+            rt.payload
+        FROM reminders r
+        LEFT JOIN recurring_templates rt ON rt.id = r.template_id
+        WHERE r.id IN ({qmarks})
+        ORDER BY r.remind_at ASC
+        """,
+        ids,
+    )
+    rows = c.fetchall()
+    conn.close()
+
+    reply, rebuilt_ids, keyboard = build_active_reminders_list_response(
+        rows,
+        header="Активные напоминания:",
+    )
+    return reply, keyboard, rebuilt_ids
+
+
+async def _edit_stored_list_message_after_delete(context, ids):
+    ref = context.user_data.get("list_message_ref") or {}
+    chat_id = ref.get("chat_id")
+    message_id = ref.get("message_id")
+
+    if chat_id is None or message_id is None:
+        return
+
+    reply, keyboard, rebuilt_ids = _build_active_list_response_for_ids(ids)
+    context.user_data["list_ids"] = rebuilt_ids
+
+    await context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=message_id,
+        text=reply,
+        reply_markup=keyboard,
+    )
+
+
 async def delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
     if query is None:
@@ -6655,8 +6710,13 @@ async def delete_callback(update: Update, context: CTX) -> None:
             ]
         )
 
+        context.user_data["delete_choice_source"] = "list"
         if query.message:
-            await query.edit_message_text(
+            context.user_data["list_message_ref"] = {
+                "chat_id": query.message.chat.id,
+                "message_id": query.message.message_id,
+            }
+            await query.message.reply_text(
                 "Это повторяющееся напоминание. Как удалить?\n\n" + preview,
                 reply_markup=kb,
             )
@@ -6671,8 +6731,10 @@ async def delete_callback(update: Update, context: CTX) -> None:
     ids.pop(idx - 1)
     context.user_data["list_ids"] = ids
 
-    # list_ids обновляем, но сообщение с нажатой кнопкой ниже заменяем на "Удалил..." + undo.
-    # Не отправляем отдельное сообщение и не показываем промежуточное "Напоминаний больше нет.".
+    if query.message:
+        reply, keyboard, ids = _build_active_list_response_for_ids(ids)
+        context.user_data["list_ids"] = ids
+        await query.edit_message_text(reply, reply_markup=keyboard)
 
     tpl = snapshot.get("template") or {}
     tpl_pattern_type = tpl.get("pattern_type")
@@ -6694,7 +6756,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
     )
 
     if query.message:
-        await query.edit_message_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+        await query.message.reply_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
 
 
 async def delete_choose_callback(update: Update, context: CTX) -> None:
@@ -6756,9 +6818,9 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
 
         deleted_label = "Удалил всю серию"
 
-    # Обновляем сообщение со списком (если там еще что-то осталось)
-    # list_ids обновляем, но сообщение с нажатой кнопкой ниже заменяем на "Удалил..." + undo.
-    # Не отправляем отдельное сообщение и не показываем промежуточное "Напоминаний больше нет.".
+    source = context.user_data.pop("delete_choice_source", None)
+    if source == "list":
+        await _edit_stored_list_message_after_delete(context, ids)
 
     if not snapshot:
         return
@@ -6844,8 +6906,23 @@ async def undo_callback(update: Update, context: CTX) -> None:
         suffix = f"  🔁 {human}" if human else "  🔁"
         count = len(restored) if isinstance(restored, list) else 0
 
+        restored_id = None
+        if isinstance(restored, list) and restored:
+            try:
+                restored_id = int(restored[0])
+            except (TypeError, ValueError):
+                restored_id = None
+
+        reply_markup = None
+        if restored_id is not None:
+            reply_markup = build_created_reminder_actions_keyboard(
+                restored_id,
+                is_recurring=True,
+            )
+
         await query.edit_message_text(
-            f"Вернул серию: {series_text}{suffix} (инстансов: {count})"
+            f"Вернул серию: {series_text}{suffix} (инстансов: {count})",
+            reply_markup=reply_markup,
         )
         return
 

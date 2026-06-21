@@ -72,7 +72,7 @@ def test_list_groups_reminders_by_today_tomorrow_later(main_module, fixed_now, m
     assert update.effective_message.replies
     reply, kwargs = update.effective_message.replies[0]
 
-    assert reply.startswith("Активные напоминания:\n\n")
+    assert reply.startswith("Активные напоминания:")
 
     assert "Сегодня\n1. 18:00 - today task" in reply
     assert "Завтра\n2. 10:30 - tomorrow task" in reply
@@ -151,7 +151,7 @@ class FakeCallbackQuery:
         await self.message.edit_message_text(text, **kwargs)
 
 
-def test_delete_from_list_replaces_message_with_deleted_undo(main_module, fixed_now, monkeypatch):
+def test_delete_from_list_preserves_today_tomorrow_later_grouping(main_module, fixed_now, monkeypatch):
     m = main_module
     monkeypatch.setattr(m, "InlineKeyboardButton", FakeInlineKeyboardButton)
     monkeypatch.setattr(m, "InlineKeyboardMarkup", FakeInlineKeyboardMarkup)
@@ -192,19 +192,19 @@ def test_delete_from_list_replaces_message_with_deleted_undo(main_module, fixed_
     asyncio.run(m.delete_callback(callback_update, context))
 
     assert query.answers
-    assert callback_message.replies == []
     assert callback_message.edits
-
     edited_text, kwargs = callback_message.edits[0]
 
-    assert edited_text.startswith("Удалил: ")
-    assert "today task" in edited_text
-    assert "tomorrow task" not in edited_text
-    assert "later task" not in edited_text
-    assert "Активные напоминания:" not in edited_text
-    assert "Напоминаний больше нет" not in edited_text
+    assert "Активные напоминания:" in edited_text
+    assert "today task" not in edited_text
+    assert "tomorrow task" in edited_text
+    assert "later task" in edited_text
+    assert "Удалил:" not in edited_text
+
+    assert len(callback_message.replies) == 1
+    reply_text, reply_kwargs = callback_message.replies[0]
+    assert reply_text.startswith("Удалил: ")
+    assert "today task" in reply_text
+    assert reply_kwargs["reply_markup"] is not None
 
     assert context.user_data["list_ids"] == [tomorrow_id, later_id]
-
-    buttons = [button for row in kwargs["reply_markup"].inline_keyboard for button in row]
-    assert any(button.callback_data.startswith("undo:") for button in buttons)
