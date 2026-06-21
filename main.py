@@ -3130,8 +3130,8 @@ def build_created_reminder_actions_keyboard(reminder_id: int) -> Optional[Inline
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("Удалить", callback_data=f"created_del:{reminder_id}"),
-                    InlineKeyboardButton("Перенести", callback_data=f"created_resched:{reminder_id}"),
+                    InlineKeyboardButton("❌ Удалить", callback_data=f"created_del:{reminder_id}"),
+                    InlineKeyboardButton("⏰ Перенести", callback_data=f"created_resched:{reminder_id}"),
                 ]
             ]
         )
@@ -3158,6 +3158,31 @@ def build_snooze_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(buttons)
+
+def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+    try:
+        buttons: List[List[InlineKeyboardButton]] = [
+            [
+                InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
+                InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
+            ],
+            [
+                InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
+                InlineKeyboardButton("📅 Завтра (11:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+            ],
+            [
+                InlineKeyboardButton("📅 Следующий понедельник (11:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data=f"created_back:{reminder_id}"),
+                InlineKeyboardButton("Скрыть", callback_data=f"created_hide:{reminder_id}"),
+            ],
+        ]
+        return InlineKeyboardMarkup(buttons)
+    except TypeError:
+        return None
+
 
 def build_group_reminder_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     try:
@@ -6110,16 +6135,47 @@ async def list_command(update: Update, context: CTX) -> None:
 
 async def created_delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
-    await query.answer("Удалено")
 
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
+        await query.answer("Не смог удалить", show_alert=True)
         await query.edit_message_text("Не смог удалить напоминание.", reply_markup=None)
         return
 
-    mark_reminder_acked(reminder_id)
-    await query.edit_message_text("Удалил напоминание.", reply_markup=None)
+    row = get_reminder_row(reminder_id)
+    if not row:
+        await query.answer("Уже удалено", show_alert=True)
+        await query.edit_message_text("Напоминание уже удалено.", reply_markup=None)
+        return
+
+    snapshot = delete_single_reminder_with_snapshot(reminder_id, int(row["chat_id"]))
+    if not snapshot:
+        await query.answer("Уже удалено", show_alert=True)
+        await query.edit_message_text("Напоминание уже удалено.", reply_markup=None)
+        return
+
+    token = make_undo_token()
+    context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
+    context.user_data["undo_tokens"][token] = snapshot
+
+    tpl = snapshot.get("template") or {}
+    tpl_pattern_type = tpl.get("pattern_type")
+    tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
+
+    deleted_text = format_deleted_human(
+        snapshot["reminder"]["remind_at"],
+        snapshot["reminder"]["text"],
+        tpl_pattern_type,
+        tpl_payload,
+    )
+
+    undo_kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=f"undo:{token}")]]
+    )
+
+    await query.answer("Удалено")
+    await query.edit_message_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
 
 
 async def created_reschedule_callback(update: Update, context: CTX) -> None:
@@ -6132,7 +6188,26 @@ async def created_reschedule_callback(update: Update, context: CTX) -> None:
         await query.edit_message_text("Не смог открыть перенос напоминания.", reply_markup=None)
         return
 
-    await query.edit_message_reply_markup(reply_markup=build_snooze_keyboard(reminder_id))
+    await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
+
+
+async def created_back_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        reminder_id = int(query.data.split(":", 1)[1])
+    except Exception:
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
+    await query.edit_message_reply_markup(reply_markup=build_created_reminder_actions_keyboard(reminder_id))
+
+
+async def created_hide_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
 
 
 async def delete_callback(update: Update, context: CTX) -> None:
@@ -7460,6 +7535,8 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
+    application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
+    application.add_handler(CallbackQueryHandler(created_hide_callback, pattern=r"^created_hide:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
