@@ -240,7 +240,14 @@ def test_list_no_reminders(main_module):
     main_module.InlineKeyboardButton = _Btn
     main_module.InlineKeyboardMarkup = _Markup
     asyncio.run(main_module.list_command(upd, ctx))
+
     assert msg.replies
+    reply = msg.replies[0]
+    assert reply == (
+        "Напоминаний нет.\n\n"
+        "Напиши, например:\n"
+        "напомни завтра в 18:00 купить молоко"
+    )
 
 
 def test_list_only_recurring(main_module):

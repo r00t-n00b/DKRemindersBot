@@ -6011,17 +6011,44 @@ async def list_command(update: Update, context: CTX) -> None:
     conn.close()
 
     if not rows:
+        empty_hint = "Напиши, например:\nнапомни завтра в 18:00 купить молоко"
         if used_alias:
-            await safe_reply(message,f"В чате '{used_alias}' напоминаний нет.")
+            await safe_reply(
+                message,
+                f"В чате '{used_alias}' напоминаний нет.\n\n{empty_hint}",
+            )
         else:
-            await safe_reply(message,"Напоминаний нет.")
+            await safe_reply(
+                message,
+                f"Напоминаний нет.\n\n{empty_hint}",
+            )
         return
 
     lines = []
     ids: List[int] = []
+    last_section: Optional[str] = None
+    now_local = get_now()
+    today = now_local.date()
+    tomorrow = today + timedelta(days=1)
+
     for idx, (rid, text, remind_at_str, template_id, tpl_pattern_type, tpl_payload_json) in enumerate(rows, start=1):
         dt = datetime.fromisoformat(remind_at_str)
-        ts = dt.strftime("%d.%m %H:%M")
+
+        if dt.date() == today:
+            section = "Сегодня"
+            ts = dt.strftime("%H:%M")
+        elif dt.date() == tomorrow:
+            section = "Завтра"
+            ts = dt.strftime("%H:%M")
+        else:
+            section = "Позже"
+            ts = dt.strftime("%d.%m %H:%M")
+
+        if section != last_section:
+            if lines:
+                lines.append("")
+            lines.append(section)
+            last_section = section
 
         suffix = ""
         if template_id is not None:
