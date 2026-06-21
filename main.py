@@ -104,6 +104,67 @@ logger = logging.getLogger(__name__)
 def get_now() -> datetime:
     return datetime.now(TZ)
 
+
+# ===== User-facing messages =====
+
+MSG_REMIND_USAGE = (
+    "Формат:\n"
+    "/remind DD.MM HH:MM - текст\n"
+    "или без времени:\n"
+    "/remind 29.11 - важный звонок\n"
+    "или только время:\n"
+    "/remind 23:59 - проверить двери\n"
+    "или относительное:\n"
+    "/remind in 2 hours - текст\n"
+    "или повторяющееся:\n"
+    "/remind every Monday 10:00 - текст\n"
+    "или bulk:\n"
+    "/remind\n"
+    "- 28.11 12:00 - завтра футбол"
+)
+
+MSG_NOT_UNDERSTOOD_PLAIN_TEXT = (
+    "Не понял, что сделать с этим сообщением.\n"
+    "Если хочешь поставить напоминание, напиши, например:\n"
+    "/remind завтра 18:00 - поздравить Саню\n\n"
+    "Подробнее: /help"
+)
+
+MSG_GROUP_USERNAME_PREFIX_FORBIDDEN = (
+    "В групповом чате нельзя начинать команду с @username.\n"
+    "Напиши так: /remind 02.02 - текст @someone\n"
+    "Или в личку боту: /remind @someone 02.02 - текст"
+)
+
+MSG_GROUP_ALIAS_PREFIX_FORBIDDEN = (
+    "В групповом чате нельзя использовать alias в начале команды.\n"
+    "Напиши боту в личку: /remind <alias> 02.02 - текст"
+)
+
+MSG_INVALID_REMINDER_ID = "Некорректный reminder id"
+MSG_REMINDER_NOT_FOUND = "Напоминание не найдено"
+MSG_SOURCE_REMINDER_NOT_FOUND = "Исходное напоминание не найдено"
+MSG_REMINDER_ALREADY_DELETED_ALERT = "Уже удалено"
+MSG_REMINDER_ALREADY_DELETED_TEXT = "Напоминание уже удалено."
+MSG_DELETE_FAILED_SHORT = "Не смог удалить"
+MSG_DELETE_FAILED_TEXT = "Не смог удалить напоминание."
+MSG_RESCHEDULE_OPEN_FAILED_TEXT = "Не смог открыть перенос напоминания."
+
+
+def msg_after_me_requires_date_and_text(example: str) -> str:
+    return "После me нужно указать дату и текст.\n" + example
+
+
+def msg_user_has_not_started_bot(username: str) -> str:
+    return (
+        f"Я пока не могу написать {username} в личку, потому что он/она не нажимал(а) Start у бота.\n"
+        "Пусть откроет бота и нажмет Start, потом повтори команду."
+    )
+
+
+def msg_after_target_requires_date_and_text(target: str, example: str) -> str:
+    return f"После {target} нужно указать дату и текст.\n" + example
+
 # ===== Модель данных =====
 
 @dataclass
@@ -5222,10 +5283,7 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
     if normalized == "NO_REMINDER" or not normalized:
         await safe_reply(
             message,
-            "Не понял, что сделать с этим сообщением.\n"
-            "Если хочешь поставить напоминание, напиши, например:\n"
-            "/remind завтра 18:00 - поздравить Саню\n\n"
-            "Подробнее: /help"
+            MSG_NOT_UNDERSTOOD_PLAIN_TEXT
         )
         return
 
@@ -5246,10 +5304,7 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
     if not normalized or " - " not in normalized:
         await safe_reply(
             message,
-            "Не понял, что сделать с этим сообщением.\n"
-            "Если хочешь поставить напоминание, напиши, например:\n"
-            "/remind завтра 18:00 - поздравить Саню\n\n"
-            "Подробнее: /help"
+            MSG_NOT_UNDERSTOOD_PLAIN_TEXT
         )
         return
 
@@ -5357,19 +5412,7 @@ async def remind_command(update: Update, context: CTX) -> None:
     if not raw_args.strip():
         await safe_reply(
             message,
-            "Формат:\n"
-            "/remind DD.MM HH:MM - текст\n"
-            "или без времени:\n"
-            "/remind 29.11 - важный звонок\n"
-            "или только время:\n"
-            "/remind 23:59 - проверить двери\n"
-            "или относительное:\n"
-            "/remind in 2 hours - текст\n"
-            "или повторяющееся:\n"
-            "/remind every Monday 10:00 - текст\n"
-            "или bulk:\n"
-            "/remind\n"
-            "- 28.11 12:00 - завтра футбол\n"
+            MSG_REMIND_USAGE
         )
         return
 
@@ -5392,9 +5435,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if first_token.startswith("@") and len(first_token) > 1:
                     await safe_reply(
                         message,
-                        "В групповом чате нельзя начинать команду с @username.\n"
-                        "Напиши так: /remind 02.02 - текст @someone\n"
-                        "Или в личку боту: /remind @someone 02.02 - текст",
+                        MSG_GROUP_USERNAME_PREFIX_FORBIDDEN,
                     )
                     return
 
@@ -5407,8 +5448,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if alias_chat_id is not None:
                     await safe_reply(
                         message,
-                        "В групповом чате нельзя использовать alias в начале команды.\n"
-                        "Напиши боту в личку: /remind <alias> 02.02 - текст",
+                        MSG_GROUP_ALIAS_PREFIX_FORBIDDEN,
                     )
                     return
 
@@ -5443,8 +5483,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if not raw_args:
                     await safe_reply(
                         message,
-                        "После me нужно указать дату и текст.\n"
-                        "Пример: /remind me on Tuesday - алкоголь под КС"
+                        msg_after_me_requires_date_and_text("Пример: /remind me on Tuesday - алкоголь под КС")
                     )
                     return
 
@@ -5468,8 +5507,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if not raw_args:
                     await safe_reply(
                         message,
-                        "После me нужно указать дату и текст.\n"
-                        "Пример: /remind me at 18:00 - купить молоко"
+                        msg_after_me_requires_date_and_text("Пример: /remind me at 18:00 - купить молоко")
                     )
                     return
             if first_token.startswith("@") and len(first_token) > 1:
@@ -5477,8 +5515,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if target is None:
                     await safe_reply(
                         message,
-                        f"Я пока не могу написать {first_token} в личку, потому что он/она не нажимал(а) Start у бота.\n"
-                        f"Пусть откроет бота и нажмет Start, потом повтори команду."
+                        msg_user_has_not_started_bot(first_token)
                     )
                     return
 
@@ -5495,8 +5532,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if not raw_args:
                     await safe_reply(
                         message,
-                        f"После {first_token} нужно указать дату и текст.\n"
-                        f"Пример: /remind {first_token} tomorrow 10:00 - привет"
+                        msg_after_target_requires_date_and_text(first_token, f"Пример: /remind {first_token} tomorrow 10:00 - привет")
                     )
                     return
 
@@ -5544,8 +5580,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if not raw_args:
                     await safe_reply(
                         message,
-                        "После me нужно указать дату и текст.\n"
-                        "Пример: /remind me at 18:00 - купить молоко"
+                        msg_after_me_requires_date_and_text("Пример: /remind me at 18:00 - купить молоко")
                     )
                     return
 
@@ -6185,14 +6220,14 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
-        await query.answer("Не смог удалить", show_alert=True)
-        await query.edit_message_text("Не смог удалить напоминание.", reply_markup=None)
+        await query.answer(MSG_DELETE_FAILED_SHORT, show_alert=True)
+        await query.edit_message_text(MSG_DELETE_FAILED_TEXT, reply_markup=None)
         return
 
     row = get_reminder_row(reminder_id)
     if not row:
-        await query.answer("Уже удалено", show_alert=True)
-        await query.edit_message_text("Напоминание уже удалено.", reply_markup=None)
+        await query.answer(MSG_REMINDER_ALREADY_DELETED_ALERT, show_alert=True)
+        await query.edit_message_text(MSG_REMINDER_ALREADY_DELETED_TEXT, reply_markup=None)
         return
 
     template_id = row["template_id"] if "template_id" in row.keys() else None
@@ -6209,8 +6244,8 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
 
     snapshot = delete_single_reminder_with_snapshot(reminder_id, int(row["chat_id"]))
     if not snapshot:
-        await query.answer("Уже удалено", show_alert=True)
-        await query.edit_message_text("Напоминание уже удалено.", reply_markup=None)
+        await query.answer(MSG_REMINDER_ALREADY_DELETED_ALERT, show_alert=True)
+        await query.edit_message_text(MSG_REMINDER_ALREADY_DELETED_TEXT, reply_markup=None)
         return
 
     token = make_undo_token()
@@ -6243,7 +6278,7 @@ async def created_reschedule_callback(update: Update, context: CTX) -> None:
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
-        await query.edit_message_text("Не смог открыть перенос напоминания.", reply_markup=None)
+        await query.edit_message_text(MSG_RESCHEDULE_OPEN_FAILED_TEXT, reply_markup=None)
         return
 
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
@@ -6255,7 +6290,7 @@ async def created_snooze_custom_callback(update: Update, context: CTX) -> None:
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
-        await query.answer("Некорректный reminder id", show_alert=True)
+        await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
         return
 
     keyboard = build_custom_date_keyboard(reminder_id, callback_prefix="snooze")
@@ -6290,7 +6325,7 @@ async def created_snooze_cancel_callback(update: Update, context: CTX) -> None:
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
-        await query.answer("Некорректный reminder id", show_alert=True)
+        await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
         return
 
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
@@ -6343,7 +6378,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
 
     r = get_reminder_row(rid)
     if not r:
-        await query.answer("Уже удалено", show_alert=True)
+        await query.answer(MSG_REMINDER_ALREADY_DELETED_ALERT, show_alert=True)
         return
 
     # Если recurring - спрашиваем режим удаления
@@ -6377,7 +6412,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
     # НЕ recurring - удаляем сразу + undo
     snapshot = delete_single_reminder_with_snapshot(rid, int(target_chat_id))
     if not snapshot:
-        await query.answer("Уже удалено", show_alert=True)
+        await query.answer(MSG_REMINDER_ALREADY_DELETED_ALERT, show_alert=True)
         return
 
     ids.pop(idx - 1)
@@ -6471,7 +6506,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
         # ВАЖНО: для recurring "удалить ближайший" = удалить инстанс + пересоздать следующий
         snapshot = delete_recurring_one_instance_and_reschedule(rid, int(target_chat_id))
         if not snapshot:
-            await query.answer("Не смог удалить", show_alert=True)
+            await query.answer(MSG_DELETE_FAILED_SHORT, show_alert=True)
             return
 
         # убираем rid из текущего списка (если он там есть)
@@ -6654,7 +6689,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             user_id = getattr(query.from_user, "id", None)
@@ -6669,7 +6704,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
@@ -6688,7 +6723,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             if query.message:
@@ -6703,12 +6738,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
@@ -6726,7 +6761,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             user_id = getattr(query.from_user, "id", None)
@@ -6741,7 +6776,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             if mode == "regular":
@@ -6784,12 +6819,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             kb = build_custom_date_keyboard(rid, callback_prefix="selfremind_event")
@@ -6803,7 +6838,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             user_id = getattr(query.from_user, "id", None)
@@ -6818,7 +6853,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             base_now = get_self_remind_event_base(src)
@@ -6858,7 +6893,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             user_id = getattr(query.from_user, "id", None)
@@ -6873,7 +6908,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             if option == "custom":
@@ -6961,7 +6996,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             try:
@@ -6998,12 +7033,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             base_now = get_self_remind_event_base(src)
@@ -7033,12 +7068,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                await query.answer("Некорректный reminder id", show_alert=True)
+                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
             src = get_reminder(rid)
             if not src:
-                await query.answer("Исходное напоминание не найдено", show_alert=True)
+                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
@@ -7100,7 +7135,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             rid = int(rid_str)
             r = get_reminder(rid)
             if not r:
-                await query.answer("Напоминание не найдено", show_alert=True)
+                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             now = datetime.now(TZ)
@@ -7205,7 +7240,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             rid = int(rid_str)
             r = get_reminder(rid)
             if not r:
-                await query.answer("Напоминание не найдено", show_alert=True)
+                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
             try:
@@ -7258,7 +7293,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Вернул варианты")
                 return
 
-            await query.answer("Некорректный reminder id", show_alert=True)
+            await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
             return
 
         if data == "noop":
