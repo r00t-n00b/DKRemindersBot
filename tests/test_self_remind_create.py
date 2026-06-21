@@ -711,7 +711,7 @@ def test_selfremind_picktime_bad_datetime_shows_alert(main_module, monkeypatch):
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert query.answers == [("Не смог понять дату/время", True)]
+    assert query.answers == [(m.MSG_RESCHEDULE_BAD_DATETIME, True)]
     assert query.edited_text == []
 
 

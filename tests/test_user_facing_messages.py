@@ -25,8 +25,8 @@ def test_user_facing_message_constants_are_specific(main_module):
     m = main_module
 
     assert "Произошла ошибка" not in m.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
+    assert "напомни завтра в 18:00 поздравить Саню" in m.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
     assert "/remind завтра 18:00 - поздравить Саню" in m.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
-    assert "Подробнее: /help" in m.MSG_NOT_UNDERSTOOD_PLAIN_TEXT
 
     assert "/remind DD.MM HH:MM - текст" in m.MSG_REMIND_USAGE
     assert "/remind every Monday 10:00 - текст" in m.MSG_REMIND_USAGE
@@ -85,3 +85,48 @@ def test_user_started_message_helper_mentions_start(main_module):
     assert "@someone" in msg
     assert "Start" in msg
     assert "повтори команду" in msg
+
+
+class FakeReplyMessage:
+    def __init__(self, text):
+        self.text = text
+        self.replies = []
+
+    async def reply_text(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+
+
+class FakePrivateChat:
+    PRIVATE = "private"
+
+    def __init__(self, chat_id=12345):
+        self.id = chat_id
+        self.type = "private"
+
+
+def test_group_username_error_message_is_not_misleading(main_module):
+    msg = main_module.MSG_GROUP_USERNAME_PREFIX_FORBIDDEN
+
+    assert "напомни 2 февраля test" in msg
+    assert "/remind @someone 02.02 - test" in msg
+    assert "/remind 02.02 - текст @someone" not in msg
+
+
+def test_recurring_missing_dash_uses_human_message(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "Chat", FakePrivateChat)
+
+    message = FakeReplyMessage("/remind every hour привет")
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_chat=FakePrivateChat(12345),
+        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
+    )
+    context = SimpleNamespace(args=["every", "hour", "привет"], user_data={})
+
+    asyncio.run(m.remind_command(update, context))
+
+    assert message.replies
+    reply, kwargs = message.replies[0]
+    assert reply == m.MSG_RECURRING_MISSING_DASH
+    assert "Не смог понять дату и текст" not in reply

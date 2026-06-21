@@ -57,12 +57,12 @@ def test_build_created_reschedule_keyboard_has_back_without_hide(main_module, mo
 
     flattened = [button for row in keyboard.inline_keyboard for button in row]
 
-    assert any(b.callback_data == "snooze:123:20m" for b in flattened)
-    assert any(b.callback_data == "snooze:123:1h" for b in flattened)
-    assert any(b.callback_data == "snooze:123:3h" for b in flattened)
-    assert any(b.callback_data == "snooze:123:tomorrow" for b in flattened)
+    assert any(b.callback_data == "created_snooze:123:20m" for b in flattened)
+    assert any(b.callback_data == "created_snooze:123:1h" for b in flattened)
+    assert any(b.callback_data == "created_snooze:123:3h" for b in flattened)
+    assert any(b.callback_data == "created_snooze:123:tomorrow" for b in flattened)
     assert any(b.callback_data == "created_snooze_custom:123" for b in flattened)
-    assert all(b.callback_data != "snooze:123:custom" for b in flattened)
+    assert all(not b.callback_data.startswith("snooze:123:") for b in flattened)
     assert keyboard.inline_keyboard[-1][0].text == "⬅️ Назад"
     assert keyboard.inline_keyboard[-1][0].callback_data == "created_back:123"
 
@@ -278,3 +278,66 @@ def test_created_snooze_cancel_returns_created_reschedule_keyboard(main_module, 
     assert query.answers
     assert query.answers[0][0] == "Вернул варианты"
     assert query.edited_reply_markup is created_keyboard
+
+
+def test_created_reschedule_keyboard_does_not_use_normal_snooze_callbacks(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    keyboard = m.build_created_reschedule_keyboard(123)
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert "created_snooze:123:20m" in callbacks
+    assert "created_snooze:123:1h" in callbacks
+    assert "created_snooze:123:3h" in callbacks
+    assert "created_snooze:123:tomorrow" in callbacks
+    assert "created_snooze:123:nextmon" in callbacks
+    assert "created_snooze_custom:123" in callbacks
+    assert not any(cb.startswith("snooze:123:") for cb in callbacks)
+
+
+def test_created_snooze_updates_existing_reminder_instead_of_creating_copy(main_module, fixed_now, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+    monkeypatch.setattr(m, "get_now", lambda: fixed_now)
+
+    rid = m.add_reminder(
+        chat_id=12345,
+        text="created task",
+        remind_at=fixed_now.replace(hour=18, minute=0),
+        created_by=1000,
+    )
+
+    def fail_add_reminder(*args, **kwargs):
+        raise AssertionError("created_snooze must update existing reminder, not create a copy")
+
+    monkeypatch.setattr(m, "add_reminder", fail_add_reminder)
+
+    query = FakeQuery(f"created_snooze:{rid}:1h")
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(m.created_snooze_callback(update, context))
+
+    reminder = m.get_reminder(rid)
+    assert reminder is not None
+
+    expected = fixed_now + m.timedelta(hours=1)
+    assert reminder.remind_at == expected
+
+    when_str = expected.strftime("%d.%m %H:%M")
+    assert query.edited_text == f"Перенёс напоминание на {when_str}: created task"
+    assert query.answers == [(f"Перенесено на {when_str}", {})]
+
+
+def test_created_snooze_custom_calendar_uses_created_prefix(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    keyboard = m.build_custom_date_keyboard(123, callback_prefix="created_snooze")
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert any(cb.startswith("created_snooze_pickdate:123:") for cb in callbacks)
+    assert any(cb.startswith("created_snooze_cal:123:") for cb in callbacks)
+    assert "created_snooze_cancel:123" in callbacks
+    assert not any(cb.startswith("snooze_pickdate:123:") for cb in callbacks)

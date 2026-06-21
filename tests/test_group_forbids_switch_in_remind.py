@@ -46,7 +46,7 @@ def test_group_remind_forbids_username_switch(main_module, monkeypatch):
 
     assert created["count"] == 0
     assert replies
-    assert "В групповом чате нельзя" in replies[-1]
+    assert "В группе нельзя" in replies[-1]
 
 
 def test_group_remind_forbids_alias_switch(main_module, monkeypatch):
@@ -83,4 +83,4 @@ def test_group_remind_forbids_alias_switch(main_module, monkeypatch):
 
     assert created["count"] == 0
     assert replies
-    assert "В групповом чате нельзя" in replies[-1]
+    assert "В группе нельзя" in replies[-1]

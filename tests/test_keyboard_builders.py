@@ -83,3 +83,12 @@ def test_snooze_keyboards_use_10_as_default_day_time(main_module, monkeypatch):
     assert "📅 Следующий понедельник (10:00)" in texts
     assert "📅 Завтра (11:00)" not in texts
     assert "📅 Следующий понедельник (11:00)" not in texts
+
+def test_snooze_keyboard_has_mark_complete_at_bottom(main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "InlineKeyboardButton", _Btn)
+    monkeypatch.setattr(main_module, "InlineKeyboardMarkup", _Markup)
+
+    markup = main_module.build_snooze_keyboard(123)
+
+    assert markup.inline_keyboard[-1][0].text == "✅ Mark complete"
+    assert markup.inline_keyboard[-1][0].callback_data == "done:123"

@@ -124,21 +124,28 @@ MSG_REMIND_USAGE = (
 )
 
 MSG_NOT_UNDERSTOOD_PLAIN_TEXT = (
-    "Не понял, что сделать с этим сообщением.\n"
-    "Если хочешь поставить напоминание, напиши, например:\n"
-    "/remind завтра 18:00 - поздравить Саню\n\n"
-    "Подробнее: /help"
+    "Я не понял, нужно ли здесь поставить напоминание.\n"
+    "Напиши проще, например:\n"
+    "напомни завтра в 18:00 поздравить Саню\n\n"
+    "Или командой:\n"
+    "/remind завтра 18:00 - поздравить Саню"
 )
 
 MSG_GROUP_USERNAME_PREFIX_FORBIDDEN = (
-    "В групповом чате нельзя начинать команду с @username.\n"
-    "Напиши так: /remind 02.02 - текст @someone\n"
-    "Или в личку боту: /remind @someone 02.02 - текст"
+    "В группе нельзя ставить личное напоминание другому человеку через @username в начале команды.\n"
+    "Так бот не поймёт, что это личный адресат.\n\n"
+    "Если хочешь поставить напоминание в этот чат, напиши проще:\n"
+    "напомни 2 февраля test\n\n"
+    "Если хочешь поставить личное напоминание пользователю, напиши боту в личку:\n"
+    "/remind @someone 02.02 - test"
 )
 
 MSG_GROUP_ALIAS_PREFIX_FORBIDDEN = (
-    "В групповом чате нельзя использовать alias в начале команды.\n"
-    "Напиши боту в личку: /remind <alias> 02.02 - текст"
+    "В группе нельзя начинать напоминание с alias.\n"
+    "Если хочешь поставить напоминание в этот чат, напиши проще:\n"
+    "напомни 2 февраля текст\n\n"
+    "Если хочешь поставить напоминание в другой чат через alias, напиши боту в личку:\n"
+    "/remind <alias> 02.02 - текст"
 )
 
 MSG_INVALID_REMINDER_ID = "Некорректный reminder id"
@@ -150,6 +157,26 @@ MSG_DELETE_FAILED_SHORT = "Не смог удалить"
 MSG_DELETE_FAILED_TEXT = "Не смог удалить напоминание."
 MSG_RESCHEDULE_OPEN_FAILED_TEXT = "Не смог открыть перенос напоминания."
 
+
+MSG_RECURRING_MISSING_DASH = (
+    "Не понял повторяющееся напоминание.\n"
+    "Для повтора нужен текст после дефиса.\n\n"
+    "Например:\n"
+    "/remind every hour - привет\n"
+    "или:\n"
+    "напомни каждый час - привет"
+)
+
+MSG_RECURRING_PARSE_FAILED = (
+    "Не понял повторяющееся напоминание.\n"
+    "Попробуй написать с дефисом между правилом и текстом.\n\n"
+    "Например:\n"
+    "/remind every Monday 10:00 - проверить документы"
+)
+
+MSG_RESCHEDULE_UNKNOWN_ACTION = "Не понял, как перенести напоминание"
+MSG_RESCHEDULE_BAD_DATETIME = "Не смог понять дату и время"
+MSG_RESCHEDULE_PAST_TIME = "Это время уже прошло. Выбери другое время."
 
 def msg_after_me_requires_date_and_text(example: str) -> str:
     return "После me нужно указать дату и текст.\n" + example
@@ -578,6 +605,26 @@ def get_due_reminders(now: datetime) -> List[Reminder]:
         )
     return reminders
 
+
+def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        UPDATE reminders
+        SET remind_at = ?,
+            delivered = 0,
+            acked = 0,
+            sent_at = NULL,
+            nudge_count = 0
+        WHERE id = ?
+        """,
+        (new_dt.isoformat(), int(reminder_id)),
+    )
+    changed = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
 
 def get_reminder(reminder_id: int) -> Optional[Reminder]:
     conn = sqlite3.connect(DB_PATH)
@@ -3204,15 +3251,15 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
     try:
         buttons: List[List[InlineKeyboardButton]] = [
             [
-                InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
-                InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
+                InlineKeyboardButton("⏰ +20 минут", callback_data=f"created_snooze:{reminder_id}:20m"),
+                InlineKeyboardButton("⏰ +1 час", callback_data=f"created_snooze:{reminder_id}:1h"),
             ],
             [
-                InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+                InlineKeyboardButton("⏰ +3 часа", callback_data=f"created_snooze:{reminder_id}:3h"),
+                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"created_snooze:{reminder_id}:tomorrow"),
             ],
             [
-                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"created_snooze:{reminder_id}:nextmon"),
                 InlineKeyboardButton("📝 Кастом", callback_data=f"created_snooze_custom:{reminder_id}"),
             ],
             [
@@ -3227,9 +3274,6 @@ def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     try:
         buttons: List[List[InlineKeyboardButton]] = [
             [
-                InlineKeyboardButton("✅ Mark complete", callback_data=f"done:{reminder_id}"),
-            ],
-            [
                 InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
                 InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
             ],
@@ -3240,6 +3284,9 @@ def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
             [
                 InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
                 InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
+            ],
+            [
+                InlineKeyboardButton("✅ Mark complete", callback_data=f"done:{reminder_id}"),
             ],
         ]
         return InlineKeyboardMarkup(buttons)
@@ -5452,6 +5499,10 @@ async def remind_command(update: Update, context: CTX) -> None:
                     )
                     return
 
+    if re.match(r"^(every|daily|weekly|monthly|кажд\w*)\b", raw_args.strip(), flags=re.IGNORECASE) and " - " not in raw_args:
+        await safe_reply(message, MSG_RECURRING_MISSING_DASH)
+        return
+
     target_chat_id = chat.id
     used_alias: Optional[str] = None
 
@@ -6214,6 +6265,29 @@ async def list_command(update: Update, context: CTX) -> None:
 
     await safe_reply(message, reply, reply_markup=keyboard)
 
+def compute_snooze_target_time(action: str, now: datetime) -> datetime:
+    now = now.astimezone(TZ)
+
+    if action == "20m":
+        return now + timedelta(minutes=20)
+    if action == "1h":
+        return now + timedelta(hours=1)
+    if action == "3h":
+        return now + timedelta(hours=3)
+    if action == "tomorrow":
+        base = (now + timedelta(days=1)).date()
+        return datetime(base.year, base.month, base.day, 10, 0, tzinfo=TZ)
+    if action == "nextmon":
+        base = now.date()
+        cur_wd = base.weekday()
+        delta = (0 - cur_wd + 7) % 7
+        if delta == 0:
+            delta = 7
+        target = base + timedelta(days=delta)
+        return datetime(target.year, target.month, target.day, 10, 0, tzinfo=TZ)
+
+    raise ValueError(f"Unknown snooze action: {action}")
+
 async def created_delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
 
@@ -6284,6 +6358,135 @@ async def created_reschedule_callback(update: Update, context: CTX) -> None:
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
 
 
+async def created_snooze_callback(update: Update, context: CTX) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+
+    data = query.data or ""
+
+    try:
+        if data.startswith("created_snooze:"):
+            _, rid_str, action = data.split(":", 2)
+            rid = int(rid_str)
+
+            r = get_reminder(rid)
+            if not r:
+                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                return
+
+            try:
+                new_dt = compute_snooze_target_time(action, get_now())
+            except ValueError:
+                await query.answer(MSG_RESCHEDULE_UNKNOWN_ACTION, show_alert=True)
+                return
+
+            if not update_reminder_time(rid, new_dt):
+                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                return
+
+            when_str = new_dt.strftime("%d.%m %H:%M")
+            await query.edit_message_text(
+                f"Перенёс напоминание на {when_str}: {r.text}",
+                reply_markup=build_created_reminder_actions_keyboard(rid, is_recurring=bool(r.template_id)),
+            )
+            await query.answer(f"Перенесено на {when_str}")
+            return
+
+        if data.startswith("created_snooze_cal:"):
+            _, rid_str, ym = data.split(":", 2)
+            rid = int(rid_str)
+            year_str, month_str = ym.split("-", 1)
+            keyboard = build_custom_date_keyboard(
+                rid,
+                year=int(year_str),
+                month=int(month_str),
+                callback_prefix="created_snooze",
+            )
+            await query.edit_message_reply_markup(reply_markup=keyboard)
+            await query.answer()
+            return
+
+        if data.startswith("created_snooze_caltoday:"):
+            _, rid_str = data.split(":", 1)
+            rid = int(rid_str)
+            today = get_now().date()
+            keyboard = build_custom_date_keyboard(
+                rid,
+                year=today.year,
+                month=today.month,
+                callback_prefix="created_snooze",
+            )
+            await query.edit_message_reply_markup(reply_markup=keyboard)
+            await query.answer()
+            return
+
+        if data.startswith("created_snooze_pickdate:"):
+            _, rid_str, date_str = data.split(":", 2)
+            rid = int(rid_str)
+            keyboard = build_custom_time_keyboard(
+                rid,
+                date_str,
+                callback_prefix="created_snooze",
+            )
+            await query.edit_message_reply_markup(reply_markup=keyboard)
+            await query.answer("Выбери время")
+            return
+
+        if data.startswith("created_snooze_pastdate:"):
+            await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
+            return
+
+        if data.startswith("created_snooze_picktime:"):
+            _, rid_str, date_str, time_str = data.split(":", 3)
+            rid = int(rid_str)
+
+            r = get_reminder(rid)
+            if not r:
+                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                return
+
+            try:
+                year, month, day = map(int, date_str.split("-"))
+                hour, minute = map(int, time_str.split(":"))
+                new_dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
+            except Exception:
+                await query.answer(MSG_RESCHEDULE_BAD_DATETIME, show_alert=True)
+                return
+
+            if new_dt <= get_now():
+                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
+                return
+
+            if not update_reminder_time(rid, new_dt):
+                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                return
+
+            when_str = new_dt.strftime("%d.%m %H:%M")
+            await query.edit_message_text(
+                f"Перенёс напоминание на {when_str}: {r.text}",
+                reply_markup=build_created_reminder_actions_keyboard(rid, is_recurring=bool(r.template_id)),
+            )
+            await query.answer(f"Перенесено на {when_str}")
+            return
+
+        if data.startswith("created_snooze_cancel:"):
+            _, rid_str = data.split(":", 1)
+            rid = int(rid_str)
+            await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(rid))
+            await query.answer("Вернул варианты")
+            return
+
+    except ValueError:
+        await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
+        return
+    except Exception:
+        logger.exception("Ошибка в created_snooze_callback")
+        try:
+            await query.answer("Произошла ошибка", show_alert=True)
+        except Exception:
+            pass
+
 async def created_snooze_custom_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
 
@@ -6293,26 +6496,7 @@ async def created_snooze_custom_callback(update: Update, context: CTX) -> None:
         await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
         return
 
-    keyboard = build_custom_date_keyboard(reminder_id, callback_prefix="snooze")
-
-    try:
-        rows = []
-        for row in keyboard.inline_keyboard:
-            new_row = []
-            for button in row:
-                callback_data = getattr(button, "callback_data", None)
-                if callback_data == f"snooze_cancel:{reminder_id}":
-                    callback_data = f"created_snooze_cancel:{reminder_id}"
-                new_row.append(
-                    InlineKeyboardButton(
-                        getattr(button, "text", ""),
-                        callback_data=callback_data,
-                    )
-                )
-            rows.append(new_row)
-        keyboard = InlineKeyboardMarkup(rows)
-    except TypeError:
-        pass
+    keyboard = build_custom_date_keyboard(reminder_id, callback_prefix="created_snooze")
 
     await query.edit_message_reply_markup(reply_markup=keyboard)
     await query.answer("Выбери дату")
@@ -6868,7 +7052,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 return
 
             if remind_at <= get_now():
-                await query.answer("Это время уже прошло. Выбери другое время.", show_alert=True)
+                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
                 return
 
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
@@ -7004,11 +7188,11 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 hour, minute = map(int, time_str.split(":"))
                 remind_at = datetime(year, month, day, hour, minute, tzinfo=TZ)
             except Exception:
-                await query.answer("Не смог понять дату/время", show_alert=True)
+                await query.answer(MSG_RESCHEDULE_BAD_DATETIME, show_alert=True)
                 return
 
             if remind_at <= get_now():
-                await query.answer("Это время уже прошло. Выбери другое время.", show_alert=True)
+                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
                 return
 
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
@@ -7138,26 +7322,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
                 return
 
-            now = datetime.now(TZ)
-
-            if action == "20m":
-                new_dt = now + timedelta(minutes=20)
-            elif action == "1h":
-                new_dt = now + timedelta(hours=1)
-            elif action == "3h":
-                new_dt = now + timedelta(hours=3)
-            elif action == "tomorrow":
-                base = (now + timedelta(days=1)).astimezone(TZ).date()
-                new_dt = datetime(base.year, base.month, base.day, 10, 0, tzinfo=TZ)
-            elif action == "nextmon":
-                base = now.astimezone(TZ).date()
-                cur_wd = base.weekday()
-                delta = (0 - cur_wd + 7) % 7
-                if delta == 0:
-                    delta = 7
-                target = base + timedelta(days=delta)
-                new_dt = datetime(target.year, target.month, target.day, 10, 0, tzinfo=TZ)
-            elif action == "custom":
+            if action == "custom":
                 # ACK на вход в кастомный flow тоже считаем реакцией
                 mark_reminder_acked(rid)
 
@@ -7166,8 +7331,11 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer("Выбери дату", show_alert=False)
                 return
             else:
-                await query.answer("Неизвестное действие", show_alert=True)
-                return
+                try:
+                    new_dt = compute_snooze_target_time(action, get_now())
+                except ValueError:
+                    await query.answer(MSG_RESCHEDULE_UNKNOWN_ACTION, show_alert=True)
+                    return
 
             # УСПЕШНЫЙ snooze = реакция пользователя
             mark_reminder_acked(rid)
@@ -7248,11 +7416,11 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 hour, minute = map(int, time_str.split(":"))
                 new_dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
             except Exception:
-                await query.answer("Не смог понять дату/время", show_alert=True)
+                await query.answer(MSG_RESCHEDULE_BAD_DATETIME, show_alert=True)
                 return
 
             if new_dt <= get_now():
-                await query.answer("Это время уже прошло. Выбери другое время.", show_alert=True)
+                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
                 return
 
             # успешный picktime - реакция
@@ -7608,6 +7776,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
     application.add_handler(CallbackQueryHandler(created_snooze_custom_callback, pattern=r"^created_snooze_custom:\d+$"))
+    application.add_handler(CallbackQueryHandler(created_snooze_callback, pattern=r"^created_snooze(:|_cal:|_caltoday:|_pastdate:|_pickdate:|_picktime:|_cancel:)"))
     application.add_handler(CallbackQueryHandler(created_snooze_cancel_callback, pattern=r"^created_snooze_cancel:\d+$"))
     application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))

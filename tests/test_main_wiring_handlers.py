@@ -94,6 +94,7 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
     assert r"^created_resched:\d+$" in callback_patterns
     assert r"^created_back:\d+$" in callback_patterns
     assert r"^created_snooze_custom:\d+$" in callback_patterns
+    assert r"^created_snooze(:|_cal:|_caltoday:|_pastdate:|_pickdate:|_picktime:|_cancel:)" in callback_patterns
     assert r"^created_snooze_cancel:\d+$" in callback_patterns
 
     snooze_pattern = m.build_snooze_callback_pattern()
@@ -105,6 +106,9 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
     assert "selfremind:set:" in snooze_pattern
     assert "selfremind:mode:" in snooze_pattern
     assert "selfremind:event_before:" in snooze_pattern
+
+    assert "created_snooze:" not in snooze_pattern
+    assert "created_snooze_picktime:" not in snooze_pattern
 
     assert "snooze:" in snooze_pattern
     assert "snooze_cal:" in snooze_pattern

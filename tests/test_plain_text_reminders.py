@@ -79,9 +79,9 @@ def test_plain_text_reminder_no_reminder_replies_with_help(main_module, monkeypa
 
     assert len(message.replies) == 1
     reply, _ = message.replies[0]
-    assert "Не понял, что сделать" in reply
+    assert "Я не понял, нужно ли здесь поставить напоминание" in reply
     assert "/remind завтра 18:00 - поздравить Саню" in reply
-    assert "Подробнее: /help" in reply
+    assert "напомни завтра в 18:00 поздравить Саню" in reply
 
 
 def test_plain_text_reminder_normalized_remind_is_proxied_to_remind_command(main_module, monkeypatch):
