@@ -106,188 +106,37 @@ def get_now() -> datetime:
 
 
 # ===== User-facing messages =====
-
-MSG_REMIND_USAGE = (
-    "Формат:\n"
-    "/remind DD.MM HH:MM - текст\n"
-    "или без времени:\n"
-    "/remind 29.11 - важный звонок\n"
-    "или только время:\n"
-    "/remind 23:59 - проверить двери\n"
-    "или относительное:\n"
-    "/remind in 2 hours - текст\n"
-    "или повторяющееся:\n"
-    "/remind every Monday 10:00 - текст\n"
-    "или bulk:\n"
-    "/remind\n"
-    "- 28.11 12:00 - завтра футбол"
+from messages import (
+    MSG_DELETE_FAILED_SHORT,
+    MSG_DELETE_FAILED_TEXT,
+    MSG_DELETE_SERIES_FAILED,
+    MSG_EVENT_DATE_NOT_FOUND,
+    MSG_GROUP_ALIAS_PREFIX_FORBIDDEN,
+    MSG_GROUP_USERNAME_PREFIX_FORBIDDEN,
+    MSG_INVALID_REMINDER_ID,
+    MSG_NOT_UNDERSTOOD_PLAIN_TEXT,
+    MSG_PARSE_DATE_TEXT_FAILED,
+    MSG_REMINDER_ALREADY_DELETED_ALERT,
+    MSG_REMINDER_ALREADY_DELETED_TEXT,
+    MSG_REMINDER_NOT_FOUND,
+    MSG_REMIND_USAGE,
+    MSG_RESCHEDULE_BAD_DATETIME,
+    MSG_RESCHEDULE_OPEN_FAILED_TEXT,
+    MSG_RESCHEDULE_PAST_TIME,
+    MSG_RESCHEDULE_UNKNOWN_ACTION,
+    MSG_SOURCE_REMINDER_NOT_FOUND,
+    MSG_UNDO_EXPIRED,
+    MSG_UNDO_RESTORE_FAILED,
+    MSG_UNEXPECTED_CALLBACK_ERROR,
+    MSG_UNKNOWN_SELF_REMIND_MODE,
+    MSG_UNKNOWN_TIME_OPTION,
+    MSG_USER_CONTEXT_MISSING,
+    msg_after_me_requires_date_and_text,
+    msg_after_target_requires_date_and_text,
+    msg_recurring_missing_dash,
+    msg_recurring_parse_failed,
+    msg_user_has_not_started_bot,
 )
-
-MSG_NOT_UNDERSTOOD_PLAIN_TEXT = (
-    "Я не понял, нужно ли здесь поставить напоминание.\n"
-    "Напиши проще, например:\n"
-    "напомни завтра в 18:00 поздравить Саню\n\n"
-    "Или командой:\n"
-    "/remind завтра 18:00 - поздравить Саню\n\n"
-    "Все варианты ремайндеров есть в /help."
-)
-
-MSG_GROUP_USERNAME_PREFIX_FORBIDDEN = (
-    "В группе нельзя ставить личное напоминание другому человеку через @username в начале команды.\n"
-    "Так бот не поймёт, что это личный адресат.\n\n"
-    "Если хочешь поставить напоминание в этот чат, используй команду:\n"
-    "/remind 02.02 - test\n\n"
-    "Свободное «напомни ...» в группе не работает.\n\n"
-    "Если хочешь поставить личное напоминание пользователю, напиши боту в личку:\n"
-    "/remind @someone 02.02 - test"
-)
-
-MSG_GROUP_ALIAS_PREFIX_FORBIDDEN = (
-    "В группе нельзя начинать команду с alias.\n\n"
-    "Если хочешь поставить напоминание в этот чат, используй команду:\n"
-    "/remind 02.02 - текст\n\n"
-    "Свободное «напомни ...» в группе не работает.\n\n"
-    "Если хочешь поставить напоминание в другой чат через alias, напиши боту в личку:\n"
-    "/remind <alias> 02.02 - текст"
-)
-
-MSG_INVALID_REMINDER_ID = (
-    "Не понял, к какому напоминанию относится эта кнопка. "
-    "Открой список заново через /list и попробуй ещё раз."
-)
-MSG_REMINDER_NOT_FOUND = (
-    "Напоминание не найдено. Возможно, оно уже удалено. "
-    "Проверь актуальный список через /list."
-)
-MSG_SOURCE_REMINDER_NOT_FOUND = (
-    "Исходное напоминание не найдено. Возможно, оно уже удалено. "
-    "Проверь актуальный список через /list."
-)
-MSG_REMINDER_ALREADY_DELETED_ALERT = "Уже удалено"
-MSG_REMINDER_ALREADY_DELETED_TEXT = "Напоминание уже удалено. Проверь актуальный список через /list."
-MSG_DELETE_FAILED_SHORT = (
-    "Не смог удалить напоминание. Открой список через /list и попробуй ещё раз."
-)
-MSG_DELETE_FAILED_TEXT = (
-    "Не смог удалить напоминание. Возможно, оно уже удалено или кнопка устарела. "
-    "Проверь актуальный список через /list."
-)
-MSG_RESCHEDULE_OPEN_FAILED_TEXT = (
-    "Не смог открыть перенос напоминания. Возможно, оно уже удалено или кнопка устарела. "
-    "Проверь актуальный список через /list."
-)
-
-
-def msg_recurring_missing_dash(is_private: bool) -> str:
-    if is_private:
-        return (
-            "Не понял повторяющееся напоминание.\n"
-            "Для повтора нужен дефис между правилом и текстом.\n\n"
-            "Для ежечасного повтора напиши так:\n"
-            "/remind every hour - привет\n\n"
-            "Или в личке свободным текстом:\n"
-            "/remind every hour - привет"
-        )
-
-    return (
-        "Не понял повторяющееся напоминание.\n"
-        "В группе повторяющееся напоминание ставится только командой.\n"
-        "Для повтора нужен дефис между правилом и текстом.\n\n"
-        "Для ежечасного повтора напиши так:\n"
-        "/remind every hour - привет\n\n"
-        "Свободное «напомни ...» в группе не работает.\n"
-        "Если хочешь поставить это в группу из лички, используй alias группы:\n"
-        "/remind <alias> every hour - привет"
-    )
-
-
-def msg_recurring_parse_failed(is_private: bool) -> str:
-    if is_private:
-        return (
-            "Не понял правило повтора.\n\n"
-            "Для ежечасного повтора:\n"
-            "/remind every hour - привет\n\n"
-            "Для еженедельного повтора:\n"
-            "/remind every Monday 10:00 - проверить документы"
-        )
-
-    return (
-        "Не понял правило повтора.\n"
-        "В группе повторяющееся напоминание ставится только командой.\n\n"
-        "Для ежечасного повтора:\n"
-        "/remind every hour - привет\n\n"
-        "Для еженедельного повтора:\n"
-        "/remind every Monday 10:00 - проверить документы"
-    )
-
-
-MSG_PARSE_DATE_TEXT_FAILED = (
-    "Не смог понять дату и текст.\n"
-    "Напиши в формате: дата - текст.\n"
-    "Например: /remind завтра 18:00 - купить молоко"
-)
-
-MSG_UNEXPECTED_CALLBACK_ERROR = (
-    "Не смог обработать кнопку. Возможно, сообщение устарело.\n"
-    "Открой список заново через /list и попробуй ещё раз."
-)
-
-MSG_DELETE_SERIES_FAILED = (
-    "Не смог удалить серию. Возможно, она уже удалена или кнопка устарела.\n"
-    "Открой список заново через /list и попробуй ещё раз."
-)
-
-MSG_UNDO_EXPIRED = (
-    "Вернуть уже нельзя: эта кнопка одноразовая или сообщение устарело.\n"
-    "Проверь актуальные напоминания через /list."
-)
-
-MSG_UNDO_RESTORE_FAILED = (
-    "Не смог восстановить напоминание. Возможно, оно уже восстановлено или данные устарели.\n"
-    "Проверь актуальные напоминания через /list."
-)
-
-MSG_USER_CONTEXT_MISSING = (
-    "Не смог определить, кто нажал кнопку.\n"
-    "Открой список заново через /list и попробуй ещё раз."
-)
-
-MSG_EVENT_DATE_NOT_FOUND = (
-    "Я не смог понять дату события из текста.\n"
-    "Можно поставить обычное личное напоминание или выбрать время вручную."
-)
-
-MSG_UNKNOWN_SELF_REMIND_MODE = (
-    "Не понял выбранный режим личного напоминания.\n"
-    "Открой варианты заново и попробуй ещё раз."
-)
-
-MSG_UNKNOWN_TIME_OPTION = (
-    "Не понял выбранный вариант времени.\n"
-    "Выбери время заново или нажми «Кастом»."
-)
-
-MSG_RESCHEDULE_UNKNOWN_ACTION = (
-    "Не понял, как перенести напоминание. Выбери вариант заново или открой список через /list."
-)
-MSG_RESCHEDULE_BAD_DATETIME = (
-    "Не смог понять дату и время для переноса. Выбери дату и время заново."
-)
-MSG_RESCHEDULE_PAST_TIME = "Это время уже прошло. Выбери другое время."
-
-def msg_after_me_requires_date_and_text(example: str) -> str:
-    return "После me нужно указать дату и текст.\n" + example
-
-
-def msg_user_has_not_started_bot(username: str) -> str:
-    return (
-        f"Я пока не могу написать {username} в личку, потому что он/она не нажимал(а) Start у бота.\n"
-        "Пусть откроет бота и нажмет Start, потом повтори команду."
-    )
-
-
-def msg_after_target_requires_date_and_text(target: str, example: str) -> str:
-    return f"После {target} нужно указать дату и текст.\n" + example
 
 # ===== Модель данных =====
 
