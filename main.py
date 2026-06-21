@@ -2843,6 +2843,12 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
             parsed, consumed = _parse_day_from_tokens(tokens_no_time, 0)
             if parsed is not None and consumed < len(tokens_no_time) and tokens_no_time[consumed] in {"число", "числа"} and any(t.startswith("месяц") for t in tokens_no_time[consumed + 1:]):
                 day = parsed
+            elif (
+                "числа" in tokens_no_time
+                and any(t.startswith("месяц") for t in tokens_no_time)
+                and any(t.startswith("кажд") for t in tokens_no_time)
+            ):
+                raise ValueError("Неверный день месяца для повторяющегося напоминания")
 
         if day is not None:
             if not (1 <= day <= 31):

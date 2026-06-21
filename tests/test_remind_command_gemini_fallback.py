@@ -325,4 +325,4 @@ def test_invalid_russian_monthly_recurring_does_not_call_gemini(main_module, mon
 
     assert len(message.replies) == 1
     assert "Не смог понять повторяющийся формат:" in message.replies[0][0]
-    assert "Не понял повторяющийся формат" in message.replies[0][0]
+    assert "Неверный день месяца" in message.replies[0][0]
