@@ -12,7 +12,7 @@ def test_russian_month_name_without_dash_defaults_to_10(main_module):
         now,
     )
 
-    assert dt == datetime(2026, 10, 1, 11, 0, tzinfo=TZ)
+    assert dt == datetime(2026, 10, 1, 10, 0, tzinfo=TZ)
     assert text == "пересчитать стоимость начинки квартиры и поменять в страховке"
 
 
@@ -48,7 +48,7 @@ def test_russian_month_name_with_dash_does_not_keep_dash_in_text(main_module):
         now,
     )
 
-    assert dt == datetime(2026, 10, 1, 11, 0, tzinfo=TZ)
+    assert dt == datetime(2026, 10, 1, 10, 0, tzinfo=TZ)
     assert text == "пересчитать стоимость начинки квартиры и поменять в страховке"
 
 

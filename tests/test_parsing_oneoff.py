@@ -18,7 +18,7 @@ def test_absolute_date_time(main_module, fixed_now):
 def test_absolute_date_default_time(main_module, fixed_now):
     dt, text = main_module.parse_date_time_smart("29.11 - hi", fixed_now)
     assert text == "hi"
-    assert dt.strftime("%d.%m %H:%M") == "29.11 11:00"
+    assert dt.strftime("%d.%m %H:%M") == "29.11 10:00"
 
 
 def test_time_only_today_or_tomorrow(main_module, fixed_now):

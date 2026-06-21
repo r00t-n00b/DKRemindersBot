@@ -14,7 +14,7 @@ def test_no_dash_month_name_date_splits_and_parses(main_module):
     assert remind_at.year == 2026
     assert remind_at.month == 3
     assert remind_at.day == 14
-    # default time in твоём парсере = 11:00 (если время не задано)
-    assert remind_at.hour == 11
+    # default time in parser = 10:00 (если время не задано)
+    assert remind_at.hour == 10
     assert remind_at.minute == 0
     assert text == "отменить принтер HP если решился"

@@ -2054,7 +2054,7 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
     # Примеры:
     #   january 25 at 20:30
     #   january 25 20:30
-    hour = 11
+    hour = 10
     minute = 0
 
     def _try_parse_time_token(tok: str) -> Optional[Tuple[int, int]]:
@@ -2172,7 +2172,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
                 year += 2000
 
         try:
-            dt = datetime(year, month, day, 11, 0, tzinfo=TZ)
+            dt = datetime(year, month, day, 10, 0, tzinfo=TZ)
         except ValueError as e:
             raise ValueError(f"Неверная дата или время: {e}") from e
 
@@ -2199,7 +2199,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             hour = int(m.group("hour"))
             minute = int(m.group("minute"))
         else:
-            hour = 11
+            hour = 10
             minute = 0
 
         year = local.year
@@ -2249,7 +2249,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             hour = int(m_name_dm.group("hour"))
             minute = int(m_name_dm.group("minute"))
         else:
-            hour = 11
+            hour = 10
             minute = 0
 
         year = local.year
@@ -2285,7 +2285,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             hour = int(m_name_md.group("hour"))
             minute = int(m_name_md.group("minute"))
         else:
-            hour = 11
+            hour = 10
             minute = 0
 
         year = local.year

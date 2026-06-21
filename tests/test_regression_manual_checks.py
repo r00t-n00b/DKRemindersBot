@@ -63,12 +63,12 @@ def test_parse_day_month_name(main_module, fixed_now):
 def test_parse_on_month_day_default_time(main_module, fixed_now):
     """
     /remind on January 25 - ...
-    (без времени должно быть 11:00)
+    (без времени должно быть 10:00)
     """
     m = main_module
     dt, text = m.parse_date_time_smart("on January 25 - on-month-day", fixed_now)
     assert text == "on-month-day"
-    assert dt.strftime("%d.%m.%Y %H:%M") == "25.01.2026 11:00"
+    assert dt.strftime("%d.%m.%Y %H:%M") == "25.01.2026 10:00"
 
 
 def test_parse_dot_time(main_module, fixed_now):
@@ -89,7 +89,7 @@ def test_parse_dot_date_default_time(main_module, fixed_now):
     m = main_module
     dt, text = m.parse_date_time_smart("29.11 - date-dot", fixed_now)
     assert text == "date-dot"
-    assert dt.strftime("%d.%m.%Y %H:%M") == "29.11.2025 11:00"
+    assert dt.strftime("%d.%m.%Y %H:%M") == "29.11.2025 10:00"
 
 
 def test_parse_on_weekday_at_time(main_module, fixed_now):

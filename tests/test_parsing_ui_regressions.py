@@ -78,4 +78,4 @@ def test_date_with_dot_is_not_misread_as_time(main_module, fixed_now):
 
     dt, text = m.parse_date_time_smart("29.11 - hi", fixed_now)
     assert text == "hi"
-    assert dt.strftime("%Y-%m-%d %H:%M") == "2025-11-29 11:00"
+    assert dt.strftime("%Y-%m-%d %H:%M") == "2025-11-29 10:00"

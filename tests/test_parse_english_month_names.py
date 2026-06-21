@@ -6,7 +6,7 @@ import pytest
 TZ = ZoneInfo("Europe/Madrid")
 
 
-def test_parse_day_english_month_without_time_defaults_to_11(main_module):
+def test_parse_day_english_month_without_time_defaults_to_10(main_module):
     now = datetime(2026, 6, 12, 10, 0, tzinfo=TZ)
 
     remind_at, text = main_module.parse_date_time_smart(
@@ -14,7 +14,7 @@ def test_parse_day_english_month_without_time_defaults_to_11(main_module):
         now,
     )
 
-    assert remind_at == datetime(2026, 12, 25, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2026, 12, 25, 10, 0, tzinfo=TZ)
     assert text == "buy presents"
 
 
@@ -50,7 +50,7 @@ def test_parse_day_english_month_rolls_past_date_to_next_year(main_module):
         now,
     )
 
-    assert remind_at == datetime(2027, 12, 25, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2027, 12, 25, 10, 0, tzinfo=TZ)
     assert text == "buy presents"
 
 
@@ -74,7 +74,7 @@ def test_parse_day_english_month_invalid_date_raises(main_module):
         )
 
 
-def test_parse_english_month_day_without_time_defaults_to_11(main_module):
+def test_parse_english_month_day_without_time_defaults_to_10(main_module):
     now = datetime(2026, 6, 12, 10, 0, tzinfo=TZ)
 
     remind_at, text = main_module.parse_date_time_smart(
@@ -82,7 +82,7 @@ def test_parse_english_month_day_without_time_defaults_to_11(main_module):
         now,
     )
 
-    assert remind_at == datetime(2026, 12, 25, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2026, 12, 25, 10, 0, tzinfo=TZ)
     assert text == "buy presents"
 
 
@@ -118,7 +118,7 @@ def test_parse_english_month_day_rolls_past_date_to_next_year(main_module):
         now,
     )
 
-    assert remind_at == datetime(2027, 12, 25, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2027, 12, 25, 10, 0, tzinfo=TZ)
     assert text == "buy presents"
 
 

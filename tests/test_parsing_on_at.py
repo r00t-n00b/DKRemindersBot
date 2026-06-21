@@ -32,7 +32,7 @@ def test_on_january_25_default_time(main_module, fixed_now):
         fixed_now,
     )
     assert text == "test"
-    assert dt.strftime("%d.%m %H:%M") == "25.01 11:00"
+    assert dt.strftime("%d.%m %H:%M") == "25.01 10:00"
 
 
 def test_january_25_default_time(main_module, fixed_now):
@@ -41,7 +41,7 @@ def test_january_25_default_time(main_module, fixed_now):
         fixed_now,
     )
     assert text == "test"
-    assert dt.strftime("%d.%m %H:%M") == "25.01 11:00"
+    assert dt.strftime("%d.%m %H:%M") == "25.01 10:00"
 
 
 def test_on_january_25_at_time(main_module, fixed_now):
