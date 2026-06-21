@@ -6656,7 +6656,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
         )
 
         if query.message:
-            await query.message.reply_text(
+            await query.edit_message_text(
                 "Это повторяющееся напоминание. Как удалить?\n\n" + preview,
                 reply_markup=kb,
             )
@@ -6671,37 +6671,8 @@ async def delete_callback(update: Update, context: CTX) -> None:
     ids.pop(idx - 1)
     context.user_data["list_ids"] = ids
 
-    if not ids:
-        if query.message:
-            await query.edit_message_text("Напоминаний больше нет.")
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        qmarks = ",".join("?" for _ in ids)
-        c.execute(
-            f"""
-            SELECT
-                r.id,
-                r.text,
-                r.remind_at,
-                r.template_id,
-                rt.pattern_type,
-                rt.payload
-            FROM reminders r
-            LEFT JOIN recurring_templates rt ON rt.id = r.template_id
-            WHERE r.id IN ({qmarks})
-            ORDER BY r.remind_at ASC
-            """,
-            ids,
-        )
-        rows = c.fetchall()
-        conn.close()
-
-        reply, ids, keyboard = build_active_reminders_list_response(rows, header="Активные напоминания:")
-        context.user_data["list_ids"] = ids
-
-        if query.message:
-            await query.edit_message_text(reply, reply_markup=keyboard)
+    # list_ids обновляем, но сообщение с нажатой кнопкой ниже заменяем на "Удалил..." + undo.
+    # Не отправляем отдельное сообщение и не показываем промежуточное "Напоминаний больше нет.".
 
     tpl = snapshot.get("template") or {}
     tpl_pattern_type = tpl.get("pattern_type")
@@ -6723,7 +6694,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
     )
 
     if query.message:
-        await query.message.reply_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+        await query.edit_message_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
 
 
 async def delete_choose_callback(update: Update, context: CTX) -> None:
@@ -6786,37 +6757,8 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
         deleted_label = "Удалил всю серию"
 
     # Обновляем сообщение со списком (если там еще что-то осталось)
-    if not ids:
-        if query.message:
-            await query.edit_message_text("Напоминаний больше нет.")
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        qmarks = ",".join("?" for _ in ids)
-        c.execute(
-            f"""
-            SELECT
-                r.id,
-                r.text,
-                r.remind_at,
-                r.template_id,
-                rt.pattern_type,
-                rt.payload
-            FROM reminders r
-            LEFT JOIN recurring_templates rt ON rt.id = r.template_id
-            WHERE r.id IN ({qmarks})
-            ORDER BY r.remind_at ASC
-            """,
-            ids,
-        )
-        rows = c.fetchall()
-        conn.close()
-
-        reply, ids, keyboard = build_active_reminders_list_response(rows, header="Активные напоминания:")
-        context.user_data["list_ids"] = ids
-
-        if query.message:
-            await query.edit_message_text(reply, reply_markup=keyboard)
+    # list_ids обновляем, но сообщение с нажатой кнопкой ниже заменяем на "Удалил..." + undo.
+    # Не отправляем отдельное сообщение и не показываем промежуточное "Напоминаний больше нет.".
 
     if not snapshot:
         return
@@ -6859,7 +6801,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
     )
 
     if query.message:
-        await query.message.reply_text(f"{deleted_label}: {deleted_text}", reply_markup=undo_kb)
+        await query.edit_message_text(f"{deleted_label}: {deleted_text}", reply_markup=undo_kb)
 
 async def undo_callback(update: Update, context: CTX) -> None:
     query = update.callback_query

@@ -102,10 +102,15 @@ def test_delete_choose_del_one_calls_recurring_delete(main_module, fixed_now, mo
     rows = m.get_active_reminders_for_chat(chat_id)
     assert any(int(r.get("template_id") or 0) == int(tpl_id) for r in rows)
 
-    # Должно быть сообщение с Undo
-    assert q.message.replies, "Ожидали reply_text с undo"
-    reply_text, reply_markup = q.message.replies[-1]
-    assert "Вернуть" in reply_text or reply_markup is not None
+    # Новое правильное поведение: не reply_text, а замена текущего сообщения на undo-result
+    assert q.message.replies == []
+    assert q.message.edits, "Ожидали edit_message_text с undo"
+
+    edited_text, reply_markup = q.message.edits[-1]
+    assert edited_text.startswith("Удалил ближайший из серии: ")
+    assert "series" in edited_text
+    assert reply_markup is not None
+
 
 def test_delete_choose_del_series_deactivates_template(main_module, fixed_now, monkeypatch):
     m = main_module

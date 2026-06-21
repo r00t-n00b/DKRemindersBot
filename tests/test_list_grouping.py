@@ -151,7 +151,7 @@ class FakeCallbackQuery:
         await self.message.edit_message_text(text, **kwargs)
 
 
-def test_delete_from_list_preserves_today_tomorrow_later_grouping(main_module, fixed_now, monkeypatch):
+def test_delete_from_list_replaces_message_with_deleted_undo(main_module, fixed_now, monkeypatch):
     m = main_module
     monkeypatch.setattr(m, "InlineKeyboardButton", FakeInlineKeyboardButton)
     monkeypatch.setattr(m, "InlineKeyboardMarkup", FakeInlineKeyboardMarkup)
@@ -192,17 +192,19 @@ def test_delete_from_list_preserves_today_tomorrow_later_grouping(main_module, f
     asyncio.run(m.delete_callback(callback_update, context))
 
     assert query.answers
+    assert callback_message.replies == []
     assert callback_message.edits
 
     edited_text, kwargs = callback_message.edits[0]
 
-    assert "Сегодня\n" not in edited_text
-    assert "Завтра\n1. 10:30 - tomorrow task" in edited_text
-    assert "Позже\n2. " in edited_text
-    assert " - later task" in edited_text
+    assert edited_text.startswith("Удалил: ")
+    assert "today task" in edited_text
+    assert "tomorrow task" not in edited_text
+    assert "later task" not in edited_text
+    assert "Активные напоминания:" not in edited_text
+    assert "Напоминаний больше нет" not in edited_text
+
     assert context.user_data["list_ids"] == [tomorrow_id, later_id]
 
-    keyboard = kwargs.get("reply_markup")
-    assert keyboard is not None
-    assert keyboard.inline_keyboard[0][0].text == "❌1"
-    assert keyboard.inline_keyboard[0][0].callback_data == "del:1"
+    buttons = [button for row in kwargs["reply_markup"].inline_keyboard for button in row]
+    assert any(button.callback_data.startswith("undo:") for button in buttons)
