@@ -3043,11 +3043,12 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
 def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool = False) -> Optional[InlineKeyboardMarkup]:
     try:
+        delete_text = "❌ Удалить ближайшее/серию" if is_recurring else "❌ Удалить"
         reschedule_text = "⏰ Перенести ближайшее" if is_recurring else "⏰ Перенести"
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("❌ Удалить", callback_data=f"created_del:{reminder_id}"),
+                    InlineKeyboardButton(delete_text, callback_data=f"created_del:{reminder_id}"),
                     InlineKeyboardButton(reschedule_text, callback_data=f"created_resched:{reminder_id}"),
                 ]
             ]

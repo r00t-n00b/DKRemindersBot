@@ -198,7 +198,7 @@ def test_recurring_reminder_success_has_created_actions_keyboard(main_module, mo
 
     keyboard = kwargs.get("reply_markup")
     assert keyboard is not None
-    assert keyboard.inline_keyboard[0][0].text == "❌ Удалить"
+    assert keyboard.inline_keyboard[0][0].text == "❌ Удалить ближайшее/серию"
     assert keyboard.inline_keyboard[0][0].callback_data.startswith("created_del:")
     assert keyboard.inline_keyboard[0][1].text == "⏰ Перенести ближайшее"
     assert keyboard.inline_keyboard[0][1].callback_data.startswith("created_resched:")
@@ -210,7 +210,7 @@ def test_build_created_reminder_actions_keyboard_for_recurring_says_nearest(main
 
     keyboard = m.build_created_reminder_actions_keyboard(123, is_recurring=True)
 
-    assert keyboard.inline_keyboard[0][0].text == "❌ Удалить"
+    assert keyboard.inline_keyboard[0][0].text == "❌ Удалить ближайшее/серию"
     assert keyboard.inline_keyboard[0][0].callback_data == "created_del:123"
     assert keyboard.inline_keyboard[0][1].text == "⏰ Перенести ближайшее"
     assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:123"
