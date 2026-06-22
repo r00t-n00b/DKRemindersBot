@@ -154,3 +154,7 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
     reply = header + "\n\n" + "\n".join(lines)
     keyboard_builder = list_delete_keyboard_builder or build_list_delete_keyboard
     return reply, ids, keyboard_builder(len(ids))
+
+def format_created_reminder_text(when_str: str, reminder_text: str) -> str:
+    return f"Ок, напомню {when_str}: {reminder_text}"
+

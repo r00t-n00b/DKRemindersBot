@@ -142,6 +142,7 @@ from callback_contracts import (
 import keyboards as keyboard_builders
 from presentation import (
     build_active_reminders_list_response,
+    format_created_reminder_text,
     format_deleted_human,
     format_recurring_human,
 )
@@ -5611,7 +5612,7 @@ async def remind_command(update: Update, context: CTX) -> None:
         else:
             await safe_reply(
                 message,
-                f"Ок, напомню {when_str}: {text}",
+                format_created_reminder_text(when_str, text),
                 reply_markup=created_actions_keyboard,
             )
 
@@ -6737,7 +6738,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             when_str = remind_at.strftime("%d.%m %H:%M")
             await query.edit_message_text(
-                f"Ок, напомню {when_str}: {personal_text}",
+                format_created_reminder_text(when_str, personal_text),
                 reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
             )
             await query.answer("Личное напоминание создано")
@@ -6788,7 +6789,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             when_str = remind_at.strftime("%d.%m %H:%M")
             await query.edit_message_text(
-                f"Ок, напомню {when_str}: {personal_text}",
+                format_created_reminder_text(when_str, personal_text),
                 reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
             )
             await query.answer("Личное напоминание создано")
@@ -6883,7 +6884,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             when_str = remind_at.strftime("%d.%m %H:%M")
             await query.edit_message_text(
-                f"Ок, напомню {when_str}: {personal_text}",
+                format_created_reminder_text(when_str, personal_text),
                 reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
             )
             await query.answer("Личное напоминание создано")
