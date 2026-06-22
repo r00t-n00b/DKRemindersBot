@@ -44,13 +44,13 @@ def test_today_tomorrow_poslezavtra(main_module, fixed_now):
     assert dt.strftime("%d.%m %H:%M") == "28.11 18:00"
 
     dt2, _ = main_module.parse_date_time_smart("tomorrow - t", fixed_now)
-    assert dt2.strftime("%d.%m %H:%M") == "29.11 11:00"
+    assert dt2.strftime("%d.%m %H:%M") == "29.11 10:00"
 
     dt3, _ = main_module.parse_date_time_smart("day after tomorrow 10:00 - t", fixed_now)
     assert dt3.strftime("%d.%m %H:%M") == "30.11 10:00"
 
     dt4, _ = main_module.parse_date_time_smart("послезавтра - t", fixed_now)
-    assert dt4.strftime("%d.%m %H:%M") == "30.11 11:00"
+    assert dt4.strftime("%d.%m %H:%M") == "30.11 10:00"
 
 def test_time_only_in_past_moves_to_next_day(main_module):
     m = main_module

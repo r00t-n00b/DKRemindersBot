@@ -1854,7 +1854,7 @@ def _parse_today_tomorrow(expr: str, now: datetime, default_time: Optional[Tuple
         if s.startswith(key):
             rest = s[len(key):].strip()
             tokens = rest.split() if rest else []
-            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
+            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
             base = now.astimezone(TZ).date() + timedelta(days=days)
             return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     # tomorrow / завтра
@@ -1862,20 +1862,20 @@ def _parse_today_tomorrow(expr: str, now: datetime, default_time: Optional[Tuple
         if s.startswith(key):
             rest = s[len(key):].strip()
             tokens = rest.split() if rest else []
-            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
+            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
             base = now.astimezone(TZ).date() + timedelta(days=days)
             return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     # day after tomorrow / послезавтра
     if s.startswith("day after tomorrow"):
         rest = s[len("day after tomorrow"):].strip()
         tokens = rest.split() if rest else []
-        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
+        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
         base = now.astimezone(TZ).date() + timedelta(days=2)
         return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     if s.startswith("послезавтра"):
         rest = s[len("послезавтра"):].strip()
         tokens = rest.split() if rest else []
-        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
+        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
         base = now.astimezone(TZ).date() + timedelta(days=2)
         return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     return None
@@ -2016,14 +2016,14 @@ def _parse_next_expression(expr: str, now: datetime, default_time: Optional[Tupl
             pass
 
         rest_tokens = tokens[start_idx + 1 :]
-        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, 11, 0))
+        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
         target_date = base + timedelta(days=days_until_next_monday)
         return datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=TZ)
 
     # next month / следующий месяц
     if mode in {"next", "this"} and second in {"month", "месяц", "месяца"}:
         rest_tokens = tokens[start_idx + 1 :]
-        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, 11, 0))
+        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
         year = local.year
         month = local.month + 1 if mode == "next" else local.month
 
@@ -2058,7 +2058,7 @@ def _parse_next_expression(expr: str, now: datetime, default_time: Optional[Tupl
     else:
         return None
 
-    rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, 11, 0))
+    rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
 
     base_date = local.date()
     cur_wd = base_date.weekday()
@@ -2086,7 +2086,7 @@ def _parse_weekend_weekday(expr: str, now: datetime, default_time: Optional[Tupl
 
     local = now.astimezone(TZ)
 
-    tokens_no_time, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
+    tokens_no_time, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
     if not tokens_no_time:
         return None
 
@@ -2381,7 +2381,7 @@ def parse_date_time_smart(s: str, now: datetime, default_time: Optional[Tuple[in
     """
     Пытаемся понять:
     - DD.MM HH:MM - текст
-    - DD.MM - текст (время по умолчанию 11:00)
+    - DD.MM - текст (время по умолчанию 10:00)
     - HH:MM - текст (сегодня/завтра)
     - in/через N [minutes|hours|days|weeks] - текст
     - today/tomorrow/day after tomorrow/сегодня/завтра/послезавтра [+ optional HH:MM] - текст
@@ -5349,7 +5349,7 @@ async def defaulttime_command(update: Update, context: CTX) -> None:
         if current is None:
             await safe_reply(
                 message,
-                "Время по умолчанию не задано. Сейчас бот использует системное поведение.\n\n"
+                "Время по умолчанию не задано. Для напоминаний без явно указанного времени бот использует 10:00.\n\n"
                 "Поставить: /defaulttime 09:30\n"
                 "Сбросить: /defaulttime reset"
             )
@@ -5367,7 +5367,7 @@ async def defaulttime_command(update: Update, context: CTX) -> None:
 
     if value in {"reset", "default", "off", "сброс", "сбросить"}:
         clear_user_default_time(user.id)
-        await safe_reply(message, "Ок, сбросил время по умолчанию.")
+        await safe_reply(message, "Ок, сбросил время по умолчанию. Теперь для напоминаний без явно указанного времени бот снова использует 10:00.")
         return
 
     try:

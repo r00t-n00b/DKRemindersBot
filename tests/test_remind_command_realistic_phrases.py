@@ -147,7 +147,7 @@ def test_remind_next_wednesday_realistic_path(main_module, monkeypatch):
         {
             "chat_id": 456,
             "text": "проверить документы",
-            "remind_at": datetime(2026, 6, 17, 11, 0, tzinfo=TZ),
+            "remind_at": datetime(2026, 6, 17, 10, 0, tzinfo=TZ),
             "created_by": 123,
             "template_id": None,
         }

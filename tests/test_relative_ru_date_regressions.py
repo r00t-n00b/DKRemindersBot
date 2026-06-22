@@ -14,7 +14,7 @@ def test_parse_next_wednesday_ru_without_time(main_module):
         now,
     )
 
-    assert remind_at == datetime(2026, 6, 10, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2026, 6, 10, 10, 0, tzinfo=TZ)
     assert text == "написать в цветы"
 
 
@@ -38,7 +38,7 @@ def test_parse_next_week_ru_without_day(main_module):
         now,
     )
 
-    assert remind_at == datetime(2026, 6, 15, 11, 0, tzinfo=TZ)
+    assert remind_at == datetime(2026, 6, 15, 10, 0, tzinfo=TZ)
     assert text == "сложить все деньги в общий аккаунт ббва"
 
 

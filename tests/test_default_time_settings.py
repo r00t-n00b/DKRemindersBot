@@ -57,6 +57,21 @@ def test_defaulttime_command_sets_time(main_module):
     assert message.replies[-1][0] == "Ок, время по умолчанию: 09:30."
 
 
+def test_defaulttime_command_without_setting_explains_system_default(main_module):
+    m = main_module
+
+    message = FakeMessage()
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=1000),
+    )
+    context = SimpleNamespace(args=[])
+
+    asyncio.run(m.defaulttime_command(update, context))
+
+    assert "бот использует 10:00" in message.replies[-1][0]
+
+
 def test_defaulttime_command_shows_current_time(main_module):
     m = main_module
     m.set_user_default_time(1000, 8, 15)
@@ -87,7 +102,7 @@ def test_defaulttime_command_resets_time(main_module):
     asyncio.run(m.defaulttime_command(update, context))
 
     assert m.get_user_default_time(1000) is None
-    assert message.replies[-1][0] == "Ок, сбросил время по умолчанию."
+    assert message.replies[-1][0] == "Ок, сбросил время по умолчанию. Теперь для напоминаний без явно указанного времени бот снова использует 10:00."
 
 
 def test_parse_date_without_time_uses_custom_default(main_module, fixed_now):
@@ -192,3 +207,30 @@ def test_remind_command_uses_user_default_time_for_date_only(main_module, fixed_
     assert len(rows) == 1
     remind_at = m.datetime.fromisoformat(rows[0]["remind_at"])
     assert (remind_at.hour, remind_at.minute) == (9, 30)
+
+
+def test_parse_tomorrow_without_user_default_uses_system_default(main_module, fixed_now):
+    m = main_module
+
+    dt, text = m.parse_date_time_smart(
+        "tomorrow - buy milk",
+        fixed_now,
+        default_time=None,
+    )
+
+    assert dt.date() == (fixed_now + m.timedelta(days=1)).date()
+    assert (dt.hour, dt.minute) == (10, 0)
+    assert text == "buy milk"
+
+
+def test_compute_snooze_tomorrow_without_user_default_uses_system_default(main_module, fixed_now):
+    m = main_module
+
+    dt = m.compute_snooze_target_time(
+        "tomorrow",
+        fixed_now,
+        default_time=None,
+    )
+
+    assert dt.date() == (fixed_now + m.timedelta(days=1)).date()
+    assert (dt.hour, dt.minute) == (10, 0)
