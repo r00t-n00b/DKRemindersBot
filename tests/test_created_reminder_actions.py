@@ -117,6 +117,7 @@ def test_created_delete_callback_soft_deletes_and_shows_undo(main_module, monkey
 
 def test_created_reschedule_callback_replaces_keyboard_with_created_reschedule_keyboard(main_module, monkeypatch):
     m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: SimpleNamespace(template_id=None))
     created_reschedule_keyboard = object()
     seen = []
 
@@ -138,6 +139,7 @@ def test_created_reschedule_callback_replaces_keyboard_with_created_reschedule_k
 
 def test_created_back_callback_restores_created_actions_keyboard(main_module, monkeypatch):
     m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: SimpleNamespace(template_id=None))
     created_actions_keyboard = object()
     seen = []
 
@@ -197,6 +199,25 @@ def test_build_created_reminder_actions_keyboard_for_recurring_reminder(main_mod
 
     assert keyboard is created_actions_keyboard
     assert seen == [(789, True)]
+
+
+
+def test_build_created_reminder_actions_keyboard_for_missing_reminder_returns_none(main_module, monkeypatch):
+    m = main_module
+    seen = []
+
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    def fake_build_created_reminder_actions_keyboard(rid, is_recurring=False):
+        seen.append((rid, is_recurring))
+        return object()
+
+    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard", fake_build_created_reminder_actions_keyboard)
+
+    keyboard = m.build_created_reminder_actions_keyboard_for_reminder(789)
+
+    assert keyboard is None
+    assert seen == []
 
 
 
@@ -303,6 +324,7 @@ def test_created_reschedule_keyboard_uses_created_custom_callback(main_module, m
 
 def test_created_snooze_cancel_returns_created_reschedule_keyboard(main_module, monkeypatch):
     m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: SimpleNamespace(template_id=None))
     created_keyboard = object()
     seen = []
 
@@ -405,6 +427,7 @@ def test_undo_single_restores_created_actions_keyboard(main_module, monkeypatch)
 
     monkeypatch.setattr(m, "restore_deleted_snapshot", lambda snap: 999)
     monkeypatch.setattr(m, "format_deleted_human", lambda *args, **kwargs: "22.06 18:00 - test task")
+    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard_for_reminder", lambda rid: "actions-keyboard")
 
     query = FakeQuery("undo:tok123")
     update = SimpleNamespace(callback_query=query)
@@ -413,10 +436,7 @@ def test_undo_single_restores_created_actions_keyboard(main_module, monkeypatch)
     asyncio.run(m.undo_callback(update, context))
 
     assert query.edited_text == "Вернул: 22.06 18:00 - test task"
-
-    keyboard = query.edited_text_kwargs["reply_markup"]
-    assert keyboard.inline_keyboard[0][0].callback_data == "created_del:999"
-    assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:999"
+    assert query.edited_text_kwargs["reply_markup"] == "actions-keyboard"
 
 def test_recurring_delete_choice_cancel_from_created_restores_created_actions(main_module, monkeypatch):
     m = main_module
@@ -474,7 +494,7 @@ def test_undo_recurring_one_instance_uses_specific_restore_text(main_module, mon
 
     monkeypatch.setattr(m, "restore_deleted_snapshot", lambda snap: 456)
     monkeypatch.setattr(m, "format_deleted_human", lambda *args, **kwargs: "22.06 18:00 - recurring task")
-    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard", lambda rid, is_recurring=False: "actions-keyboard")
+    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard_for_reminder", lambda rid: "actions-keyboard")
 
     query = FakeQuery("undo:tok123")
     update = SimpleNamespace(callback_query=query)
@@ -485,3 +505,94 @@ def test_undo_recurring_one_instance_uses_specific_restore_text(main_module, mon
     assert "tok123" not in context.user_data["undo_tokens"]
     assert query.edited_text == "Вернул ближайшее повторяющееся напоминание: 22.06 18:00 - recurring task"
     assert query.edited_text_kwargs["reply_markup"] == "actions-keyboard"
+
+def test_created_reschedule_callback_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_resched:789")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_reschedule_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+
+
+def test_created_snooze_custom_callback_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_snooze_custom:789")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_snooze_custom_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+
+
+def test_created_snooze_cancel_callback_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_snooze_cancel:789")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_snooze_cancel_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+
+
+def test_created_back_callback_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_back:789")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_back_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+
+
+def test_created_snooze_calendar_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_snooze_cal:789:2026-06")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_snooze_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+
+
+def test_created_snooze_pickdate_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_snooze_pickdate:789:2026-06-23")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_snooze_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+
+
+def test_created_snooze_quick_for_missing_reminder_clears_keyboard(main_module, monkeypatch):
+    m = main_module
+    monkeypatch.setattr(m, "get_reminder", lambda rid: None)
+
+    query = FakeQuery("created_snooze:789:1h")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_snooze_callback(update, SimpleNamespace()))
+
+    assert query.answers == [(m.MSG_REMINDER_NOT_FOUND, {"show_alert": True})]
+    assert query.edited_reply_markup is None
+

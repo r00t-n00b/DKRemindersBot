@@ -3058,7 +3058,9 @@ def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool
 
 def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     reminder = get_reminder(reminder_id)
-    is_recurring = bool(getattr(reminder, "template_id", None)) if reminder else False
+    if reminder is None:
+        return None
+    is_recurring = bool(getattr(reminder, "template_id", None))
     return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
 
 
@@ -6149,16 +6151,35 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
     await query.edit_message_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
 
 
+async def _answer_created_action_reminder_missing(query) -> None:
+    await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        logger.exception("Failed to clear created-action keyboard for missing reminder")
+
+
+async def _ensure_created_action_reminder_exists(query, reminder_id: int) -> bool:
+    if get_reminder(reminder_id) is not None:
+        return True
+    await _answer_created_action_reminder_missing(query)
+    return False
+
+
 async def created_reschedule_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
-    await query.answer()
 
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
+        await query.answer(MSG_RESCHEDULE_OPEN_FAILED_TEXT, show_alert=True)
         await query.edit_message_text(MSG_RESCHEDULE_OPEN_FAILED_TEXT, reply_markup=None)
         return
 
+    if not await _ensure_created_action_reminder_exists(query, reminder_id):
+        return
+
+    await query.answer()
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
 
 
@@ -6176,7 +6197,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
 
             r = get_reminder(rid)
             if not r:
-                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                await _answer_created_action_reminder_missing(query)
                 return
 
             try:
@@ -6186,7 +6207,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
                 return
 
             if not update_reminder_time(rid, new_dt):
-                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                await _answer_created_action_reminder_missing(query)
                 return
 
             when_str = new_dt.strftime("%d.%m %H:%M")
@@ -6200,6 +6221,9 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("created_snooze_cal:"):
             _, rid_str, ym = data.split(":", 2)
             rid = int(rid_str)
+            if not await _ensure_created_action_reminder_exists(query, rid):
+                return
+
             year_str, month_str = ym.split("-", 1)
             keyboard = build_custom_date_keyboard(
                 rid,
@@ -6214,6 +6238,9 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("created_snooze_caltoday:"):
             _, rid_str = data.split(":", 1)
             rid = int(rid_str)
+            if not await _ensure_created_action_reminder_exists(query, rid):
+                return
+
             today = get_now().date()
             keyboard = build_custom_date_keyboard(
                 rid,
@@ -6228,6 +6255,9 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("created_snooze_pickdate:"):
             _, rid_str, date_str = data.split(":", 2)
             rid = int(rid_str)
+            if not await _ensure_created_action_reminder_exists(query, rid):
+                return
+
             keyboard = build_custom_time_keyboard(
                 rid,
                 date_str,
@@ -6247,7 +6277,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
 
             r = get_reminder(rid)
             if not r:
-                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                await _answer_created_action_reminder_missing(query)
                 return
 
             try:
@@ -6263,7 +6293,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
                 return
 
             if not update_reminder_time(rid, new_dt):
-                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
+                await _answer_created_action_reminder_missing(query)
                 return
 
             when_str = new_dt.strftime("%d.%m %H:%M")
@@ -6277,6 +6307,9 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("created_snooze_cancel:"):
             _, rid_str = data.split(":", 1)
             rid = int(rid_str)
+            if not await _ensure_created_action_reminder_exists(query, rid):
+                return
+
             await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(rid))
             await query.answer("Вернул варианты")
             return
@@ -6291,6 +6324,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
         except Exception:
             pass
 
+
 async def created_snooze_custom_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
 
@@ -6298,6 +6332,9 @@ async def created_snooze_custom_callback(update: Update, context: CTX) -> None:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
         await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
+        return
+
+    if not await _ensure_created_action_reminder_exists(query, reminder_id):
         return
 
     keyboard = build_custom_date_keyboard(reminder_id, callback_prefix="created_snooze")
@@ -6316,6 +6353,9 @@ async def created_snooze_cancel_callback(update: Update, context: CTX) -> None:
         await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
         return
 
+    if not await _ensure_created_action_reminder_exists(query, reminder_id):
+        return
+
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
     await query.answer("Вернул варианты")
     return
@@ -6323,17 +6363,22 @@ async def created_snooze_cancel_callback(update: Update, context: CTX) -> None:
 
 async def created_back_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
-    await query.answer()
 
     try:
         reminder_id = int(query.data.split(":", 1)[1])
     except Exception:
+        await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
         await query.edit_message_reply_markup(reply_markup=None)
         return
 
+    if not await _ensure_created_action_reminder_exists(query, reminder_id):
+        return
+
+    await query.answer()
     await query.edit_message_reply_markup(
         reply_markup=build_created_reminder_actions_keyboard_for_reminder(reminder_id)
     )
+
 
 
 
