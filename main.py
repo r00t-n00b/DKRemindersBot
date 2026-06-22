@@ -142,6 +142,7 @@ from callback_contracts import (
 import keyboards as keyboard_builders
 from presentation import (
     build_active_reminders_list_response,
+    build_target_user_reminders_list_response,
     format_completed_reminder_text,
     format_created_reminder_text,
     format_created_recurring_reminder_text,
@@ -5722,60 +5723,45 @@ async def list_command(update: Update, context: CTX) -> None:
                 created_by=user.id,
             )
 
-            if not rows:
-                await safe_reply(
-                    message,
-                    f"Ты не ставил напоминаний пользователю {first_arg}."
-                )
-                return
+            presentation_rows = []
+            for r in rows:
+                row_data = dict(r) if hasattr(r, "keys") else {
+                    "id": r[0],
+                    "text": r[1],
+                    "remind_at": r[2],
+                    "template_id": r[3] if len(r) > 3 else None,
+                }
 
-            lines = []
-            ids: List[int] = []
-
-            for idx, r in enumerate(rows, start=1):
-                dt = datetime.fromisoformat(r["remind_at"])
-                ts = dt.strftime("%d.%m %H:%M")
-
-                suffix = ""
-                tpl_id = r.get("template_id")
+                tpl_id = row_data.get("template_id")
                 if tpl_id is not None:
                     tpl = get_recurring_template(int(tpl_id))
                     if tpl:
-                        human = format_recurring_human(
-                            tpl.get("pattern_type"),
-                            tpl.get("payload"),
-                        )
-                        suffix = f"  🔁 {human}" if human else "  🔁"
+                        row_data["pattern_type"] = tpl.get("pattern_type")
+                        row_data["payload"] = tpl.get("payload")
                     else:
-                        suffix = "  🔁"
+                        row_data["pattern_type"] = None
+                        row_data["payload"] = None
 
-                lines.append(f"{idx}. {ts} - {r['text']}{suffix}")
-                ids.append(r["id"])
+                presentation_rows.append(row_data)
+
+            reply, ids, keyboard = build_target_user_reminders_list_response(
+                presentation_rows,
+                target_label=first_arg,
+                list_delete_keyboard_builder=build_list_delete_keyboard,
+            )
+
+            if not ids:
+                await safe_reply(message, reply)
+                return
 
             context.user_data["list_ids"] = ids
             context.user_data["list_chat_id"] = owner_chat_id
 
-            reply = (
-                f"Напоминания, которые ты поставил пользователю {first_arg}:\n\n"
-                + "\n".join(lines)
+            await safe_reply(
+                message,
+                reply,
+                reply_markup=keyboard,
             )
-
-            buttons: List[List[InlineKeyboardButton]] = []
-            row: List[InlineKeyboardButton] = []
-            for idx in range(1, len(ids) + 1):
-                row.append(
-                    InlineKeyboardButton(
-                        text=f"❌{idx}",
-                        callback_data=f"del:{idx}",
-                    )
-                )
-                if len(row) == 5:
-                    buttons.append(row)
-                    row = []
-            if row:
-                buttons.append(row)
-
-            await safe_reply(message,reply, reply_markup=InlineKeyboardMarkup(buttons))
             return
 
     # ===== /list alias: сначала user-alias, потом chat-alias =====
@@ -5845,10 +5831,12 @@ async def list_command(update: Update, context: CTX) -> None:
         return
 
     header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"
-    reply, ids, keyboard = build_active_reminders_list_response(rows, header=header       ,
+    reply, ids, keyboard = build_active_reminders_list_response(
+        rows,
+        header=header,
         now_local=get_now(),
         list_delete_keyboard_builder=build_list_delete_keyboard,
-)
+    )
 
     context.user_data["list_ids"] = ids
     context.user_data["list_chat_id"] = target_chat_id

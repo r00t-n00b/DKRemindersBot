@@ -1,5 +1,6 @@
 """Pure presentation/formatting helpers for reminder UI."""
 
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -200,4 +201,51 @@ def format_created_recurring_reminder_text(
         f"Первое напоминание будет {when_str}: {reminder_text}"
         f"{freq_part}"
     )
+
+def build_target_user_reminders_list_response(
+    rows,
+    target_label: str,
+    list_delete_keyboard_builder: Optional[Any] = None,
+) -> Tuple[str, List[int], Optional[Any]]:
+    lines: List[str] = []
+    ids: List[int] = []
+
+    for idx, row in enumerate(rows, start=1):
+        rid = int(_active_reminder_row_value(row, "id", 0))
+        reminder_text = str(_active_reminder_row_value(row, "text", 1) or "")
+        remind_at_str = str(_active_reminder_row_value(row, "remind_at", 2) or "")
+        template_id = _active_reminder_row_value(row, "template_id", 3)
+        tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
+        tpl_payload_raw = _active_reminder_row_value(row, "payload", 5)
+
+        dt = datetime.fromisoformat(remind_at_str)
+        ts = dt.strftime("%d.%m %H:%M")
+
+        suffix = ""
+        if template_id is not None:
+            tpl_payload: Dict[str, Any] = {}
+            if isinstance(tpl_payload_raw, dict):
+                tpl_payload = tpl_payload_raw
+            elif tpl_payload_raw:
+                try:
+                    tpl_payload = json.loads(tpl_payload_raw)
+                except Exception:
+                    tpl_payload = {}
+
+            human = format_recurring_human(tpl_pattern_type, tpl_payload)
+            suffix = f"  🔁 {human}" if human else "  🔁"
+
+        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}")
+        ids.append(rid)
+
+    if not ids:
+        return f"Ты не ставил напоминаний пользователю {target_label}.", [], None
+
+    reply = (
+        f"Напоминания, которые ты поставил пользователю {target_label}:\n\n"
+        + "\n".join(lines)
+    )
+
+    keyboard_builder = list_delete_keyboard_builder or build_list_delete_keyboard
+    return reply, ids, keyboard_builder(len(ids))
 
