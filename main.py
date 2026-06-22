@@ -197,6 +197,7 @@ from messages import (
 from parser_split import _split_expr_and_text
 from parser_time_tokens import TIME_TOKEN_RE, VAGUE_TIME_WORDS, _extract_time_from_tokens
 from parser_in_expression import _add_months, _parse_in_expression
+from parser_relative_day import _parse_standalone_vague_time, _parse_today_tomorrow
 from parser_recurring_detection import looks_like_recurring
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_lexicon import (
@@ -1664,59 +1665,6 @@ from typing import Tuple
 
 
 
-def _parse_today_tomorrow(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
-    s = expr.lower().strip()
-    # today / сегодня
-    for key, days in (("today", 0), ("сегодня", 0)):
-        if s.startswith(key):
-            rest = s[len(key):].strip()
-            tokens = rest.split() if rest else []
-            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
-            base = now.astimezone(TZ).date() + timedelta(days=days)
-            return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
-    # tomorrow / завтра
-    for key, days in (("tomorrow", 1), ("завтра", 1)):
-        if s.startswith(key):
-            rest = s[len(key):].strip()
-            tokens = rest.split() if rest else []
-            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
-            base = now.astimezone(TZ).date() + timedelta(days=days)
-            return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
-    # day after tomorrow / послезавтра
-    if s.startswith("day after tomorrow"):
-        rest = s[len("day after tomorrow"):].strip()
-        tokens = rest.split() if rest else []
-        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
-        base = now.astimezone(TZ).date() + timedelta(days=2)
-        return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
-    if s.startswith("послезавтра"):
-        rest = s[len("послезавтра"):].strip()
-        tokens = rest.split() if rest else []
-        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
-        base = now.astimezone(TZ).date() + timedelta(days=2)
-        return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
-    return None
-
-def _parse_standalone_vague_time(expr: str, now: datetime) -> Optional[datetime]:
-    s = expr.lower().strip()
-    if s not in VAGUE_TIME_WORDS:
-        return None
-
-    hour, minute = VAGUE_TIME_WORDS[s]
-    now_local = now.astimezone(TZ)
-    target_date = now_local.date()
-
-    if (now_local.hour, now_local.minute) >= (hour, minute):
-        target_date += timedelta(days=1)
-
-    return datetime(
-        target_date.year,
-        target_date.month,
-        target_date.day,
-        hour,
-        minute,
-        tzinfo=TZ,
-    )
 
 def _normalize_on_at_phrase(expr_lower: str) -> str:
     """
