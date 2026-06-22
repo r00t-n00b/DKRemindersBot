@@ -28,12 +28,15 @@ def test_start_is_short_onboarding(main_module):
 
     text = message.replies[-1][0]
 
-    assert "Привет. Я бот для напоминаний." in text
+    assert "👋 Привет. Я бот для напоминаний." in text
+    assert "✨ Что я умею:" in text
+    assert "📝 Просто напиши, что и когда напомнить:" in text
+    assert "⚙️ Команды:" in text
     assert "/help - короткая справка" in text
     assert "/list - активные напоминания" in text
     assert "/defaulttime - время по умолчанию" in text
     assert "10:00" in text
-    assert len(text) < 700
+    assert len(text) < 850
 
 
 def test_help_is_structured_but_not_full_documentation(main_module):
