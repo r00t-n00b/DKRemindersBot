@@ -7027,7 +7027,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             normalized_src_text = normalize_relative_event_date_in_text(src.text, event_at)
             personal_text = format_self_remind_text(source_chat_title, normalized_src_text)
 
-            add_reminder(
+            new_reminder_id = add_reminder(
                 chat_id=target_chat_id,
                 text=personal_text,
                 remind_at=remind_at,
@@ -7035,7 +7035,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             )
 
             when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
+            await query.edit_message_text(
+                f"Ок, напомню {when_str}: {personal_text}",
+                reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
+            )
             await query.answer("Личное напоминание создано")
             return
 
@@ -7074,7 +7077,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
             personal_text = format_self_remind_text(source_chat_title, src.text)
 
-            add_reminder(
+            new_reminder_id = add_reminder(
                 chat_id=target_chat_id,
                 text=personal_text,
                 remind_at=remind_at,
@@ -7083,7 +7086,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             )
 
             when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
+            await query.edit_message_text(
+                f"Ок, напомню {when_str}: {personal_text}",
+                reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
+            )
             await query.answer("Личное напоминание создано")
             return
 
@@ -7166,7 +7172,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
             personal_text = format_self_remind_text(source_chat_title, src.text)
 
-            add_reminder(
+            new_reminder_id = add_reminder(
                 chat_id=target_chat_id,
                 text=personal_text,
                 remind_at=remind_at,
@@ -7175,7 +7181,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             )
 
             when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(f"Ок, напомню {when_str}: {personal_text}")
+            await query.edit_message_text(
+                f"Ок, напомню {when_str}: {personal_text}",
+                reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
+            )
             await query.answer("Личное напоминание создано")
             return
 

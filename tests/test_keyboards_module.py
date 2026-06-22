@@ -1,3 +1,21 @@
+class DummyInlineKeyboardButton:
+    def __init__(self, text, callback_data=None, **kwargs):
+        self.text = text
+        self.callback_data = callback_data
+        self.kwargs = kwargs
+
+
+class DummyInlineKeyboardMarkup:
+    def __init__(self, inline_keyboard):
+        self.inline_keyboard = inline_keyboard
+        self.keyboard = inline_keyboard
+
+
+def _patch_keyboard_classes(keyboards):
+    keyboards.InlineKeyboardButton = DummyInlineKeyboardButton
+    keyboards.InlineKeyboardMarkup = DummyInlineKeyboardMarkup
+
+
 def _callback_data(markup):
     result = []
     for row in getattr(markup, "inline_keyboard", []) or []:
@@ -30,6 +48,7 @@ def test_simple_keyboard_builders_are_exposed_via_main_proxy(main_module):
 
 def test_simple_keyboard_builders_generate_expected_callback_data(main_module):
     import keyboards
+    _patch_keyboard_classes(keyboards)
 
     generated = []
 
