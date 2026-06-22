@@ -6692,7 +6692,12 @@ async def undo_callback(update: Update, context: CTX) -> None:
             is_recurring=bool(tpl),
         )
 
-    await query.edit_message_text(f"Вернул: {restored_text}", reply_markup=reply_markup)
+    if tpl:
+        restored_prefix = "Вернул ближайшее повторяющееся напоминание"
+    else:
+        restored_prefix = "Вернул"
+
+    await query.edit_message_text(f"{restored_prefix}: {restored_text}", reply_markup=reply_markup)
 
 # ===== SNOOZE callback =====
 

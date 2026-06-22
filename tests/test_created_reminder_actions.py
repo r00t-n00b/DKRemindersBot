@@ -433,3 +433,38 @@ def test_recurring_delete_choice_cancel_from_list_closes_choice_message(main_mod
     assert query.edited_text == "Ок, ничего не удалил."
     assert query.edited_text_kwargs["reply_markup"] is None
 
+
+
+def test_undo_recurring_one_instance_uses_specific_restore_text(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    snapshot = {
+        "kind": "single",
+        "reminder": {
+            "id": 456,
+            "chat_id": 777,
+            "text": "recurring task",
+            "remind_at": "2026-06-22T18:00:00+02:00",
+        },
+        "template": {
+            "id": 999,
+            "text": "recurring task",
+            "pattern_type": "daily",
+            "payload": {},
+        },
+    }
+
+    monkeypatch.setattr(m, "restore_deleted_snapshot", lambda snap: 456)
+    monkeypatch.setattr(m, "format_deleted_human", lambda *args, **kwargs: "22.06 18:00 - recurring task")
+    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard", lambda rid, is_recurring=False: "actions-keyboard")
+
+    query = FakeQuery("undo:tok123")
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(user_data={"undo_tokens": {"tok123": snapshot}})
+
+    asyncio.run(m.undo_callback(update, context))
+
+    assert "tok123" not in context.user_data["undo_tokens"]
+    assert query.edited_text == "Вернул ближайшее повторяющееся напоминание: 22.06 18:00 - recurring task"
+    assert query.edited_text_kwargs["reply_markup"] == "actions-keyboard"
