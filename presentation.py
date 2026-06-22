@@ -158,3 +158,26 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
 def format_created_reminder_text(when_str: str, reminder_text: str) -> str:
     return f"Ок, напомню {when_str}: {reminder_text}"
 
+def format_completed_reminder_text(base_text: str) -> str:
+    return f"{base_text} (завершено ✅)"
+
+
+def format_snoozed_reminder_text(reminder_text: str, when_str: str) -> str:
+    return f"{reminder_text}\n\n(Отложено до {when_str})"
+
+
+def format_snoozed_answer_text(when_str: str) -> str:
+    return f"Отложено до {when_str}"
+
+
+def format_deleted_snapshot_text(deleted_label: str, deleted_text: str) -> str:
+    return f"{deleted_label}: {deleted_text}"
+
+
+def format_restored_series_text(series_text: str, suffix: str, count: int) -> str:
+    return f"Вернул серию: {series_text}{suffix} (инстансов: {count})"
+
+
+def format_restored_single_text(restored_prefix: str, restored_text: str) -> str:
+    return f"{restored_prefix}: {restored_text}"
+

@@ -142,9 +142,15 @@ from callback_contracts import (
 import keyboards as keyboard_builders
 from presentation import (
     build_active_reminders_list_response,
+    format_completed_reminder_text,
     format_created_reminder_text,
     format_deleted_human,
+    format_deleted_snapshot_text,
     format_recurring_human,
+    format_restored_series_text,
+    format_restored_single_text,
+    format_snoozed_answer_text,
+    format_snoozed_reminder_text,
 )
 
 def get_now() -> datetime:
@@ -6436,7 +6442,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
     )
 
     if query.message:
-        await query.edit_message_text(f"{deleted_label}: {deleted_text}", reply_markup=undo_kb)
+        await query.edit_message_text(format_deleted_snapshot_text(deleted_label, deleted_text), reply_markup=undo_kb)
 
 async def undo_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
@@ -6491,7 +6497,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
             reply_markup = build_created_reminder_actions_keyboard_for_reminder(restored_id)
 
         await query.edit_message_text(
-            f"Вернул серию: {series_text}{suffix} (инстансов: {count})",
+            format_restored_series_text(series_text, suffix, count),
             reply_markup=reply_markup,
         )
         return
@@ -6519,7 +6525,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
     else:
         restored_prefix = "Вернул"
 
-    await query.edit_message_text(f"{restored_prefix}: {restored_text}", reply_markup=reply_markup)
+    await query.edit_message_text(format_restored_single_text(restored_prefix, restored_text), reply_markup=reply_markup)
 
 # ===== SNOOZE callback =====
 
@@ -6975,7 +6981,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 r = None
 
             base_text = r.text if r else original_text or "Напоминание"
-            new_text = f"{base_text} (завершено ✅)"
+            new_text = format_completed_reminder_text(base_text)
 
             # Пытаемся обновить сообщение, но в тестах этих методов может не быть
             if hasattr(query, "edit_message_text"):
@@ -7031,7 +7037,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
             # Пытаемся обновить текст сообщения
             try:
-                await query.edit_message_text(f"{r.text}\n\n(Отложено до {when_str})")
+                await query.edit_message_text(format_snoozed_reminder_text(r.text, when_str))
             except Exception:
                 # если не получилось - хотя бы уберем клавиатуру
                 try:
@@ -7039,7 +7045,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 except Exception:
                     pass
 
-            await query.answer(f"Отложено до {when_str}")
+            await query.answer(format_snoozed_answer_text(when_str))
             return
 
         if data.startswith("snooze_cal:"):
@@ -7115,13 +7121,13 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             )
             when_str = new_dt.strftime("%d.%m %H:%M")
             try:
-                await query.edit_message_text(f"{r.text}\n\n(Отложено до {when_str})")
+                await query.edit_message_text(format_snoozed_reminder_text(r.text, when_str))
             except Exception:
                 try:
                     await query.edit_message_reply_markup(reply_markup=None)
                 except Exception:
                     pass
-            await query.answer(f"Отложено до {when_str}")
+            await query.answer(format_snoozed_answer_text(when_str))
             return
 
         if data.startswith("snooze_cancel:"):
