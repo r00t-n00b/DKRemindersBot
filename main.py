@@ -77,6 +77,9 @@ except Exception:
 TZ = ZoneInfo("Europe/Madrid")
 DB_PATH = os.environ.get("DB_PATH", "/data/reminders.db")
 
+SYSTEM_DEFAULT_REMINDER_HOUR = 10
+SYSTEM_DEFAULT_REMINDER_MINUTE = 0
+
 LOG_PATH = os.environ.get("BOT_LOG_PATH", "/data/bot.log")
 
 _log_handlers = [logging.StreamHandler()]
@@ -321,6 +324,17 @@ def init_db() -> None:
         "CREATE INDEX IF NOT EXISTS idx_user_chats_username ON user_chats(username)"
     )
 
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id INTEGER PRIMARY KEY,
+            default_hour INTEGER,
+            default_minute INTEGER,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -514,6 +528,94 @@ def get_user_chat_id_by_user_id(user_id: int) -> Optional[int]:
     if row:
         return int(row[0])
     return None
+
+def parse_default_time_value(raw: str) -> Tuple[int, int]:
+    s = (raw or "").strip().lower()
+    s = s.replace(".", ":")
+
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", s)
+    if not m:
+        raise ValueError("bad time")
+
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise ValueError("bad time")
+
+    return hour, minute
+
+
+def format_default_time_value(hour: int, minute: int) -> str:
+    return f"{int(hour):02d}:{int(minute):02d}"
+
+
+def get_user_default_time(user_id: Optional[int]) -> Optional[Tuple[int, int]]:
+    if user_id is None:
+        return None
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            """
+            SELECT default_hour, default_minute
+            FROM user_settings
+            WHERE user_id = ?
+            """,
+            (int(user_id),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return None
+
+    hour, minute = row
+    if hour is None or minute is None:
+        return None
+
+    try:
+        return int(hour), int(minute)
+    except Exception:
+        return None
+
+
+def set_user_default_time(user_id: int, hour: int, minute: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            """
+            INSERT INTO user_settings(user_id, default_hour, default_minute, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                default_hour = excluded.default_hour,
+                default_minute = excluded.default_minute,
+                updated_at = excluded.updated_at
+            """,
+            (int(user_id), int(hour), int(minute), get_now().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def clear_user_default_time(user_id: int) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "DELETE FROM user_settings WHERE user_id = ?",
+            (int(user_id),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _default_time_or(default_time: Optional[Tuple[int, int]], hour: int, minute: int) -> Tuple[int, int]:
+    if default_time is None:
+        return hour, minute
+    return int(default_time[0]), int(default_time[1])
+
 
 def add_reminder(
     chat_id: int,
@@ -1745,14 +1847,14 @@ def _parse_in_expression(tokens: List[str], now: datetime) -> Optional[datetime]
     return None
 
 
-def _parse_today_tomorrow(expr: str, now: datetime) -> Optional[datetime]:
+def _parse_today_tomorrow(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
     s = expr.lower().strip()
     # today / сегодня
     for key, days in (("today", 0), ("сегодня", 0)):
         if s.startswith(key):
             rest = s[len(key):].strip()
             tokens = rest.split() if rest else []
-            tokens, hour, minute = _extract_time_from_tokens(tokens)
+            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
             base = now.astimezone(TZ).date() + timedelta(days=days)
             return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     # tomorrow / завтра
@@ -1760,20 +1862,20 @@ def _parse_today_tomorrow(expr: str, now: datetime) -> Optional[datetime]:
         if s.startswith(key):
             rest = s[len(key):].strip()
             tokens = rest.split() if rest else []
-            tokens, hour, minute = _extract_time_from_tokens(tokens)
+            tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
             base = now.astimezone(TZ).date() + timedelta(days=days)
             return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     # day after tomorrow / послезавтра
     if s.startswith("day after tomorrow"):
         rest = s[len("day after tomorrow"):].strip()
         tokens = rest.split() if rest else []
-        tokens, hour, minute = _extract_time_from_tokens(tokens)
+        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
         base = now.astimezone(TZ).date() + timedelta(days=2)
         return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     if s.startswith("послезавтра"):
         rest = s[len("послезавтра"):].strip()
         tokens = rest.split() if rest else []
-        tokens, hour, minute = _extract_time_from_tokens(tokens)
+        tokens, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
         base = now.astimezone(TZ).date() + timedelta(days=2)
         return datetime(base.year, base.month, base.day, hour, minute, tzinfo=TZ)
     return None
@@ -1855,7 +1957,7 @@ def _normalize_on_at_phrase(expr_lower: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
+def _parse_next_expression(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
     s = expr.lower().strip()
     tokens = s.split()
     if not tokens:
@@ -1914,14 +2016,14 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
             pass
 
         rest_tokens = tokens[start_idx + 1 :]
-        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
+        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, 11, 0))
         target_date = base + timedelta(days=days_until_next_monday)
         return datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=TZ)
 
     # next month / следующий месяц
     if mode in {"next", "this"} and second in {"month", "месяц", "месяца"}:
         rest_tokens = tokens[start_idx + 1 :]
-        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
+        rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, 11, 0))
         year = local.year
         month = local.month + 1 if mode == "next" else local.month
 
@@ -1956,7 +2058,7 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     else:
         return None
 
-    rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens)
+    rest_tokens, hour, minute = _extract_time_from_tokens(rest_tokens, *_default_time_or(default_time, 11, 0))
 
     base_date = local.date()
     cur_wd = base_date.weekday()
@@ -1976,7 +2078,7 @@ def _parse_next_expression(expr: str, now: datetime) -> Optional[datetime]:
     return candidate
 
 
-def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
+def _parse_weekend_weekday(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
     s = expr.lower().strip()
     tokens = s.split()
     if not tokens:
@@ -1984,7 +2086,7 @@ def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
 
     local = now.astimezone(TZ)
 
-    tokens_no_time, hour, minute = _extract_time_from_tokens(tokens)
+    tokens_no_time, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, 11, 0))
     if not tokens_no_time:
         return None
 
@@ -2017,7 +2119,7 @@ def _parse_weekend_weekday(expr: str, now: datetime) -> Optional[datetime]:
                 return candidate
     return None
 
-def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
+def _parse_month_name_date(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
     """
     Понимает:
     - on January 25
@@ -2042,8 +2144,7 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
     # Примеры:
     #   january 25 at 20:30
     #   january 25 20:30
-    hour = 10
-    minute = 0
+    hour, minute = _default_time_or(default_time, 10, 0)
 
     def _try_parse_time_token(tok: str) -> Optional[Tuple[int, int]]:
         m_time = re.fullmatch(r"(?P<h>\d{1,2})[:.](?P<m>\d{2})", tok)
@@ -2106,7 +2207,7 @@ def _parse_month_name_date(expr: str, now: datetime) -> Optional[datetime]:
     return dt
 
 
-def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
+def _parse_absolute(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
     s = expr.strip()
     local = now.astimezone(TZ)
 
@@ -2145,7 +2246,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
                 year += 2000
 
         try:
-            dt = datetime(year, month, day, 10, 0, tzinfo=TZ)
+            dt = datetime(year, month, day, *_default_time_or(default_time, 10, 0), tzinfo=TZ)
         except ValueError as e:
             raise ValueError(f"Неверная дата или время: {e}") from e
 
@@ -2172,8 +2273,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             hour = int(m.group("hour"))
             minute = int(m.group("minute"))
         else:
-            hour = 10
-            minute = 0
+            hour, minute = _default_time_or(default_time, 10, 0)
 
         year = local.year
         try:
@@ -2222,8 +2322,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             hour = int(m_name_dm.group("hour"))
             minute = int(m_name_dm.group("minute"))
         else:
-            hour = 10
-            minute = 0
+            hour, minute = _default_time_or(default_time, 10, 0)
 
         year = local.year
         try:
@@ -2258,8 +2357,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
             hour = int(m_name_md.group("hour"))
             minute = int(m_name_md.group("minute"))
         else:
-            hour = 10
-            minute = 0
+            hour, minute = _default_time_or(default_time, 10, 0)
 
         year = local.year
         try:
@@ -2279,7 +2377,7 @@ def _parse_absolute(expr: str, now: datetime) -> Optional[datetime]:
 
     return None
 
-def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
+def parse_date_time_smart(s: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Tuple[datetime, str]:
     """
     Пытаемся понять:
     - DD.MM HH:MM - текст
@@ -2314,23 +2412,23 @@ def parse_date_time_smart(s: str, now: datetime) -> Tuple[datetime, str]:
     if dt is not None:
         return dt, text
 
-    dt = _parse_today_tomorrow(expr_lower, now)
+    dt = _parse_today_tomorrow(expr_lower, now, default_time=default_time)
     if dt is not None:
         return dt, text
 
-    dt = _parse_next_expression(expr_lower, now)
+    dt = _parse_next_expression(expr_lower, now, default_time=default_time)
     if dt is not None:
         return dt, text
 
-    dt = _parse_weekend_weekday(expr_lower, now)
+    dt = _parse_weekend_weekday(expr_lower, now, default_time=default_time)
     if dt is not None:
         return dt, text
 
-    dt = _parse_month_name_date(expr_lower, now)
+    dt = _parse_month_name_date(expr_lower, now, default_time=default_time)
     if dt is not None:
         return dt, text
 
-    dt = _parse_absolute(expr_lower, now)
+    dt = _parse_absolute(expr_lower, now, default_time=default_time)
     if dt is not None:
         return dt, text
 
@@ -2513,7 +2611,7 @@ def compute_next_occurrence(
     return None
 
 
-def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
+def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
     """
     Разбираем строки вида:
     - every monday 10:00 - текст
@@ -2543,8 +2641,7 @@ def parse_recurring(raw: str, now: datetime) -> Tuple[datetime, str, str, Dict[s
 
     tokens_no_time, hour, minute = _extract_time_from_tokens(
         tokens,
-        default_hour=10,
-        default_minute=0,
+        *_default_time_or(default_time, 10, 0),
     )
     if not tokens_no_time:
         raise ValueError("Не понял повторяющийся формат")
@@ -4142,14 +4239,31 @@ def _create_single_reminder_from_line(
     now,
     target_chat_id: int,
     user,
+    default_time: Optional[Tuple[int, int]] = None,
 ):
     """
     Создает одно напоминание (oneoff или recurring) из строки.
     Бросает исключение при ошибке.
     """
 
+    def parse_date_time_smart_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str]:
+        try:
+            return parse_date_time_smart(raw, current_now, default_time=default_time)
+        except TypeError as e:
+            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
+                raise
+            return parse_date_time_smart(raw, current_now)
+
+    def parse_recurring_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
+        try:
+            return parse_recurring(raw, current_now, default_time=default_time)
+        except TypeError as e:
+            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
+                raise
+            return parse_recurring(raw, current_now)
+
     if looks_like_recurring(line):
-        first_dt, text, pattern_type, payload, hour, minute = parse_recurring(line, now)
+        first_dt, text, pattern_type, payload, hour, minute = parse_recurring_with_default(line, now)
 
         tpl_id = create_recurring_template(
             chat_id=target_chat_id,
@@ -4178,7 +4292,7 @@ def _create_single_reminder_from_line(
             text,
         )
     else:
-        remind_at, text = parse_date_time_smart(line, now)
+        remind_at, text = parse_date_time_smart_with_default(line, now)
 
         reminder_id = add_reminder(
             chat_id=target_chat_id,
@@ -5221,6 +5335,58 @@ def set_chat_alias_for_user(alias: str, chat_id: int, title: Optional[str], crea
         except TypeError:
             raise original_error
 
+async def defaulttime_command(update: Update, context: CTX) -> None:
+    message = update.effective_message
+    user = update.effective_user
+
+    if message is None or user is None:
+        return
+
+    args = list(context.args or [])
+
+    if not args:
+        current = get_user_default_time(user.id)
+        if current is None:
+            await safe_reply(
+                message,
+                "Время по умолчанию не задано. Сейчас бот использует системное поведение.\n\n"
+                "Поставить: /defaulttime 09:30\n"
+                "Сбросить: /defaulttime reset"
+            )
+            return
+
+        await safe_reply(
+            message,
+            f"Текущее время по умолчанию: {format_default_time_value(*current)}\n\n"
+            "Изменить: /defaulttime 09:30\n"
+            "Сбросить: /defaulttime reset"
+        )
+        return
+
+    value = args[0].strip().lower()
+
+    if value in {"reset", "default", "off", "сброс", "сбросить"}:
+        clear_user_default_time(user.id)
+        await safe_reply(message, "Ок, сбросил время по умолчанию.")
+        return
+
+    try:
+        hour, minute = parse_default_time_value(value)
+    except ValueError:
+        await safe_reply(
+            message,
+            "Не понял время. Формат: /defaulttime 09:30"
+        )
+        return
+
+    set_user_default_time(user.id, hour, minute)
+    await safe_reply(
+        message,
+        f"Ок, время по умолчанию: {format_default_time_value(hour, minute)}."
+    )
+
+
+
 async def remind_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -5230,6 +5396,23 @@ async def remind_command(update: Update, context: CTX) -> None:
         return
 
     now = get_now()
+    default_time = get_user_default_time(user.id)
+
+    def parse_date_time_smart_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str]:
+        try:
+            return parse_date_time_smart(raw, current_now, default_time=default_time)
+        except TypeError as e:
+            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
+                raise
+            return parse_date_time_smart(raw, current_now)
+
+    def parse_recurring_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
+        try:
+            return parse_recurring(raw, current_now, default_time=default_time)
+        except TypeError as e:
+            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
+                raise
+            return parse_recurring(raw, current_now)
 
     raw_text = message.text or ""
 
@@ -5481,7 +5664,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                                 return
                         elif raw_args_without_first_token and "\n" not in raw_args:
                             try:
-                                parse_date_time_smart(raw_args_without_first_token, now)
+                                parse_date_time_smart_with_default(raw_args_without_first_token, now)
                             except Exception:
                                 pass
                             else:
@@ -5598,7 +5781,7 @@ async def remind_command(update: Update, context: CTX) -> None:
     # Сначала пробуем как recurring
     if looks_like_recurring(raw_single):
         try:
-            first_dt, text, pattern_type, payload, hour, minute = parse_recurring(raw_single, now)
+            first_dt, text, pattern_type, payload, hour, minute = parse_recurring_with_default(raw_single, now)
         except ValueError as e:
             logger.info(
                 "REMIND recurring parse failed user=%s chat=%s raw=%r error=%s",
@@ -5664,7 +5847,7 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     # Обычное разовое напоминание
     try:
-        remind_at, text = parse_date_time_smart(raw_single, now)
+        remind_at, text = parse_date_time_smart_with_default(raw_single, now)
     except ValueError as e:
         original_error = e
         normalized_single = None
@@ -5697,7 +5880,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if normalized_single.startswith("/remind"):
                     normalized_single = normalized_single[len("/remind"):].strip()
 
-                remind_at, text = parse_date_time_smart(normalized_single, now)
+                remind_at, text = parse_date_time_smart_with_default(normalized_single, now)
             else:
                 raise original_error
         except Exception as fallback_error:
@@ -6064,7 +6247,7 @@ async def list_command(update: Update, context: CTX) -> None:
 
     await safe_reply(message, reply, reply_markup=keyboard)
 
-def compute_snooze_target_time(action: str, now: datetime) -> datetime:
+def compute_snooze_target_time(action: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> datetime:
     now = now.astimezone(TZ)
 
     if action == "20m":
@@ -6075,7 +6258,7 @@ def compute_snooze_target_time(action: str, now: datetime) -> datetime:
         return now + timedelta(hours=3)
     if action == "tomorrow":
         base = (now + timedelta(days=1)).date()
-        return datetime(base.year, base.month, base.day, 10, 0, tzinfo=TZ)
+        return datetime(base.year, base.month, base.day, *_default_time_or(default_time, 10, 0), tzinfo=TZ)
     if action == "nextmon":
         base = now.date()
         cur_wd = base.weekday()
@@ -6201,7 +6384,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
                 return
 
             try:
-                new_dt = compute_snooze_target_time(action, get_now())
+                new_dt = compute_snooze_target_time(action, get_now(), default_time=get_user_default_time(getattr(getattr(query, 'from_user', None), 'id', None)))
             except ValueError:
                 await query.answer(MSG_RESCHEDULE_UNKNOWN_ACTION, show_alert=True)
                 return
@@ -7219,7 +7402,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 return
             else:
                 try:
-                    new_dt = compute_snooze_target_time(action, get_now())
+                    new_dt = compute_snooze_target_time(action, get_now(), default_time=get_user_default_time(getattr(getattr(query, 'from_user', None), 'id', None)))
                 except ValueError:
                     await query.answer(MSG_RESCHEDULE_UNKNOWN_ACTION, show_alert=True)
                     return
@@ -7651,6 +7834,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("defaulttime", defaulttime_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("linkuser", linkuser_command))
     application.add_handler(CommandHandler("aliases", aliases_command))

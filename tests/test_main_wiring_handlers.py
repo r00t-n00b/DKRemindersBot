@@ -75,6 +75,7 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
     assert {
         "start",
         "help",
+        "defaulttime",
         "linkchat",
         "linkuser",
         "aliases",
