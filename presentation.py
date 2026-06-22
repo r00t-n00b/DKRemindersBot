@@ -181,3 +181,23 @@ def format_restored_series_text(series_text: str, suffix: str, count: int) -> st
 def format_restored_single_text(restored_prefix: str, restored_text: str) -> str:
     return f"{restored_prefix}: {restored_text}"
 
+def format_created_recurring_reminder_text(
+    when_str: str,
+    reminder_text: str,
+    recurring_human: Optional[str],
+    chat_alias: Optional[str] = None,
+) -> str:
+    freq_part = f"\nПовтор: {recurring_human}" if recurring_human else ""
+    if chat_alias:
+        return (
+            f"Ок, создал повторяющееся напоминание в чате '{chat_alias}'.\n"
+            f"Первое напоминание будет {when_str}: {reminder_text}"
+            f"{freq_part}"
+        )
+
+    return (
+        "Ок, создал повторяющееся напоминание.\n"
+        f"Первое напоминание будет {when_str}: {reminder_text}"
+        f"{freq_part}"
+    )
+

@@ -144,6 +144,7 @@ from presentation import (
     build_active_reminders_list_response,
     format_completed_reminder_text,
     format_created_reminder_text,
+    format_created_recurring_reminder_text,
     format_deleted_human,
     format_deleted_snapshot_text,
     format_recurring_human,
@@ -5511,25 +5512,18 @@ async def remind_command(update: Update, context: CTX) -> None:
         when_str = first_dt.strftime("%d.%m %H:%M")
 
         human = format_recurring_human(pattern_type, payload)
-        freq_part = f"\nПовтор: {human}" if human else ""
 
         created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id, is_recurring=True)
-        if used_alias:
-            await safe_reply(
-                message,
-                f"Ок, создал повторяющееся напоминание в чате '{used_alias}'.\n"
-                f"Первое напоминание будет {when_str}: {text}"
-                f"{freq_part}",
-                reply_markup=created_actions_keyboard,
-            )
-        else:
-            await safe_reply(
-                message,
-                f"Ок, создал повторяющееся напоминание.\n"
-                f"Первое напоминание будет {when_str}: {text}"
-                f"{freq_part}",
-                reply_markup=created_actions_keyboard,
-            )
+        await safe_reply(
+            message,
+            format_created_recurring_reminder_text(
+                when_str,
+                text,
+                human,
+                chat_alias=used_alias,
+            ),
+            reply_markup=created_actions_keyboard,
+        )
         return
 
     # Обычное разовое напоминание
