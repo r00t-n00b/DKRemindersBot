@@ -3056,6 +3056,12 @@ def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool
     except TypeError:
         return None
 
+def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+    reminder = get_reminder(reminder_id)
+    is_recurring = bool(getattr(reminder, "template_id", None)) if reminder else False
+    return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
+
+
 def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     try:
         buttons: List[List[InlineKeyboardButton]] = [
@@ -6186,7 +6192,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
             when_str = new_dt.strftime("%d.%m %H:%M")
             await query.edit_message_text(
                 f"Перенёс напоминание на {when_str}: {r.text}",
-                reply_markup=build_created_reminder_actions_keyboard(rid, is_recurring=bool(r.template_id)),
+                reply_markup=build_created_reminder_actions_keyboard_for_reminder(rid),
             )
             await query.answer(f"Перенесено на {when_str}")
             return
@@ -6263,7 +6269,7 @@ async def created_snooze_callback(update: Update, context: CTX) -> None:
             when_str = new_dt.strftime("%d.%m %H:%M")
             await query.edit_message_text(
                 f"Перенёс напоминание на {when_str}: {r.text}",
-                reply_markup=build_created_reminder_actions_keyboard(rid, is_recurring=bool(r.template_id)),
+                reply_markup=build_created_reminder_actions_keyboard_for_reminder(rid),
             )
             await query.answer(f"Перенесено на {when_str}")
             return
@@ -6325,14 +6331,8 @@ async def created_back_callback(update: Update, context: CTX) -> None:
         await query.edit_message_reply_markup(reply_markup=None)
         return
 
-    reminder = get_reminder(reminder_id)
-    is_recurring = bool(getattr(reminder, "template_id", None)) if reminder else False
-
     await query.edit_message_reply_markup(
-        reply_markup=build_created_reminder_actions_keyboard(
-            reminder_id,
-            is_recurring=is_recurring,
-        )
+        reply_markup=build_created_reminder_actions_keyboard_for_reminder(reminder_id)
     )
 
 
@@ -6660,10 +6660,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
 
         reply_markup = None
         if restored_id is not None:
-            reply_markup = build_created_reminder_actions_keyboard(
-                restored_id,
-                is_recurring=True,
-            )
+            reply_markup = build_created_reminder_actions_keyboard_for_reminder(restored_id)
 
         await query.edit_message_text(
             f"Вернул серию: {series_text}{suffix} (инстансов: {count})",
@@ -6687,10 +6684,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
 
     reply_markup = None
     if restored_id is not None:
-        reply_markup = build_created_reminder_actions_keyboard(
-            restored_id,
-            is_recurring=bool(tpl),
-        )
+        reply_markup = build_created_reminder_actions_keyboard_for_reminder(restored_id)
 
     if tpl:
         restored_prefix = "Вернул ближайшее повторяющееся напоминание"

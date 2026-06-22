@@ -59,14 +59,14 @@ def test_undo_callback_restores_single_reply(main_module, monkeypatch):
     )
     keyboard_calls = []
 
-    def fake_created_actions_keyboard(reminder_id, *, is_recurring=False):
-        keyboard_calls.append((reminder_id, is_recurring))
+    def fake_created_actions_keyboard_for_reminder(reminder_id):
+        keyboard_calls.append(reminder_id)
         return keyboard
 
     monkeypatch.setattr(
         main_module,
-        "build_created_reminder_actions_keyboard",
-        fake_created_actions_keyboard,
+        "build_created_reminder_actions_keyboard_for_reminder",
+        fake_created_actions_keyboard_for_reminder,
     )
 
     cbq = SimpleNamespace(
@@ -83,7 +83,7 @@ def test_undo_callback_restores_single_reply(main_module, monkeypatch):
     assert edited["text"].startswith("Вернул: ")
     keyboard = edited["kwargs"]["reply_markup"]
     assert keyboard is not None
-    assert keyboard_calls == [(77, False)]
+    assert keyboard_calls == [77]
     assert keyboard.inline_keyboard[0][0].callback_data == "created_del:77"
     assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:77"
     assert ctx.user_data["undo_tokens"] == {}
@@ -120,14 +120,14 @@ def test_undo_callback_restores_series_reply(main_module, monkeypatch):
     )
     keyboard_calls = []
 
-    def fake_created_actions_keyboard(reminder_id, *, is_recurring=False):
-        keyboard_calls.append((reminder_id, is_recurring))
+    def fake_created_actions_keyboard_for_reminder(reminder_id):
+        keyboard_calls.append(reminder_id)
         return keyboard
 
     monkeypatch.setattr(
         main_module,
-        "build_created_reminder_actions_keyboard",
-        fake_created_actions_keyboard,
+        "build_created_reminder_actions_keyboard_for_reminder",
+        fake_created_actions_keyboard_for_reminder,
     )
 
     cbq = SimpleNamespace(
@@ -143,5 +143,5 @@ def test_undo_callback_restores_series_reply(main_module, monkeypatch):
 
     assert edited["text"] == "Вернул серию: series  🔁 daily (инстансов: 2)"
     assert edited["kwargs"]["reply_markup"] is keyboard
-    assert keyboard_calls == [(1, True)]
+    assert keyboard_calls == [1]
     assert ctx.user_data["undo_tokens"] == {}
