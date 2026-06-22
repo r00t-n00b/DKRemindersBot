@@ -1,7 +1,9 @@
 """Pure presentation/formatting helpers for reminder UI."""
 
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
+from keyboards import build_list_delete_keyboard
 
 
 def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[str, Any]]) -> str:
@@ -77,3 +79,78 @@ def format_deleted_human(remind_at_iso: str, text: str, tpl_pattern_type: Option
     return f"{ts} - {text}{suffix}"
 
 # ===== Парсинг alias =====
+
+
+def _active_reminder_row_value(row: Any, key: str, index: int, default: Any = None) -> Any:
+    if isinstance(row, dict):
+        return row.get(key, default)
+
+    try:
+        return row[key]
+    except (KeyError, TypeError):
+        pass
+
+    try:
+        return row[index]
+    except (IndexError, TypeError):
+        return default
+
+
+def build_active_reminders_list_response(rows, header: str, now_local: Optional[datetime] = None, list_delete_keyboard_builder: Optional[Any] = None) -> Tuple[str, List[int], Optional[Any]]:
+    lines: List[str] = []
+    ids: List[int] = []
+    last_section: Optional[str] = None
+
+    now_local = now_local or datetime.now().astimezone()
+    today = now_local.date()
+    tomorrow = today + timedelta(days=1)
+
+    if not rows:
+        return "Активных напоминаний нет.", [], None
+
+    for idx, row in enumerate(rows, start=1):
+        rid = int(_active_reminder_row_value(row, "id", 0))
+        reminder_text = str(_active_reminder_row_value(row, "text", 1) or "")
+        remind_at_str = str(_active_reminder_row_value(row, "remind_at", 2) or "")
+        template_id = _active_reminder_row_value(row, "template_id", 3)
+        tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
+        tpl_payload_raw = _active_reminder_row_value(row, "payload", 5)
+
+        dt = datetime.fromisoformat(remind_at_str)
+
+        if dt.date() == today:
+            section = "Сегодня"
+            ts = dt.strftime("%H:%M")
+        elif dt.date() == tomorrow:
+            section = "Завтра"
+            ts = dt.strftime("%H:%M")
+        else:
+            section = "Позже"
+            ts = dt.strftime("%d.%m %H:%M")
+
+        if section != last_section:
+            if lines:
+                lines.append("")
+            lines.append(section)
+            last_section = section
+
+        suffix = ""
+        if template_id is not None:
+            tpl_payload: Dict[str, Any] = {}
+            if isinstance(tpl_payload_raw, dict):
+                tpl_payload = tpl_payload_raw
+            elif tpl_payload_raw:
+                try:
+                    tpl_payload = json.loads(tpl_payload_raw)
+                except Exception:
+                    tpl_payload = {}
+
+            human = format_recurring_human(tpl_pattern_type, tpl_payload)
+            suffix = f"  🔁 {human}" if human else "  🔁"
+
+        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}")
+        ids.append(rid)
+
+    reply = header + "\n\n" + "\n".join(lines)
+    keyboard_builder = list_delete_keyboard_builder or build_list_delete_keyboard
+    return reply, ids, keyboard_builder(len(ids))

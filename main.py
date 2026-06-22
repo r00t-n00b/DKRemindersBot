@@ -141,6 +141,7 @@ from callback_contracts import (
 
 import keyboards as keyboard_builders
 from presentation import (
+    build_active_reminders_list_response,
     format_deleted_human,
     format_recurring_human,
 )
@@ -5688,61 +5689,6 @@ def _active_reminder_row_value(row, key: str, index: int, default=None):
         return default
 
 
-def build_active_reminders_list_response(rows, header: str) -> Tuple[str, List[int], InlineKeyboardMarkup]:
-    lines: List[str] = []
-    ids: List[int] = []
-    last_section: Optional[str] = None
-
-    now_local = get_now()
-    today = now_local.date()
-    tomorrow = today + timedelta(days=1)
-
-    for idx, row in enumerate(rows, start=1):
-        rid = int(_active_reminder_row_value(row, "id", 0))
-        reminder_text = str(_active_reminder_row_value(row, "text", 1) or "")
-        remind_at_str = str(_active_reminder_row_value(row, "remind_at", 2) or "")
-        template_id = _active_reminder_row_value(row, "template_id", 3)
-        tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
-        tpl_payload_raw = _active_reminder_row_value(row, "payload", 5)
-
-        dt = datetime.fromisoformat(remind_at_str)
-
-        if dt.date() == today:
-            section = "Сегодня"
-            ts = dt.strftime("%H:%M")
-        elif dt.date() == tomorrow:
-            section = "Завтра"
-            ts = dt.strftime("%H:%M")
-        else:
-            section = "Позже"
-            ts = dt.strftime("%d.%m %H:%M")
-
-        if section != last_section:
-            if lines:
-                lines.append("")
-            lines.append(section)
-            last_section = section
-
-        suffix = ""
-        if template_id is not None:
-            tpl_payload: Dict[str, Any] = {}
-            if isinstance(tpl_payload_raw, dict):
-                tpl_payload = tpl_payload_raw
-            elif tpl_payload_raw:
-                try:
-                    tpl_payload = json.loads(tpl_payload_raw)
-                except Exception:
-                    tpl_payload = {}
-
-            human = format_recurring_human(tpl_pattern_type, tpl_payload)
-            suffix = f"  🔁 {human}" if human else "  🔁"
-
-        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}")
-        ids.append(rid)
-
-    reply = header + "\n\n" + "\n".join(lines)
-    return reply, ids, build_list_delete_keyboard(len(ids))
-
 async def list_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
     message = update.effective_message
@@ -5898,7 +5844,10 @@ async def list_command(update: Update, context: CTX) -> None:
         return
 
     header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"
-    reply, ids, keyboard = build_active_reminders_list_response(rows, header=header)
+    reply, ids, keyboard = build_active_reminders_list_response(rows, header=header       ,
+        now_local=get_now(),
+        list_delete_keyboard_builder=build_list_delete_keyboard,
+)
 
     context.user_data["list_ids"] = ids
     context.user_data["list_chat_id"] = target_chat_id
@@ -6242,7 +6191,9 @@ def _build_active_list_response_for_ids(ids):
     reply, rebuilt_ids, keyboard = build_active_reminders_list_response(
         rows,
         header="Активные напоминания:",
-    )
+        now_local=get_now(),
+        list_delete_keyboard_builder=build_list_delete_keyboard,
+)
     return reply, keyboard, rebuilt_ids
 
 
