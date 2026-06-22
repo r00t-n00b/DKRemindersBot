@@ -211,23 +211,10 @@ from self_remind_time import compute_self_remind_time
 from parser_lexicon import (
     VOICE_SPOKEN_NUMBER_REPLACEMENTS,
     VOICE_RU_MONTH_NORMALIZATION_MAP,
-    THIS_WORDS,
-    ORDINAL_RU_COMPOUND_TENS,
-    ORDINAL_RU,
-    NEXT_WORDS,
-    MONTH_RU,
-    INTERVAL_UNITS_RU,
-    INTERVAL_UNITS_EN,
     MONTH_EN,
     WEEKDAY_RU,
     WEEKDAY_EN,
-    RECURRING_DAILY_ALIASES,
-    RECURRING_FIRST_TOKENS,
-    RECURRING_HOURLY_ALIASES,
-    RECURRING_MONTHLY_ALIASES,
-    RECURRING_WEEKLY_ALIASES,
     is_recurring_missing_dash_candidate,
-    tokens_match_alias,
 )
 
 # ===== Модель данных =====

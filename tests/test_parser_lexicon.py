@@ -16,10 +16,34 @@ def test_simple_recurring_aliases_are_missing_dash_candidates():
     assert not lex.is_recurring_missing_dash_candidate("tomorrow smoke")
 
 
-def test_date_lexicon_is_shared_with_main(main_module):
+def test_main_keeps_only_runtime_needed_lexicon_exports(main_module):
     assert main_module.WEEKDAY_EN is lex.WEEKDAY_EN
     assert main_module.WEEKDAY_RU is lex.WEEKDAY_RU
     assert main_module.MONTH_EN is lex.MONTH_EN
+    assert main_module.VOICE_SPOKEN_NUMBER_REPLACEMENTS is lex.VOICE_SPOKEN_NUMBER_REPLACEMENTS
+    assert main_module.VOICE_RU_MONTH_NORMALIZATION_MAP is lex.VOICE_RU_MONTH_NORMALIZATION_MAP
+    assert main_module.is_recurring_missing_dash_candidate is lex.is_recurring_missing_dash_candidate
+
+
+def test_parser_only_lexicon_is_no_longer_reexported_from_main(main_module):
+    parser_only_names = [
+        "NEXT_WORDS",
+        "THIS_WORDS",
+        "ORDINAL_RU",
+        "ORDINAL_RU_COMPOUND_TENS",
+        "INTERVAL_UNITS_EN",
+        "INTERVAL_UNITS_RU",
+        "MONTH_RU",
+        "RECURRING_DAILY_ALIASES",
+        "RECURRING_FIRST_TOKENS",
+        "RECURRING_HOURLY_ALIASES",
+        "RECURRING_MONTHLY_ALIASES",
+        "RECURRING_WEEKLY_ALIASES",
+        "tokens_match_alias",
+    ]
+
+    for name in parser_only_names:
+        assert not hasattr(main_module, name)
 
 
 def test_date_lexicon_still_supports_existing_date_parsing(main_module, fixed_now):
@@ -43,19 +67,7 @@ def test_date_lexicon_still_supports_existing_date_parsing(main_module, fixed_no
     assert dt.minute == 30
 
 
-def test_remaining_lexicon_blocks_are_shared_with_main(main_module):
-    assert main_module.NEXT_WORDS is lex.NEXT_WORDS
-    assert main_module.THIS_WORDS is lex.THIS_WORDS
-    assert main_module.ORDINAL_RU is lex.ORDINAL_RU
-    assert main_module.ORDINAL_RU_COMPOUND_TENS is lex.ORDINAL_RU_COMPOUND_TENS
-    assert main_module.VOICE_SPOKEN_NUMBER_REPLACEMENTS is lex.VOICE_SPOKEN_NUMBER_REPLACEMENTS
-    assert main_module.VOICE_RU_MONTH_NORMALIZATION_MAP is lex.VOICE_RU_MONTH_NORMALIZATION_MAP
-    assert main_module.INTERVAL_UNITS_EN is lex.INTERVAL_UNITS_EN
-    assert main_module.INTERVAL_UNITS_RU is lex.INTERVAL_UNITS_RU
-    assert main_module.MONTH_RU is lex.MONTH_RU
-
-
-def test_remaining_lexicon_still_supports_existing_parser_behaviour(main_module, fixed_now):
+def test_parser_only_lexicon_still_supports_existing_parser_behaviour(main_module, fixed_now):
     dt, text = main_module.parse_date_time_smart("next monday 18:00 - next word", fixed_now)
     assert text == "next word"
     assert dt.weekday() == lex.WEEKDAY_EN["monday"]
