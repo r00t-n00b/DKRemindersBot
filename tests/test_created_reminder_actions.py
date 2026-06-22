@@ -141,8 +141,10 @@ def test_created_back_callback_restores_created_actions_keyboard(main_module, mo
     created_actions_keyboard = object()
     seen = []
 
-    def fake_build_created_reminder_actions_keyboard(rid):
-        seen.append(rid)
+    monkeypatch.setattr(m, "get_reminder", lambda rid: SimpleNamespace(template_id=None))
+
+    def fake_build_created_reminder_actions_keyboard(rid, is_recurring=False):
+        seen.append((rid, is_recurring))
         return created_actions_keyboard
 
     monkeypatch.setattr(m, "build_created_reminder_actions_keyboard", fake_build_created_reminder_actions_keyboard)
@@ -152,7 +154,30 @@ def test_created_back_callback_restores_created_actions_keyboard(main_module, mo
 
     asyncio.run(m.created_back_callback(update, SimpleNamespace()))
 
-    assert seen == [789]
+    assert seen == [(789, False)]
+    assert query.answers
+    assert query.edited_reply_markup is created_actions_keyboard
+
+
+def test_created_back_callback_restores_recurring_created_actions_keyboard(main_module, monkeypatch):
+    m = main_module
+    created_actions_keyboard = object()
+    seen = []
+
+    monkeypatch.setattr(m, "get_reminder", lambda rid: SimpleNamespace(template_id=999))
+
+    def fake_build_created_reminder_actions_keyboard(rid, is_recurring=False):
+        seen.append((rid, is_recurring))
+        return created_actions_keyboard
+
+    monkeypatch.setattr(m, "build_created_reminder_actions_keyboard", fake_build_created_reminder_actions_keyboard)
+
+    query = FakeQuery("created_back:789")
+    update = SimpleNamespace(callback_query=query)
+
+    asyncio.run(m.created_back_callback(update, SimpleNamespace()))
+
+    assert seen == [(789, True)]
     assert query.answers
     assert query.edited_reply_markup is created_actions_keyboard
 

@@ -6325,7 +6325,15 @@ async def created_back_callback(update: Update, context: CTX) -> None:
         await query.edit_message_reply_markup(reply_markup=None)
         return
 
-    await query.edit_message_reply_markup(reply_markup=build_created_reminder_actions_keyboard(reminder_id))
+    reminder = get_reminder(reminder_id)
+    is_recurring = bool(getattr(reminder, "template_id", None)) if reminder else False
+
+    await query.edit_message_reply_markup(
+        reply_markup=build_created_reminder_actions_keyboard(
+            reminder_id,
+            is_recurring=is_recurring,
+        )
+    )
 
 
 
