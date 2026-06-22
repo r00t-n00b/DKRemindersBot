@@ -118,6 +118,25 @@ from callback_contracts import (
     SNOOZE_CUSTOM_PATTERN,
     SNOOZE_PATTERN,
     UNDO_PATTERN,
+    cb_created_complete,
+    cb_created_delete,
+    cb_created_snooze,
+    cb_created_snooze_custom,
+    cb_del,
+    cb_del_cancel,
+    cb_del_one,
+    cb_del_series,
+    cb_done,
+    cb_selfremind_ask,
+    cb_selfremind_back,
+    cb_selfremind_cancel_personal,
+    cb_selfremind_event_before,
+    cb_selfremind_event_custom,
+    cb_selfremind_mode,
+    cb_selfremind_set,
+    cb_snooze,
+    cb_snooze_custom,
+    cb_undo,
 )
 
 def get_now() -> datetime:
@@ -3190,7 +3209,7 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
             ],
             [
                 InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"created_snooze:{reminder_id}:nextmon"),
-                InlineKeyboardButton("📝 Кастом", callback_data=f"created_snooze_custom:{reminder_id}"),
+                InlineKeyboardButton("📝 Кастом", callback_data=cb_created_snooze_custom(reminder_id)),
             ],
             [
                 InlineKeyboardButton("⬅️ Назад", callback_data=f"created_back:{reminder_id}"),
@@ -3216,7 +3235,7 @@ def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
                 InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
             ],
             [
-                InlineKeyboardButton("✅ Mark complete", callback_data=f"done:{reminder_id}"),
+                InlineKeyboardButton("✅ Mark complete", callback_data=cb_done(reminder_id)),
             ],
         ]
         return InlineKeyboardMarkup(buttons)
@@ -3230,7 +3249,7 @@ def build_group_reminder_keyboard(reminder_id: int) -> Optional[InlineKeyboardMa
             [
                 InlineKeyboardButton(
                     "Напомнить мне лично",
-                    callback_data=f"selfremind:ask:{reminder_id}",
+                    callback_data=cb_selfremind_ask(reminder_id),
                 ),
             ],
         ]
@@ -3245,19 +3264,19 @@ def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 "📅 Обычное напоминание",
-                callback_data=f"selfremind:mode:{reminder_id}:regular",
+                callback_data=cb_selfremind_mode(reminder_id, "regular"),
             ),
         ],
         [
             InlineKeyboardButton(
                 '⏰ Напоминание "до события"',
-                callback_data=f"selfremind:mode:{reminder_id}:event",
+                callback_data=cb_selfremind_mode(reminder_id, "event"),
             ),
         ],
         [
             InlineKeyboardButton(
                 "✅ Я передумал, напоминание не нужно",
-                callback_data=f"selfremind:cancel_personal:{reminder_id}",
+                callback_data=cb_selfremind_cancel_personal(reminder_id),
             ),
         ],
     ]
@@ -3266,19 +3285,19 @@ def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
 def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton("⏰ +20 минут", callback_data=f"selfremind:set:{reminder_id}:20m"),
-            InlineKeyboardButton("⏰ +1 час", callback_data=f"selfremind:set:{reminder_id}:1h"),
+            InlineKeyboardButton("⏰ +20 минут", callback_data=cb_selfremind_set(reminder_id, "20m")),
+            InlineKeyboardButton("⏰ +1 час", callback_data=cb_selfremind_set(reminder_id, "1h")),
         ],
         [
-            InlineKeyboardButton("⏰ +3 часа", callback_data=f"selfremind:set:{reminder_id}:3h"),
-            InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"selfremind:set:{reminder_id}:tomorrow11"),
+            InlineKeyboardButton("⏰ +3 часа", callback_data=cb_selfremind_set(reminder_id, "3h")),
+            InlineKeyboardButton("📅 Завтра (10:00)", callback_data=cb_selfremind_set(reminder_id, "tomorrow11")),
         ],
         [
-            InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"selfremind:set:{reminder_id}:nextmon"),
-            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:set:{reminder_id}:custom"),
+            InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=cb_selfremind_set(reminder_id, "nextmon")),
+            InlineKeyboardButton("📝 Кастом", callback_data=cb_selfremind_set(reminder_id, "custom")),
         ],
         [
-            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:back:{reminder_id}"),
+            InlineKeyboardButton("⬅️ Назад", callback_data=cb_selfremind_back(reminder_id)),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
@@ -3287,19 +3306,19 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
 def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
         [
-            InlineKeyboardButton("📅 За сутки", callback_data=f"selfremind:event_before:{reminder_id}:1d"),
-            InlineKeyboardButton("⏰ За 10 часов", callback_data=f"selfremind:event_before:{reminder_id}:10h"),
+            InlineKeyboardButton("📅 За сутки", callback_data=cb_selfremind_event_before(reminder_id, "1d")),
+            InlineKeyboardButton("⏰ За 10 часов", callback_data=cb_selfremind_event_before(reminder_id, "10h")),
         ],
         [
-            InlineKeyboardButton("⏰ За 3 часа", callback_data=f"selfremind:event_before:{reminder_id}:3h"),
-            InlineKeyboardButton("⏰ За 1 час", callback_data=f"selfremind:event_before:{reminder_id}:1h"),
+            InlineKeyboardButton("⏰ За 3 часа", callback_data=cb_selfremind_event_before(reminder_id, "3h")),
+            InlineKeyboardButton("⏰ За 1 час", callback_data=cb_selfremind_event_before(reminder_id, "1h")),
         ],
         [
-            InlineKeyboardButton("⏰ За 20 минут", callback_data=f"selfremind:event_before:{reminder_id}:20m"),
-            InlineKeyboardButton("📝 Кастом", callback_data=f"selfremind:event_custom:{reminder_id}"),
+            InlineKeyboardButton("⏰ За 20 минут", callback_data=cb_selfremind_event_before(reminder_id, "20m")),
+            InlineKeyboardButton("📝 Кастом", callback_data=cb_selfremind_event_custom(reminder_id)),
         ],
         [
-            InlineKeyboardButton("⬅️ Назад", callback_data=f"selfremind:back:{reminder_id}"),
+            InlineKeyboardButton("⬅️ Назад", callback_data=cb_selfremind_back(reminder_id)),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
@@ -6223,9 +6242,9 @@ def compute_snooze_target_time(action: str, now: datetime, default_time: Optiona
 def build_recurring_delete_choice_keyboard(reminder_id: int, template_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🗑 Удалить ближайшее", callback_data=f"del_one:{reminder_id}")],
+            [InlineKeyboardButton("🗑 Удалить ближайшее", callback_data=cb_del_one(reminder_id))],
             [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}")],
-            [InlineKeyboardButton("⬅️ Отмена", callback_data=f"del_cancel:{reminder_id}")],
+            [InlineKeyboardButton("⬅️ Отмена", callback_data=cb_del_cancel(reminder_id))],
         ]
     )
 
@@ -6277,7 +6296,7 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
     )
 
     undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=f"undo:{token}")]]
+        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=cb_undo(token))]]
     )
 
     await query.answer("Удалено")
@@ -6660,7 +6679,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
     context.user_data["undo_tokens"][token] = snapshot
 
     undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=f"undo:{token}")]]
+        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=cb_undo(token))]]
     )
 
     if query.message:
@@ -6782,7 +6801,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
     context.user_data["undo_tokens"][token] = snapshot
 
     undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(btn_text, callback_data=f"undo:{token}")]]
+        [[InlineKeyboardButton(btn_text, callback_data=cb_undo(token))]]
     )
 
     if query.message:

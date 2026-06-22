@@ -10,6 +10,7 @@ UNDO = "undo"
 DONE = "done"
 
 SNOOZE = "snooze"
+SNOOZE_CUSTOM = "snooze_custom"
 SNOOZE_CAL = "snooze_cal"
 SNOOZE_CALTODAY = "snooze_caltoday"
 SNOOZE_PASTDATE = "snooze_pastdate"
@@ -33,6 +34,111 @@ SELFREMIND = "selfremind"
 DELETE_ONE = "del_one"
 DELETE_SERIES = "del_series"
 DELETE_CANCEL = "del_cancel"
+
+
+
+def cb_noop() -> str:
+    return NOOP
+
+
+def cb_undo(token: str) -> str:
+    return f"{UNDO}:{token}"
+
+
+def cb_done(reminder_id: int) -> str:
+    return f"{DONE}:{reminder_id}"
+
+
+def cb_del(reminder_id: int) -> str:
+    return f"del:{reminder_id}"
+
+
+def cb_del_one(reminder_id: int) -> str:
+    return f"{DELETE_ONE}:{reminder_id}"
+
+
+def cb_del_series(template_id: int) -> str:
+    return f"{DELETE_SERIES}:{template_id}"
+
+
+def cb_del_cancel(reminder_id: int) -> str:
+    return f"{DELETE_CANCEL}:{reminder_id}"
+
+
+def cb_created_complete(reminder_id: int) -> str:
+    return f"{CREATED_COMPLETE}:{reminder_id}"
+
+
+def cb_created_delete(reminder_id: int) -> str:
+    return f"{CREATED_DELETE}:{reminder_id}"
+
+
+def cb_created_snooze(reminder_id: int, option: str) -> str:
+    return f"{CREATED_SNOOZE}:{reminder_id}:{option}"
+
+
+def cb_created_snooze_custom(reminder_id: int) -> str:
+    return f"{CREATED_SNOOZE_CUSTOM}:{reminder_id}"
+
+
+def cb_created_snooze_cal(reminder_id: int, year: int, month: int) -> str:
+    return f"{CREATED_SNOOZE_CAL}:{reminder_id}:{year:04d}-{month:02d}"
+
+
+def cb_created_snooze_caltoday(reminder_id: int) -> str:
+    return f"{CREATED_SNOOZE_CALTODAY}:{reminder_id}"
+
+
+def cb_created_snooze_pastdate(reminder_id: int, iso_date: str) -> str:
+    return f"{CREATED_SNOOZE_PASTDATE}:{reminder_id}:{iso_date}"
+
+
+def cb_created_snooze_pickdate(reminder_id: int, iso_date: str) -> str:
+    return f"{CREATED_SNOOZE_PICKDATE}:{reminder_id}:{iso_date}"
+
+
+def cb_created_snooze_picktime(reminder_id: int, iso_date: str, time_value: str) -> str:
+    return f"{CREATED_SNOOZE_PICKTIME}:{reminder_id}:{iso_date}:{time_value}"
+
+
+def cb_created_snooze_cancel(reminder_id: int) -> str:
+    return f"{CREATED_SNOOZE_CANCEL}:{reminder_id}"
+
+
+def cb_snooze(reminder_id: int, option: str) -> str:
+    return f"{SNOOZE}:{reminder_id}:{option}"
+
+
+def cb_snooze_custom(reminder_id: int) -> str:
+    return f"{SNOOZE_CUSTOM}:{reminder_id}"
+
+
+def cb_selfremind_ask(reminder_id: int) -> str:
+    return f"{SELFREMIND}:ask:{reminder_id}"
+
+
+def cb_selfremind_back(reminder_id: int) -> str:
+    return f"{SELFREMIND}:back:{reminder_id}"
+
+
+def cb_selfremind_cancel_personal(reminder_id: int) -> str:
+    return f"{SELFREMIND}:cancel_personal:{reminder_id}"
+
+
+def cb_selfremind_set(reminder_id: int, option: str) -> str:
+    return f"{SELFREMIND}:set:{reminder_id}:{option}"
+
+
+def cb_selfremind_mode(reminder_id: int, mode: str) -> str:
+    return f"{SELFREMIND}:mode:{reminder_id}:{mode}"
+
+
+def cb_selfremind_event_before(reminder_id: int, option: str) -> str:
+    return f"{SELFREMIND}:event_before:{reminder_id}:{option}"
+
+
+def cb_selfremind_event_custom(reminder_id: int) -> str:
+    return f"{SELFREMIND}:event_custom:{reminder_id}"
 
 
 # Regex contracts used by CallbackQueryHandler.
