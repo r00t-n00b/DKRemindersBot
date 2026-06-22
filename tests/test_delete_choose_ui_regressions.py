@@ -139,7 +139,7 @@ def test_delete_choose_del_one_empty_list_replaces_message_with_undo(main_module
     assert len(query.edits) == 1
 
     edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Удалил ближайший из серии: ")
+    assert edited_text.startswith("Удалил ближайшее повторяющееся напоминание: ")
     assert "old reminder" in edited_text
     assert "Напоминаний больше нет" not in edited_text
 
@@ -186,7 +186,7 @@ def test_delete_choose_del_one_from_list_updates_original_list_and_edits_choice_
     assert query.message.replies == []
     assert len(query.edits) == 1
     edited_text, kwargs = query.edits[0]
-    assert edited_text.startswith("Удалил ближайший из серии: ")
+    assert edited_text.startswith("Удалил ближайшее повторяющееся напоминание: ")
     assert "old reminder" in edited_text
 
     buttons = [button for row in kwargs["reply_markup"].keyboard for button in row]

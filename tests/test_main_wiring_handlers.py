@@ -88,7 +88,7 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
     assert m.plain_text_remind_command in message_callbacks
 
     assert r"^del:\d+$" in callback_patterns
-    assert r"^del_(one|series):" in callback_patterns
+    assert r"^del_(one|series|cancel):" in callback_patterns
     assert r"^undo:" in callback_patterns
     assert r"^created_del:\d+$" in callback_patterns
     assert r"^created_resched:\d+$" in callback_patterns

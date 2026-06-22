@@ -240,10 +240,12 @@ def test_created_delete_callback_for_recurring_shows_one_or_series_choice(main_m
     assert query.edited_reply_markup is not None
 
     keyboard = query.edited_reply_markup
-    assert keyboard.inline_keyboard[0][0].text == "🗑 Удалить только ближайший"
+    assert keyboard.inline_keyboard[0][0].text == "🗑 Удалить ближайшее"
     assert keyboard.inline_keyboard[0][0].callback_data == "del_one:456"
     assert keyboard.inline_keyboard[1][0].text == "🧨 Удалить всю серию"
     assert keyboard.inline_keyboard[1][0].callback_data == "del_series:999"
+    assert keyboard.inline_keyboard[2][0].text == "⬅️ Отмена"
+    assert keyboard.inline_keyboard[2][0].callback_data == "del_cancel:456"
 
 
 def test_created_reschedule_keyboard_uses_created_custom_callback(main_module, monkeypatch):
@@ -373,3 +375,36 @@ def test_undo_single_restores_created_actions_keyboard(main_module, monkeypatch)
     keyboard = query.edited_text_kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "created_del:999"
     assert keyboard.inline_keyboard[0][1].callback_data == "created_resched:999"
+
+def test_recurring_delete_choice_cancel_from_created_restores_created_actions(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    query = FakeQuery("del_cancel:456")
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(user_data={"delete_choice_source": "created"})
+
+    asyncio.run(m.delete_choose_callback(update, context))
+
+    assert context.user_data.get("delete_choice_source") is None
+    assert query.edited_reply_markup is not None
+    assert query.edited_reply_markup.inline_keyboard[0][0].text == "❌ Удалить ближайшее/серию"
+    assert query.edited_reply_markup.inline_keyboard[0][0].callback_data == "created_del:456"
+    assert query.edited_reply_markup.inline_keyboard[0][1].text == "⏰ Перенести ближайшее"
+    assert query.edited_reply_markup.inline_keyboard[0][1].callback_data == "created_resched:456"
+
+
+def test_recurring_delete_choice_cancel_from_list_closes_choice_message(main_module, monkeypatch):
+    m = main_module
+    _patch_keyboard_classes(m, monkeypatch)
+
+    query = FakeQuery("del_cancel:456")
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(user_data={"delete_choice_source": "list"})
+
+    asyncio.run(m.delete_choose_callback(update, context))
+
+    assert context.user_data.get("delete_choice_source") is None
+    assert query.edited_text == "Ок, ничего не удалил."
+    assert query.edited_text_kwargs["reply_markup"] is None
+

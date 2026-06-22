@@ -107,7 +107,7 @@ def test_delete_choose_del_one_calls_recurring_delete(main_module, fixed_now, mo
     assert q.message.edits, "Ожидали edit_message_text с undo"
 
     edited_text, reply_markup = q.message.edits[-1]
-    assert edited_text.startswith("Удалил ближайший из серии: ")
+    assert edited_text.startswith("Удалил ближайшее повторяющееся напоминание: ")
     assert "series" in edited_text
     assert reply_markup is not None
 

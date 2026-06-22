@@ -41,3 +41,14 @@ def test_created_actions_keyboard_for_recurring_reminder_explains_delete_choice(
 
     assert ("❌ Удалить ближайшее/серию", "created_del:456") in buttons
     assert ("⏰ Перенести ближайшее", "created_resched:456") in buttons
+
+
+def test_recurring_delete_choice_keyboard_has_one_series_and_cancel(main_module, monkeypatch):
+    _patch_keyboard_classes(main_module, monkeypatch)
+
+    keyboard = main_module.build_recurring_delete_choice_keyboard(456, 999)
+    buttons = _button_texts_and_callbacks(keyboard)
+
+    assert ("🗑 Удалить ближайшее", "del_one:456") in buttons
+    assert ("🧨 Удалить всю серию", "del_series:999") in buttons
+    assert ("⬅️ Отмена", "del_cancel:456") in buttons

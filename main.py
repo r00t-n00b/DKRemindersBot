@@ -6079,6 +6079,16 @@ def compute_snooze_target_time(action: str, now: datetime) -> datetime:
 
     raise ValueError(f"Unknown snooze action: {action}")
 
+def build_recurring_delete_choice_keyboard(reminder_id: int, template_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🗑 Удалить ближайшее", callback_data=f"del_one:{reminder_id}")],
+            [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}")],
+            [InlineKeyboardButton("⬅️ Отмена", callback_data=f"del_cancel:{reminder_id}")],
+        ]
+    )
+
+
 async def created_delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
 
@@ -6097,12 +6107,7 @@ async def created_delete_callback(update: Update, context: CTX) -> None:
 
     template_id = row["template_id"] if "template_id" in row.keys() else None
     if template_id is not None:
-        keyboard = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("🗑 Удалить только ближайший", callback_data=f"del_one:{reminder_id}")],
-                [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}")],
-            ]
-        )
+        keyboard = build_recurring_delete_choice_keyboard(reminder_id, int(template_id))
         context.user_data["delete_choice_source"] = "created"
 
         await query.answer()
@@ -6425,12 +6430,7 @@ async def delete_callback(update: Update, context: CTX) -> None:
         suffix = f"  🔁 {human}" if human else "  🔁"
         preview = f"{ts} - {title}{suffix}"
 
-        kb = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("🗑 Удалить только ближайший", callback_data=f"del_one:{rid}")],
-                [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(tpl_id)}")],
-            ]
-        )
+        kb = build_recurring_delete_choice_keyboard(rid, int(tpl_id))
 
         context.user_data["delete_choice_source"] = "list"
         if query.message:
@@ -6489,7 +6489,22 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
     await query.answer()
 
     data = query.data or ""
-    if not (data.startswith("del_one:") or data.startswith("del_series:")):
+    if not (data.startswith("del_one:") or data.startswith("del_series:") or data.startswith("del_cancel:")):
+        return
+
+    if data.startswith("del_cancel:"):
+        try:
+            rid = int(data.split(":", 1)[1])
+        except ValueError:
+            return
+
+        source = context.user_data.pop("delete_choice_source", None)
+        if source == "created":
+            await query.edit_message_reply_markup(
+                reply_markup=build_created_reminder_actions_keyboard(rid, is_recurring=True)
+            )
+        else:
+            await query.edit_message_text("Ок, ничего не удалил.", reply_markup=None)
         return
 
     # Чат, для которого показывается список (может быть НЕ равен query.message.chat.id в личке)
@@ -6521,7 +6536,7 @@ async def delete_choose_callback(update: Update, context: CTX) -> None:
         ids = [x for x in ids if int(x) != int(rid)]
         context.user_data["list_ids"] = ids
 
-        deleted_label = "Удалил ближайший из серии"
+        deleted_label = "Удалил ближайшее повторяющееся напоминание"
 
     elif data.startswith("del_series:"):
         try:
@@ -7600,7 +7615,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(created_snooze_cancel_callback, pattern=r"^created_snooze_cancel:\d+$"))
     application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-    application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series):"))
+    application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series|cancel):"))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
     application.add_handler(
         CallbackQueryHandler(
