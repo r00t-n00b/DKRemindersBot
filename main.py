@@ -104,6 +104,22 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+from callback_contracts import (
+    CREATED_COMPLETE_PATTERN,
+    CREATED_DELETE_PATTERN,
+    CREATED_SNOOZE_CUSTOM_PATTERN,
+    CREATED_SNOOZE_PATTERN,
+    DELETE_CHOICE_PATTERN,
+    DONE_PATTERN,
+    NOOP_PATTERN,
+    SELFREMIND_EVENT_CUSTOM_PATTERN,
+    SELFREMIND_PATTERN,
+    SNOOZE_CALENDAR_PATTERN,
+    SNOOZE_CUSTOM_PATTERN,
+    SNOOZE_PATTERN,
+    UNDO_PATTERN,
+)
+
 def get_now() -> datetime:
     return datetime.now(TZ)
 
@@ -7742,16 +7758,7 @@ def exhaust_nudges(reminder_id: int) -> None:
 # ===== main =====
 
 def build_snooze_callback_pattern() -> str:
-    return (
-        r"^(selfremind:ask:|selfremind:back:|selfremind:cancel_personal:|selfremind:set:|selfremind:mode:|selfremind:event_before:"
-        r"|selfremind:event_custom:|selfremind_cal:|selfremind_caltoday:|selfremind_pastdate:"
-        r"|selfremind_pickdate:|selfremind_picktime:|selfremind_cancel:|selfremind_event_cal:"
-        r"|selfremind_event_caltoday:|selfremind_event_pastdate:|selfremind_event_pickdate:"
-        r"|selfremind_event_picktime:|selfremind_event_cancel:"
-        r"|snooze:|snooze_cal:|snooze_caltoday:|snooze_pastdate:|snooze_pickdate:"
-        r"|snooze_picktime:|snooze_cancel:|noop|done:)"
-    )
-
+    return SNOOZE_PATTERN
 
 def main() -> None:
     bot_token = os.environ.get("BOT_TOKEN")
@@ -7780,13 +7787,13 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
-    application.add_handler(CallbackQueryHandler(created_snooze_custom_callback, pattern=r"^created_snooze_custom:\d+$"))
-    application.add_handler(CallbackQueryHandler(created_snooze_callback, pattern=r"^created_snooze(:|_cal:|_caltoday:|_pastdate:|_pickdate:|_picktime:|_cancel:)"))
+    application.add_handler(CallbackQueryHandler(created_snooze_custom_callback, pattern=CREATED_SNOOZE_CUSTOM_PATTERN))
+    application.add_handler(CallbackQueryHandler(created_snooze_callback, pattern=CREATED_SNOOZE_PATTERN))
     application.add_handler(CallbackQueryHandler(created_snooze_cancel_callback, pattern=r"^created_snooze_cancel:\d+$"))
     application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
-    application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=r"^del_(one|series|cancel):"))
-    application.add_handler(CallbackQueryHandler(undo_callback, pattern=r"^undo:"))
+    application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=DELETE_CHOICE_PATTERN))
+    application.add_handler(CallbackQueryHandler(undo_callback, pattern=UNDO_PATTERN))
     application.add_handler(
         CallbackQueryHandler(
             snooze_callback,
