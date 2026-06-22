@@ -57,7 +57,7 @@ def test_custom_date_keyboard_generates_snooze_callbacks(main_module, monkeypatc
 
     callbacks = set(_callback_data(markup))
 
-    assert "snooze_pickdate:7:2026-06-22" in callbacks
+    assert "snooze_pickdate:7:2026-06-30" in callbacks
     assert "snooze_cal:7:2026-05" in callbacks
     assert "snooze_caltoday:7" in callbacks
     assert "snooze_cal:7:2026-07" in callbacks
@@ -76,7 +76,7 @@ def test_custom_date_keyboard_generates_selfremind_event_callbacks(main_module, 
 
     callbacks = set(_callback_data(markup))
 
-    assert "selfremind_event_pickdate:7:2026-06-22" in callbacks
+    assert "selfremind_event_pickdate:7:2026-06-30" in callbacks
     assert "selfremind_event_cal:7:2026-05" in callbacks
     assert "selfremind_event_caltoday:7" in callbacks
     assert "selfremind_event_cal:7:2026-07" in callbacks
