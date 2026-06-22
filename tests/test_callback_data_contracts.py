@@ -18,6 +18,10 @@ def _patch_keyboard_classes(m, monkeypatch):
     monkeypatch.setattr(m, "InlineKeyboardButton", DummyInlineKeyboardButton)
     monkeypatch.setattr(m, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)
 
+    import keyboards
+    monkeypatch.setattr(keyboards, "InlineKeyboardButton", DummyInlineKeyboardButton)
+    monkeypatch.setattr(keyboards, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)
+
 
 def _extract_callback_data(markup):
     if markup is None:

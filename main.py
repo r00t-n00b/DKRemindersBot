@@ -139,6 +139,8 @@ from callback_contracts import (
     cb_undo,
 )
 
+import keyboards as keyboard_builders
+
 def get_now() -> datetime:
     return datetime.now(TZ)
 
@@ -3173,21 +3175,6 @@ def maybe_split_alias_first_token(args_text: str) -> Tuple[Optional[str], str]:
 
 # ===== SNOOZE клавиатуры =====
 
-def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool = False) -> Optional[InlineKeyboardMarkup]:
-    try:
-        delete_text = "❌ Удалить ближайшее/серию" if is_recurring else "❌ Удалить"
-        reschedule_text = "⏰ Перенести ближайшее" if is_recurring else "⏰ Перенести"
-        return InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(delete_text, callback_data=f"created_del:{reminder_id}"),
-                    InlineKeyboardButton(reschedule_text, callback_data=f"created_resched:{reminder_id}"),
-                ]
-            ]
-        )
-    except TypeError:
-        return None
-
 def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     reminder = get_reminder(reminder_id)
     if reminder is None:
@@ -3195,69 +3182,6 @@ def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Op
     is_recurring = bool(getattr(reminder, "template_id", None))
     return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
 
-
-def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
-    try:
-        buttons: List[List[InlineKeyboardButton]] = [
-            [
-                InlineKeyboardButton("⏰ +20 минут", callback_data=f"created_snooze:{reminder_id}:20m"),
-                InlineKeyboardButton("⏰ +1 час", callback_data=f"created_snooze:{reminder_id}:1h"),
-            ],
-            [
-                InlineKeyboardButton("⏰ +3 часа", callback_data=f"created_snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"created_snooze:{reminder_id}:tomorrow"),
-            ],
-            [
-                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"created_snooze:{reminder_id}:nextmon"),
-                InlineKeyboardButton("📝 Кастом", callback_data=cb_created_snooze_custom(reminder_id)),
-            ],
-            [
-                InlineKeyboardButton("⬅️ Назад", callback_data=f"created_back:{reminder_id}"),
-            ],
-        ]
-        return InlineKeyboardMarkup(buttons)
-    except TypeError:
-        return None
-
-def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
-    try:
-        buttons: List[List[InlineKeyboardButton]] = [
-            [
-                InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
-                InlineKeyboardButton("⏰ +1 час", callback_data=f"snooze:{reminder_id}:1h"),
-            ],
-            [
-                InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
-            ],
-            [
-                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
-                InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
-            ],
-            [
-                InlineKeyboardButton("✅ Mark complete", callback_data=cb_done(reminder_id)),
-            ],
-        ]
-        return InlineKeyboardMarkup(buttons)
-    except TypeError:
-        return None
-
-
-def build_group_reminder_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
-    try:
-        buttons: List[List[InlineKeyboardButton]] = [
-            [
-                InlineKeyboardButton(
-                    "Напомнить мне лично",
-                    callback_data=cb_selfremind_ask(reminder_id),
-                ),
-            ],
-        ]
-        return InlineKeyboardMarkup(buttons)
-    except TypeError:
-        # В тестовой среде InlineKeyboardButton/Markup могут быть подменены на object.
-        # В этом случае просто не рисуем клавиатуру, чтобы не ломать worker delivery tests.
-        return None
 
 def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = [
@@ -3546,6 +3470,42 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix:
     )
 
     return InlineKeyboardMarkup(keyboard)
+
+
+def _sync_keyboard_builder_classes() -> None:
+    keyboard_builders.InlineKeyboardButton = InlineKeyboardButton
+    keyboard_builders.InlineKeyboardMarkup = InlineKeyboardMarkup
+
+
+def build_list_delete_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_list_delete_keyboard(reminder_id)
+
+
+def build_recurring_delete_choice_keyboard(reminder_id: int, template_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_recurring_delete_choice_keyboard(reminder_id, template_id)
+
+
+def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool = False):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
+
+
+def build_created_reschedule_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_created_reschedule_keyboard(reminder_id)
+
+
+def build_snooze_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_snooze_keyboard(reminder_id)
+
+
+def build_group_reminder_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_group_reminder_keyboard(reminder_id)
+
 
 # ===== Парсинг даты события из текста напоминания =====
 
@@ -5978,27 +5938,6 @@ def _active_reminder_row_value(row, key: str, index: int, default=None):
         return default
 
 
-def build_list_delete_keyboard(count: int) -> InlineKeyboardMarkup:
-    buttons: List[List[InlineKeyboardButton]] = []
-    row: List[InlineKeyboardButton] = []
-
-    for idx in range(1, count + 1):
-        row.append(
-            InlineKeyboardButton(
-                text=f"❌{idx}",
-                callback_data=f"del:{idx}",
-            )
-        )
-        if len(row) == 5:
-            buttons.append(row)
-            row = []
-
-    if row:
-        buttons.append(row)
-
-    return InlineKeyboardMarkup(buttons)
-
-
 def build_active_reminders_list_response(rows, header: str) -> Tuple[str, List[int], InlineKeyboardMarkup]:
     lines: List[str] = []
     ids: List[int] = []
@@ -6238,16 +6177,6 @@ def compute_snooze_target_time(action: str, now: datetime, default_time: Optiona
         return datetime(target.year, target.month, target.day, 10, 0, tzinfo=TZ)
 
     raise ValueError(f"Unknown snooze action: {action}")
-
-def build_recurring_delete_choice_keyboard(reminder_id: int, template_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("🗑 Удалить ближайшее", callback_data=cb_del_one(reminder_id))],
-            [InlineKeyboardButton("🧨 Удалить всю серию", callback_data=f"del_series:{int(template_id)}")],
-            [InlineKeyboardButton("⬅️ Отмена", callback_data=cb_del_cancel(reminder_id))],
-        ]
-    )
-
 
 async def created_delete_callback(update: Update, context: CTX) -> None:
     query = update.callback_query
