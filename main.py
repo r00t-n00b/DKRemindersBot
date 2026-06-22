@@ -147,6 +147,7 @@ from presentation import (
     format_completed_reminder_text,
     format_created_reminder_text,
     format_created_recurring_reminder_text,
+    format_empty_active_reminders_list_text,
     format_deleted_human,
     format_deleted_snapshot_text,
     format_recurring_human,
@@ -5781,17 +5782,10 @@ async def list_command(update: Update, context: CTX) -> None:
     conn.close()
 
     if not rows:
-        empty_hint = "Напиши, например:\nнапомни завтра в 18:00 купить молоко"
-        if used_alias:
-            await safe_reply(
-                message,
-                f"В чате '{used_alias}' напоминаний нет.\n\n{empty_hint}",
-            )
-        else:
-            await safe_reply(
-                message,
-                f"Напоминаний нет.\n\n{empty_hint}",
-            )
+        await safe_reply(
+            message,
+            format_empty_active_reminders_list_text(chat_alias=used_alias),
+        )
         return
 
     header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"

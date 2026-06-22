@@ -156,6 +156,14 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
     keyboard_builder = list_delete_keyboard_builder or build_list_delete_keyboard
     return reply, ids, keyboard_builder(len(ids))
 
+
+def format_empty_active_reminders_list_text(chat_alias: Optional[str] = None) -> str:
+    empty_hint = "Напиши, например:\nнапомни завтра в 18:00 купить молоко"
+    if chat_alias:
+        return f"В чате '{chat_alias}' напоминаний нет.\n\n{empty_hint}"
+
+    return f"Напоминаний нет.\n\n{empty_hint}"
+
 def format_created_reminder_text(when_str: str, reminder_text: str) -> str:
     return f"Ок, напомню {when_str}: {reminder_text}"
 
