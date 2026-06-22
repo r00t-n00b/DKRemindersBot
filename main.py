@@ -207,6 +207,7 @@ from parser_date_time_smart import parse_date_time_smart
 from parser_recurring_detection import looks_like_recurring
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
+from self_remind_time import compute_self_remind_time
 from parser_lexicon import (
     VOICE_SPOKEN_NUMBER_REPLACEMENTS,
     VOICE_RU_MONTH_NORMALIZATION_MAP,
@@ -1837,46 +1838,6 @@ def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Op
     return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
 
 
-def compute_self_remind_time(option: str, now: datetime) -> datetime:
-    now = now.astimezone(TZ)
-
-    if option == "20m":
-        return now + timedelta(minutes=20)
-
-    if option == "1h":
-        return now + timedelta(hours=1)
-
-    if option == "3h":
-        return now + timedelta(hours=3)
-
-    if option == "tomorrow11":
-        tomorrow = (now + timedelta(days=1)).date()
-        return datetime(
-            tomorrow.year,
-            tomorrow.month,
-            tomorrow.day,
-            10,
-            0,
-            tzinfo=TZ,
-        )
-
-    if option == "nextmon":
-        base = now.date()
-        cur_wd = base.weekday()
-        delta = (0 - cur_wd + 7) % 7
-        if delta == 0:
-            delta = 7
-        target = base + timedelta(days=delta)
-        return datetime(
-            target.year,
-            target.month,
-            target.day,
-            10,
-            0,
-            tzinfo=TZ,
-        )
-
-    raise ValueError(f"Unknown self reminder option: {option}")
 
 def format_self_remind_text(source_chat_title: str, source_text: str) -> str:
     return f'Из чата "{source_chat_title}": {source_text}'
