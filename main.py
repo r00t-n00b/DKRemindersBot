@@ -3183,70 +3183,6 @@ def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Op
     return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
 
 
-def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
-    buttons: List[List[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton(
-                "📅 Обычное напоминание",
-                callback_data=cb_selfremind_mode(reminder_id, "regular"),
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                '⏰ Напоминание "до события"',
-                callback_data=cb_selfremind_mode(reminder_id, "event"),
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "✅ Я передумал, напоминание не нужно",
-                callback_data=cb_selfremind_cancel_personal(reminder_id),
-            ),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
-    buttons: List[List[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton("⏰ +20 минут", callback_data=cb_selfremind_set(reminder_id, "20m")),
-            InlineKeyboardButton("⏰ +1 час", callback_data=cb_selfremind_set(reminder_id, "1h")),
-        ],
-        [
-            InlineKeyboardButton("⏰ +3 часа", callback_data=cb_selfremind_set(reminder_id, "3h")),
-            InlineKeyboardButton("📅 Завтра (10:00)", callback_data=cb_selfremind_set(reminder_id, "tomorrow11")),
-        ],
-        [
-            InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=cb_selfremind_set(reminder_id, "nextmon")),
-            InlineKeyboardButton("📝 Кастом", callback_data=cb_selfremind_set(reminder_id, "custom")),
-        ],
-        [
-            InlineKeyboardButton("⬅️ Назад", callback_data=cb_selfremind_back(reminder_id)),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-
-def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
-    buttons: List[List[InlineKeyboardButton]] = [
-        [
-            InlineKeyboardButton("📅 За сутки", callback_data=cb_selfremind_event_before(reminder_id, "1d")),
-            InlineKeyboardButton("⏰ За 10 часов", callback_data=cb_selfremind_event_before(reminder_id, "10h")),
-        ],
-        [
-            InlineKeyboardButton("⏰ За 3 часа", callback_data=cb_selfremind_event_before(reminder_id, "3h")),
-            InlineKeyboardButton("⏰ За 1 час", callback_data=cb_selfremind_event_before(reminder_id, "1h")),
-        ],
-        [
-            InlineKeyboardButton("⏰ За 20 минут", callback_data=cb_selfremind_event_before(reminder_id, "20m")),
-            InlineKeyboardButton("📝 Кастом", callback_data=cb_selfremind_event_custom(reminder_id)),
-        ],
-        [
-            InlineKeyboardButton("⬅️ Назад", callback_data=cb_selfremind_back(reminder_id)),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
-
 def compute_self_remind_time(option: str, now: datetime) -> datetime:
     now = now.astimezone(TZ)
 
@@ -3505,6 +3441,21 @@ def build_snooze_keyboard(reminder_id: int):
 def build_group_reminder_keyboard(reminder_id: int):
     _sync_keyboard_builder_classes()
     return keyboard_builders.build_group_reminder_keyboard(reminder_id)
+
+
+def build_self_remind_mode_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_self_remind_mode_keyboard(reminder_id)
+
+
+def build_self_remind_choice_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_self_remind_choice_keyboard(reminder_id)
+
+
+def build_self_remind_event_before_keyboard(reminder_id: int):
+    _sync_keyboard_builder_classes()
+    return keyboard_builders.build_self_remind_event_before_keyboard(reminder_id)
 
 
 # ===== Парсинг даты события из текста напоминания =====

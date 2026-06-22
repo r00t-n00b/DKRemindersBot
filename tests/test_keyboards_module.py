@@ -33,11 +33,17 @@ def test_simple_keyboard_builders_are_exposed_via_main_proxy(main_module):
     assert hasattr(keyboards, "build_created_reschedule_keyboard")
     assert hasattr(keyboards, "build_group_reminder_keyboard")
     assert hasattr(keyboards, "build_snooze_keyboard")
+    assert hasattr(keyboards, "build_self_remind_mode_keyboard")
+    assert hasattr(keyboards, "build_self_remind_choice_keyboard")
+    assert hasattr(keyboards, "build_self_remind_event_before_keyboard")
 
     assert callable(main_module.build_created_reminder_actions_keyboard)
     assert callable(main_module.build_created_reschedule_keyboard)
     assert callable(main_module.build_group_reminder_keyboard)
     assert callable(main_module.build_snooze_keyboard)
+    assert callable(main_module.build_self_remind_mode_keyboard)
+    assert callable(main_module.build_self_remind_choice_keyboard)
+    assert callable(main_module.build_self_remind_event_before_keyboard)
 
     if hasattr(keyboards, "build_list_delete_keyboard"):
         assert callable(main_module.build_list_delete_keyboard)
@@ -63,6 +69,9 @@ def test_simple_keyboard_builders_generate_expected_callback_data(main_module):
     generated.extend(_callback_data(keyboards.build_created_reschedule_keyboard(7)))
     generated.extend(_callback_data(keyboards.build_snooze_keyboard(7)))
     generated.extend(_callback_data(keyboards.build_group_reminder_keyboard(7)))
+    generated.extend(_callback_data(keyboards.build_self_remind_mode_keyboard(7)))
+    generated.extend(_callback_data(keyboards.build_self_remind_choice_keyboard(7)))
+    generated.extend(_callback_data(keyboards.build_self_remind_event_before_keyboard(7)))
 
     expected = {
         "created_del:7",
@@ -82,6 +91,22 @@ def test_simple_keyboard_builders_generate_expected_callback_data(main_module):
         "snooze:7:custom",
         "done:7",
         "selfremind:ask:7",
+        "selfremind:mode:7:regular",
+        "selfremind:mode:7:event",
+        "selfremind:cancel_personal:7",
+        "selfremind:set:7:20m",
+        "selfremind:set:7:1h",
+        "selfremind:set:7:3h",
+        "selfremind:set:7:tomorrow11",
+        "selfremind:set:7:nextmon",
+        "selfremind:set:7:custom",
+        "selfremind:back:7",
+        "selfremind:event_before:7:1d",
+        "selfremind:event_before:7:10h",
+        "selfremind:event_before:7:3h",
+        "selfremind:event_before:7:1h",
+        "selfremind:event_before:7:20m",
+        "selfremind:event_custom:7",
     }
 
     optional_expected = {
