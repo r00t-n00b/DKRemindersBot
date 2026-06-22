@@ -1,6 +1,12 @@
 """Inline keyboard builders for Telegram reminder UI."""
 
+from calendar import monthrange
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
 from typing import List, Optional
+
+TZ = ZoneInfo("Europe/Madrid")
 
 try:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -202,3 +208,155 @@ def build_self_remind_event_before_keyboard(reminder_id: int) -> InlineKeyboardM
         ],
     ]
     return InlineKeyboardMarkup(buttons)
+
+def build_custom_date_keyboard(
+    reminder_id: int,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    callback_prefix: str = "snooze",
+):
+    """
+    Красивый календарь на месяц:
+    - Заголовок "Январь 2026"
+    - Ряд дней недели
+    - Сетка дней 7x6
+    - Навигация prev/next месяц
+    - Today и Cancel
+    """
+    today = datetime.now(TZ).date()
+
+    if year is None or month is None:
+        year = today.year
+        month = today.month
+
+    if month < 1:
+        month = 12
+        year -= 1
+    elif month > 12:
+        month = 1
+        year += 1
+
+    month_names = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+    }
+    title = f"{month_names.get(month, str(month))} {year}"
+
+    first_weekday, days_in_month = monthrange(year, month)
+    start_offset = first_weekday
+
+    def _btn(text: str, cb: str):
+        return InlineKeyboardButton(text=text, callback_data=cb)
+
+    def _noop(text: str):
+        return InlineKeyboardButton(text=text, callback_data="noop")
+
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [_noop(title)],
+        [_noop("Пн"), _noop("Вт"), _noop("Ср"), _noop("Чт"), _noop("Пт"), _noop("Сб"), _noop("Вс")],
+    ]
+
+    cells: list[InlineKeyboardButton] = []
+
+    for _ in range(start_offset):
+        cells.append(_noop(" "))
+
+    for day in range(1, days_in_month + 1):
+        d = date(year, month, day)
+        iso = d.isoformat()
+
+        label = str(day)
+        if d == today:
+            label = f"·{day}·"
+
+        if d < today:
+            cells.append(_btn(label, f"{callback_prefix}_pastdate:{reminder_id}:{iso}"))
+        else:
+            cells.append(_btn(label, f"{callback_prefix}_pickdate:{reminder_id}:{iso}"))
+
+    while len(cells) % 7 != 0:
+        cells.append(_noop(" "))
+
+    while len(cells) < 42:
+        cells.append(_noop(" "))
+
+    for i in range(0, 42, 7):
+        keyboard.append(cells[i:i + 7])
+
+    prev_year = year
+    prev_month = month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = year
+    next_month = month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    keyboard.append(
+        [
+            _btn("◀", f"{callback_prefix}_cal:{reminder_id}:{prev_year:04d}-{prev_month:02d}"),
+            _btn("Today", f"{callback_prefix}_caltoday:{reminder_id}"),
+            _btn("▶", f"{callback_prefix}_cal:{reminder_id}:{next_year:04d}-{next_month:02d}"),
+        ]
+    )
+
+    keyboard.append([_btn("Cancel", f"{callback_prefix}_cancel:{reminder_id}")])
+
+    return InlineKeyboardMarkup(keyboard)
+
+from datetime import datetime, date
+
+def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix: str = "snooze"):
+    """
+    Красивый выбор времени:
+    - Заголовок "Время - 02.02.2026"
+    - Сетка кнопок времени
+    - Back (назад в календарь выбранного месяца)
+    - Cancel
+    """
+    try:
+        y, m, d = map(int, date_str.split("-"))
+        chosen = date(y, m, d)
+    except Exception:
+        chosen = datetime.now(TZ).date()
+
+    def _btn(text: str, cb: str):
+        return InlineKeyboardButton(text=text, callback_data=cb)
+
+    def _noop(text: str):
+        return InlineKeyboardButton(text=text, callback_data="noop")
+
+    title = chosen.strftime("Время - %d.%m.%Y")
+
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [_noop(title)],
+    ]
+
+    times = [
+        "10:00", "10:30", "11:00", "11:30",
+        "12:00", "12:30", "13:00", "13:30",
+        "14:00", "15:00", "16:00", "18:00",
+        "20:00", "21:00", "22:00", "23:00",
+    ]
+
+    row: list[InlineKeyboardButton] = []
+    for t in times:
+        row.append(_btn(t, f"{callback_prefix}_picktime:{reminder_id}:{chosen.isoformat()}:{t}"))
+        if len(row) == 4:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append(
+        [
+            _btn("◀ Back", f"{callback_prefix}_cal:{reminder_id}:{chosen.year:04d}-{chosen.month:02d}"),
+            _btn("Cancel", f"{callback_prefix}_cancel:{reminder_id}"),
+        ]
+    )
+
+    return InlineKeyboardMarkup(keyboard)
