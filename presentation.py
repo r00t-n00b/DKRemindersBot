@@ -202,6 +202,37 @@ def format_created_recurring_reminder_text(
         f"{freq_part}"
     )
 
+
+def build_target_user_presentation_rows(rows, recurring_template_loader=None) -> List[Dict[str, Any]]:
+    presentation_rows: List[Dict[str, Any]] = []
+
+    for row in rows:
+        if isinstance(row, dict):
+            row_data = dict(row)
+        elif hasattr(row, "keys"):
+            row_data = dict(row)
+        else:
+            row_data = {
+                "id": row[0],
+                "text": row[1],
+                "remind_at": row[2],
+                "template_id": row[3] if len(row) > 3 else None,
+            }
+
+        tpl_id = row_data.get("template_id")
+        if tpl_id is not None:
+            tpl = recurring_template_loader(int(tpl_id)) if recurring_template_loader else None
+            if tpl:
+                row_data["pattern_type"] = tpl.get("pattern_type")
+                row_data["payload"] = tpl.get("payload")
+            else:
+                row_data["pattern_type"] = row_data.get("pattern_type")
+                row_data["payload"] = row_data.get("payload")
+
+        presentation_rows.append(row_data)
+
+    return presentation_rows
+
 def build_target_user_reminders_list_response(
     rows,
     target_label: str,

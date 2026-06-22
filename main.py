@@ -142,6 +142,7 @@ from callback_contracts import (
 import keyboards as keyboard_builders
 from presentation import (
     build_active_reminders_list_response,
+    build_target_user_presentation_rows,
     build_target_user_reminders_list_response,
     format_completed_reminder_text,
     format_created_reminder_text,
@@ -5702,26 +5703,10 @@ async def list_command(update: Update, context: CTX) -> None:
                 created_by=user.id,
             )
 
-            presentation_rows = []
-            for r in rows:
-                row_data = dict(r) if hasattr(r, "keys") else {
-                    "id": r[0],
-                    "text": r[1],
-                    "remind_at": r[2],
-                    "template_id": r[3] if len(r) > 3 else None,
-                }
-
-                tpl_id = row_data.get("template_id")
-                if tpl_id is not None:
-                    tpl = get_recurring_template(int(tpl_id))
-                    if tpl:
-                        row_data["pattern_type"] = tpl.get("pattern_type")
-                        row_data["payload"] = tpl.get("payload")
-                    else:
-                        row_data["pattern_type"] = None
-                        row_data["payload"] = None
-
-                presentation_rows.append(row_data)
+            presentation_rows = build_target_user_presentation_rows(
+                rows,
+                recurring_template_loader=get_recurring_template,
+            )
 
             reply, ids, keyboard = build_target_user_reminders_list_response(
                 presentation_rows,
