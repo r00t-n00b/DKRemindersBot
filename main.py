@@ -5669,27 +5669,6 @@ async def linkuser_command(update: Update, context: CTX) -> None:
     await safe_reply(message, f"Ок, alias '{alias}' теперь указывает на {username}.")
 
 
-def _active_reminder_row_value(row, key: str, index: int, default=None):
-    if isinstance(row, dict):
-        return row.get(key, default)
-
-    if hasattr(row, "keys"):
-        try:
-            if key in row.keys():
-                return row[key]
-        except Exception:
-            pass
-
-    try:
-        return row[key]
-    except Exception:
-        pass
-
-    try:
-        return row[index]
-    except Exception:
-        return default
-
 
 async def list_command(update: Update, context: CTX) -> None:
     chat = update.effective_chat
