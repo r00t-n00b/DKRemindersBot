@@ -212,6 +212,7 @@ from snooze_picktime_flow import handle_custom_snooze_picktime
 from snooze_cancel_flow import handle_custom_snooze_cancel
 from snooze_direct_flow import handle_direct_snooze_action
 from reminder_done_flow import handle_done_callback
+from callback_data_parsing import parse_optional_int_callback_id
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4144,11 +4145,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 
         # mark complete
         if data.startswith("done:"):
-            _, rid_str = data.split(":", 1)
-            try:
-                rid = int(rid_str)
-            except ValueError:
-                rid = None
+            rid = parse_optional_int_callback_id(data, prefix="done:")
 
             await handle_done_callback(
                 reminder_id=rid,
