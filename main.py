@@ -216,6 +216,7 @@ from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_a
 from self_remind_cancel_flow import handle_self_remind_cancel
 from self_remind_event_cancel_flow import handle_self_remind_event_cancel
 from self_remind_calendar_flow import handle_self_remind_calendar_today, handle_self_remind_pickdate
+from self_remind_picktime_flow import handle_self_remind_picktime
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4023,53 +4024,24 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_picktime:") or data.startswith("selfremind_event_picktime:"):
-            _, rid_str, date_str, time_str = data.split(":", 3)
-            rid = int(rid_str)
-
-            user_id = getattr(query.from_user, "id", None)
-            if user_id is None:
-                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
-                return
-
-            target_chat_id = get_user_chat_id_by_user_id(user_id)
-            if target_chat_id is None:
-                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
-                return
-
-            src = get_reminder(rid)
-            if not src:
-                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
-                return
-
-            try:
-                year, month, day = map(int, date_str.split("-"))
-                hour, minute = map(int, time_str.split(":"))
-                remind_at = datetime(year, month, day, hour, minute, tzinfo=TZ)
-            except Exception:
-                await query.answer(MSG_RESCHEDULE_BAD_DATETIME, show_alert=True)
-                return
-
-            if remind_at <= get_now():
-                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
-                return
-
-            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
-            personal_text = format_self_remind_text(source_chat_title, src.text)
-
-            new_reminder_id = add_reminder(
-                chat_id=target_chat_id,
-                text=personal_text,
-                remind_at=remind_at,
-                created_by=user_id,
-                template_id=None,
+            await handle_self_remind_picktime(
+                data=data,
+                query=query,
+                context=context,
+                tz=TZ,
+                get_now=get_now,
+                get_user_chat_id_by_user_id=get_user_chat_id_by_user_id,
+                get_reminder=get_reminder,
+                get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
+                add_reminder=add_reminder,
+                build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
+                format_self_remind_text=format_self_remind_text,
+                format_created_reminder_text=format_created_reminder_text,
+                msg_user_context_missing=MSG_USER_CONTEXT_MISSING,
+                msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
+                msg_reschedule_bad_datetime=MSG_RESCHEDULE_BAD_DATETIME,
+                msg_reschedule_past_time=MSG_RESCHEDULE_PAST_TIME,
             )
-
-            when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(
-                format_created_reminder_text(when_str, personal_text),
-                reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
-            )
-            await query.answer("Личное напоминание создано")
             return
 
         if data.startswith("selfremind_event_cancel:"):
