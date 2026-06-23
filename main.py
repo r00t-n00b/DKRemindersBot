@@ -1819,8 +1819,6 @@ async def start(update: Update, context: CTX) -> None:
         Если в дате нет времени, использую 10:00.
     """).strip()
 
-
-
     msg = update.effective_message
     if msg and hasattr(msg, "reply_text"):
         res = msg.reply_text(text)
