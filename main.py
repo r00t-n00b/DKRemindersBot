@@ -200,6 +200,7 @@ from parser_month_name_date import _parse_month_name_date
 from parser_absolute import _parse_absolute
 from parser_date_time_smart import parse_date_time_smart
 from parser_recurring_detection import looks_like_recurring
+from bulk_header_detection import drop_optional_bulk_header
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
@@ -2901,46 +2902,17 @@ async def remind_command(update: Update, context: CTX) -> None:
         # Поддержка bulk без "- ":
         # - если первая строка не похожа на напоминание и есть другие строки,
         #   считаем ее "заголовком" и пропускаем (пример: "Каталония")
+        raw_lines = drop_optional_bulk_header(
+            raw_lines,
+            looks_like_recurring=looks_like_recurring,
+        )
+
         lines = []
-        if raw_lines:
-            first = raw_lines[0].lstrip("-").strip()
-
-            if len(raw_lines) > 1:
-                # Заголовок пропускаем ТОЛЬКО если первая строка явно не похожа на напоминание.
-                # Важно: НЕ дергаем parse_date_time_smart здесь, чтобы не было двойного парсинга
-                # (и чтобы тесты с monkeypatch на parse_date_time_smart не ловили лишние вызовы).
-                is_reminder_like = False
-
-                if looks_like_recurring(first):
-                    is_reminder_like = True
-                else:
-                    # Heuristic: строка похожа на одноразовое напоминание, если начинается с "даты/времени"
-                    # или с month-name формата ("On March 1 ...", "March 1 ..."), или с relative ("in 2 hours ...").
-                    if re.match(
-                        r"^(?:"
-                        r"(?:on\s+)?\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?:\s+\d{1,2}[:.]\d{2})?"
-                        r"|"
-                        r"\d{1,2}[:.]\d{2}"
-                        r"|"
-                        r"(?:today|tomorrow|day\s+after\s+tomorrow|сегодня|завтра|послезавтра)(?:\s+\d{1,2}[:.]\d{2})?"
-                        r"|"
-                        r"(?:in|через)\s+\d+\s+\w+"
-                        r"|"
-                        r"(?:on\s+)?[A-Za-z]{3,9}\s+\d{1,2}(?:\s+\d{4})?(?:\s+\d{1,2}[:.]\d{2})?"
-                        r")\b",
-                        first,
-                        flags=re.IGNORECASE,
-                    ):
-                        is_reminder_like = True
-
-                if not is_reminder_like:
-                    raw_lines = raw_lines[1:]
-
-            for ln in raw_lines:
-                ln2 = ln
-                if ln2.startswith("-"):
-                    ln2 = ln2[1:].lstrip()
-                lines.append(ln2)
+        for ln in raw_lines:
+            ln2 = ln
+            if ln2.startswith("-"):
+                ln2 = ln2[1:].lstrip()
+            lines.append(ln2)
 
         created = 0
         failed = 0
