@@ -38,14 +38,16 @@ def test_selfremind_caltoday_uses_required_id_parser():
 
     snooze_source = ast.get_source_segment(source, nodes[0])
 
+    calendar_source = Path("self_remind_calendar_flow.py").read_text()
+
     today_start = snooze_source.index('if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):')
     pickdate_start = snooze_source.index('if data.startswith("selfremind_pickdate:") or data.startswith("selfremind_event_pickdate:"):', today_start)
     today_source = snooze_source[today_start:pickdate_start]
 
-    assert 'parse_required_int_callback_id(data, prefix=f"{callback_prefix}_caltoday:")' in today_source
+    assert "parse_required_int_callback_id=parse_required_int_callback_id" in today_source
+    assert 'parse_required_int_callback_id(\n        data,\n        prefix=f"{callback_prefix}_caltoday:",' in calendar_source
     assert '_, rid_str = data.split(":", 1)' not in today_source
     assert "rid = int(rid_str)" not in today_source
-    assert 'callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"' in today_source
 
 def test_selfremind_event_cancel_uses_required_id_parser():
     import ast
