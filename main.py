@@ -238,9 +238,6 @@ from parser_lexicon import (
     is_recurring_missing_dash_candidate,
 )
 
-# ===== Модель данных =====
-
-
 # ===== Работа с БД =====
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:

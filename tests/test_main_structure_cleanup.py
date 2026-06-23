@@ -36,3 +36,10 @@ def test_main_does_not_import_dedent_after_command_messages_extraction():
 
     assert "from textwrap import dedent" not in content
     assert "dedent(" not in content
+
+
+def test_main_has_no_empty_model_section_after_model_extraction():
+    content = Path("main.py").read_text()
+
+    assert "# ===== Модель данных =====" not in content
+    assert "from models import Reminder" in content
