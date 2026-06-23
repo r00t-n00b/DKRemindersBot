@@ -205,6 +205,7 @@ from bulk_single_reminder import create_single_reminder_from_line
 from single_recurring_reminder import try_handle_single_recurring_reminder
 from single_oneoff_reminder import handle_single_oneoff_reminder
 from snooze_apply import apply_snooze_to_reminder
+from snooze_custom_flow import enter_custom_snooze_flow
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4185,12 +4186,12 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 return
 
             if action == "custom":
-                # ACK на вход в кастомный flow тоже считаем реакцией
-                mark_reminder_acked(rid)
-
-                kb = build_custom_date_keyboard(rid)
-                await query.edit_message_reply_markup(reply_markup=kb)
-                await query.answer("Выбери дату", show_alert=False)
+                await enter_custom_snooze_flow(
+                    reminder_id=rid,
+                    query=query,
+                    mark_reminder_acked=mark_reminder_acked,
+                    build_custom_date_keyboard=build_custom_date_keyboard,
+                )
                 return
             else:
                 try:
