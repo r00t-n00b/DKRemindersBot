@@ -215,7 +215,7 @@ from reminder_done_flow import handle_done_callback
 from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
 from self_remind_cancel_flow import handle_self_remind_cancel
 from self_remind_event_cancel_flow import handle_self_remind_event_cancel
-from self_remind_calendar_flow import handle_self_remind_calendar_today, handle_self_remind_pickdate
+from self_remind_calendar_flow import handle_self_remind_calendar_month, handle_self_remind_calendar_today, handle_self_remind_pickdate
 from self_remind_picktime_flow import handle_self_remind_picktime
 from self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
@@ -3922,17 +3922,11 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_cal:") or data.startswith("selfremind_event_cal:"):
-            _, rid_str, ym = data.split(":", 2)
-            rid = int(rid_str)
-
-            year_str, month_str = ym.split("-", 1)
-            year = int(year_str)
-            month = int(month_str)
-
-            callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
-            kb = build_custom_date_keyboard(rid, year=year, month=month, callback_prefix=callback_prefix)
-            await query.edit_message_reply_markup(reply_markup=kb)
-            await query.answer()
+            await handle_self_remind_calendar_month(
+                data=data,
+                query=query,
+                build_custom_date_keyboard=build_custom_date_keyboard,
+            )
             return
 
         if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):

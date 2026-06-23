@@ -64,3 +64,30 @@ async def handle_self_remind_pickdate(
     )
     await query.edit_message_reply_markup(reply_markup=keyboard)
     await query.answer("Выбери время")
+
+
+async def handle_self_remind_calendar_month(
+    *,
+    data: str,
+    query,
+    build_custom_date_keyboard,
+):
+    callback_prefix = get_self_remind_callback_prefix(data)
+    raw_prefix = f"{callback_prefix}_cal:"
+
+    raw_payload = data[len(raw_prefix):]
+    raw_id, ym = raw_payload.split(":", 1)
+    reminder_id = int(raw_id)
+
+    year_str, month_str = ym.split("-", 1)
+    year = int(year_str)
+    month = int(month_str)
+
+    keyboard = build_custom_date_keyboard(
+        reminder_id,
+        year=year,
+        month=month,
+        callback_prefix=callback_prefix,
+    )
+    await query.edit_message_reply_markup(reply_markup=keyboard)
+    await query.answer()

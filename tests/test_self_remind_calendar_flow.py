@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import main
 from self_remind_calendar_flow import (
     get_self_remind_callback_prefix,
+    handle_self_remind_calendar_month,
     handle_self_remind_calendar_today,
     handle_self_remind_pickdate,
 )
@@ -111,7 +112,7 @@ def test_snooze_callback_uses_self_remind_calendar_helpers():
 
     snooze_source = ast.get_source_segment(source, nodes[0])
 
-    assert "from self_remind_calendar_flow import handle_self_remind_calendar_today, handle_self_remind_pickdate" in source
+    assert "from self_remind_calendar_flow import handle_self_remind_calendar_month, handle_self_remind_calendar_today, handle_self_remind_pickdate" in source
 
     today_start = snooze_source.index('if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):')
     picktime_start = snooze_source.index('if data.startswith("selfremind_picktime:") or data.startswith("selfremind_event_picktime:"):', today_start)
@@ -127,3 +128,91 @@ def test_snooze_callback_uses_self_remind_calendar_helpers():
 def test_main_reexports_self_remind_calendar_helpers():
     assert main.handle_self_remind_calendar_today is handle_self_remind_calendar_today
     assert main.handle_self_remind_pickdate is handle_self_remind_pickdate
+
+
+def test_self_remind_calendar_month_opens_regular_month():
+    query = Query()
+
+    asyncio.run(
+        handle_self_remind_calendar_month(
+            data="selfremind_cal:123:2026-07",
+            query=query,
+            build_custom_date_keyboard=lambda rid, *, year, month, callback_prefix: f"date-kb:{rid}:{year}:{month}:{callback_prefix}",
+        )
+    )
+
+    assert query.markups == ["date-kb:123:2026:7:selfremind"]
+    assert query.answers == [(None, None)]
+
+
+def test_self_remind_calendar_month_opens_event_month():
+    query = Query()
+
+    asyncio.run(
+        handle_self_remind_calendar_month(
+            data="selfremind_event_cal:123:2026-07",
+            query=query,
+            build_custom_date_keyboard=lambda rid, *, year, month, callback_prefix: f"date-kb:{rid}:{year}:{month}:{callback_prefix}",
+        )
+    )
+
+    assert query.markups == ["date-kb:123:2026:7:selfremind_event"]
+    assert query.answers == [(None, None)]
+
+
+def test_self_remind_calendar_month_rejects_bad_id_or_month():
+    query = Query()
+
+    try:
+        asyncio.run(
+            handle_self_remind_calendar_month(
+                data="selfremind_cal:bad:2026-07",
+                query=query,
+                build_custom_date_keyboard=lambda rid, *, year, month, callback_prefix: None,
+            )
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for bad id")
+
+    try:
+        asyncio.run(
+            handle_self_remind_calendar_month(
+                data="selfremind_cal:123:2026-bad",
+                query=query,
+                build_custom_date_keyboard=lambda rid, *, year, month, callback_prefix: None,
+            )
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for bad month")
+
+
+def test_snooze_callback_uses_self_remind_calendar_month_helper():
+    import ast
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    tree = ast.parse(source)
+
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+    ]
+    assert len(nodes) == 1
+
+    snooze_source = ast.get_source_segment(source, nodes[0])
+
+    assert "handle_self_remind_calendar_month" in source
+
+    cal_start = snooze_source.index('if data.startswith("selfremind_cal:") or data.startswith("selfremind_event_cal:"):')
+    today_start = snooze_source.index('if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):', cal_start)
+    cal_source = snooze_source[cal_start:today_start]
+
+    assert "handle_self_remind_calendar_month(" in cal_source
+    assert '_, rid_str, ym = data.split(":", 2)' not in cal_source
+    assert "year_str, month_str = ym.split" not in cal_source
+    assert "callback_prefix =" not in cal_source
