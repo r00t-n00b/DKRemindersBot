@@ -208,6 +208,11 @@ from parser_recurring_detection import looks_like_recurring
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
+from self_remind_source import (
+    format_self_remind_text,
+    get_query_source_chat_title,
+    get_source_chat_title_for_self_remind,
+)
 from event_datetime import (
     _build_event_datetime,
     _nearest_future_time_from_base,
@@ -1835,33 +1840,7 @@ def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Op
 
 
 
-def format_self_remind_text(source_chat_title: str, source_text: str) -> str:
-    return f'Из чата "{source_chat_title}": {source_text}'
 
-
-def get_query_source_chat_title(query) -> str:
-    source_chat_title = "этого чата"
-    if getattr(query, "message", None) is not None:
-        chat_obj = getattr(query.message, "chat", None)
-        if chat_obj is not None:
-            source_chat_title = (
-                getattr(chat_obj, "title", None)
-                or getattr(chat_obj, "full_name", None)
-                or "этого чата"
-            )
-    return source_chat_title
-
-async def get_source_chat_title_for_self_remind(context: CTX, src, query) -> str:
-    try:
-        chat = await context.bot.get_chat(src.chat_id)
-        return (
-            getattr(chat, "title", None)
-            or getattr(chat, "full_name", None)
-            or getattr(chat, "username", None)
-            or f"chat {src.chat_id}"
-        )
-    except Exception:
-        return get_query_source_chat_title(query)
 
 
 def _sync_keyboard_builder_classes() -> None:
