@@ -212,7 +212,7 @@ from snooze_picktime_flow import handle_custom_snooze_picktime
 from snooze_cancel_flow import handle_custom_snooze_cancel
 from snooze_direct_flow import handle_direct_snooze_action
 from reminder_done_flow import handle_done_callback
-from callback_data_parsing import parse_optional_int_callback_id
+from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4159,8 +4159,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("snooze:"):
-            _, rid_str, action = data.split(":", 2)
-            rid = int(rid_str)
+            rid, action = parse_snooze_action_callback_data(data)
 
             await handle_direct_snooze_action(
                 reminder_id=rid,
