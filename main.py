@@ -227,6 +227,7 @@ from command_messages import HELP_TEXT, START_TEXT
 from models import Reminder
 from default_time import _default_time_or, format_default_time_value, parse_default_time_value
 from remind_arg_utils import strip_first_token_from_first_line
+from remind_group_routing import reject_group_remind_target_prefix_if_needed
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2646,39 +2647,18 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     is_private = chat.type == Chat.PRIVATE
 
-    # В group-чате запрещаем "переключатели" в начале команды:
-    # - @username
-    # - alias
-    # Bulk (/remind\n- ...) не трогаем.
-    if not is_private:
-        raw_args = raw_args.strip()
-
-        # Запрет только для single-line: bulk оставляем как есть
-        if raw_args and "\n" not in raw_args:
-            parts = raw_args.split(maxsplit=1)
-            if parts:
-                first_token = parts[0].strip()
-
-                # @username в начале в группе запрещаем
-                if first_token.startswith("@") and len(first_token) > 1:
-                    await safe_reply(
-                        message,
-                        MSG_GROUP_USERNAME_PREFIX_FORBIDDEN,
-                    )
-                    return
-
-                # alias в начале в группе запрещаем
-                try:
-                    alias_chat_id = get_chat_id_by_alias_for_user(first_token, user.id)
-                except Exception:
-                    alias_chat_id = None
-
-                if alias_chat_id is not None:
-                    await safe_reply(
-                        message,
-                        MSG_GROUP_ALIAS_PREFIX_FORBIDDEN,
-                    )
-                    return
+    group_prefix_rejected, raw_args = await reject_group_remind_target_prefix_if_needed(
+        is_private=is_private,
+        raw_args=raw_args,
+        user_id=user.id,
+        message=message,
+        safe_reply=safe_reply,
+        get_chat_id_by_alias_for_user=get_chat_id_by_alias_for_user,
+        msg_group_username_prefix_forbidden=MSG_GROUP_USERNAME_PREFIX_FORBIDDEN,
+        msg_group_alias_prefix_forbidden=MSG_GROUP_ALIAS_PREFIX_FORBIDDEN,
+    )
+    if group_prefix_rejected:
+        return
 
     if is_recurring_missing_dash_candidate(raw_args) and " - " not in raw_args:
         await safe_reply(message, msg_recurring_missing_dash(is_private))
