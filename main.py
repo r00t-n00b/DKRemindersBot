@@ -1917,15 +1917,6 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix:
     )
 
 
-# ===== Парсинг даты события из текста напоминания =====
-
-
-
-
-
-
-
-
 # ===== Хендлеры команд =====
 
 async def safe_reply(message, text: str, **kwargs):
