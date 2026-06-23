@@ -1,4 +1,4 @@
-import pytest
+import asyncio
 
 import main
 from self_remind_source import (
@@ -46,22 +46,26 @@ class FailingBot:
         raise RuntimeError("boom")
 
 
-@pytest.mark.asyncio
-async def test_get_source_chat_title_for_self_remind_uses_bot_chat():
-    context = Obj(bot=FakeBot())
-    src = Obj(chat_id=123)
-    query = Obj(message=Obj(chat=Obj(title="Fallback Title")))
+def test_get_source_chat_title_for_self_remind_uses_bot_chat():
+    async def run():
+        context = Obj(bot=FakeBot())
+        src = Obj(chat_id=123)
+        query = Obj(message=Obj(chat=Obj(title="Fallback Title")))
 
-    assert await get_source_chat_title_for_self_remind(context, src, query) == "source_user"
+        assert await get_source_chat_title_for_self_remind(context, src, query) == "source_user"
+
+    asyncio.run(run())
 
 
-@pytest.mark.asyncio
-async def test_get_source_chat_title_for_self_remind_falls_back_to_query_title_on_error():
-    context = Obj(bot=FailingBot())
-    src = Obj(chat_id=123)
-    query = Obj(message=Obj(chat=Obj(title="Fallback Title")))
+def test_get_source_chat_title_for_self_remind_falls_back_to_query_title_on_error():
+    async def run():
+        context = Obj(bot=FailingBot())
+        src = Obj(chat_id=123)
+        query = Obj(message=Obj(chat=Obj(title="Fallback Title")))
 
-    assert await get_source_chat_title_for_self_remind(context, src, query) == "Fallback Title"
+        assert await get_source_chat_title_for_self_remind(context, src, query) == "Fallback Title"
+
+    asyncio.run(run())
 
 
 def test_main_reexports_self_remind_source_helpers_for_existing_callers():
