@@ -204,6 +204,7 @@ from parser_recurring_schedule import _add_months_clamped, compute_next_occurren
 from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
+from reminder_message_proxy import NormalizedReminderMessageProxy
 from voice_file_io import download_telegram_file_bytes
 from voice_text_normalization import (
     _normalize_plain_text_relative_reminder_locally,
@@ -2376,26 +2377,10 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
         await safe_reply(message, "Не услышал текст в голосовом.")
         return
 
-    class VoiceReminderMessageProxy:
-        def __init__(self, original_message, command_text: str):
-            self._original_message = original_message
-            self.text = command_text
-            self.voice = getattr(original_message, "voice", None)
-
-        def __getattr__(self, name):
-            return getattr(self._original_message, name)
-
-        async def reply_text(self, text, **kwargs):
-            await self._original_message.reply_text(
-                "Я понял:\n"
-                f"{normalized}\n\n"
-                f"{text}",
-                **kwargs,
-            )
-
-    proxy_message = VoiceReminderMessageProxy(
+    proxy_message = NormalizedReminderMessageProxy(
         message,
         f"/remind {normalized}",
+        normalized,
     )
 
     proxy_update = SimpleNamespace(
@@ -2548,26 +2533,10 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
         )
         return
 
-    class PlainTextReminderMessageProxy:
-        def __init__(self, original_message, command_text: str):
-            self._original_message = original_message
-            self.text = command_text
-            self.voice = getattr(original_message, "voice", None)
-
-        def __getattr__(self, name):
-            return getattr(self._original_message, name)
-
-        async def reply_text(self, text, **kwargs):
-            await self._original_message.reply_text(
-                "Я понял:\n"
-                f"{normalized}\n\n"
-                f"{text}",
-                **kwargs,
-            )
-
-    proxy_message = PlainTextReminderMessageProxy(
+    proxy_message = NormalizedReminderMessageProxy(
         message,
         f"/remind {normalized}",
+        normalized,
     )
 
     proxy_update = SimpleNamespace(
@@ -2578,6 +2547,8 @@ async def plain_text_remind_command(update: Update, context: CTX) -> None:
     )
 
     await remind_command(proxy_update, context)
+
+
 def get_chat_id_by_alias_for_user(alias: str, created_by: int):
     try:
         return get_chat_id_by_alias(alias, created_by)
