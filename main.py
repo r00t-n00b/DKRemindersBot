@@ -226,6 +226,7 @@ from voice_alias_prompt import format_known_aliases_for_voice_prompt
 from command_messages import HELP_TEXT, START_TEXT
 from models import Reminder
 from default_time import _default_time_or, format_default_time_value, parse_default_time_value
+from remind_arg_utils import strip_first_token_from_first_line
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2693,16 +2694,7 @@ async def remind_command(update: Update, context: CTX) -> None:
             first_token = first_line.split(maxsplit=1)[0].strip().lower()
 
             if first_token == "me":
-                rest_first_line = first_line[len(first_token):].lstrip()
-                rest_lines = "\n".join(raw_args.splitlines()[1:])
-
-                parts = []
-                if rest_first_line:
-                    parts.append(rest_first_line)
-                if rest_lines.strip():
-                    parts.append(rest_lines)
-
-                raw_args = "\n".join(parts).strip()
+                raw_args = strip_first_token_from_first_line(raw_args, first_token)
 
                 logger.info(
                     "REMIND me-stripped chat_id=%s user_id=%s raw_args=%r",
@@ -2724,16 +2716,7 @@ async def remind_command(update: Update, context: CTX) -> None:
         if first_line and not first_line.startswith("-"):
             first_token = first_line.split(maxsplit=1)[0].strip()
             if first_token.lower() == "me":
-                rest_first_line = first_line[len(first_token):].lstrip()
-                rest_lines = "\n".join(raw_args.splitlines()[1:])
-
-                parts = []
-                if rest_first_line:
-                    parts.append(rest_first_line)
-                if rest_lines.strip():
-                    parts.append(rest_lines)
-
-                raw_args = "\n".join(parts).strip()
+                raw_args = strip_first_token_from_first_line(raw_args, first_token)
 
                 if not raw_args:
                     await safe_reply(
@@ -2751,14 +2734,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                     return
 
                 # убираем @username из raw_args
-                rest_first_line = first_line[len(first_token):].lstrip()
-                rest_lines = "\n".join(raw_args.splitlines()[1:])
-                parts = []
-                if rest_first_line:
-                    parts.append(rest_first_line)
-                if rest_lines.strip():
-                    parts.append(rest_lines)
-                raw_args = "\n".join(parts).strip()
+                raw_args = strip_first_token_from_first_line(raw_args, first_token)
 
                 if not raw_args:
                     await safe_reply(
@@ -2797,16 +2773,7 @@ async def remind_command(update: Update, context: CTX) -> None:
             first_token = first_line.split(maxsplit=1)[0].strip()
 
             if first_token and first_token.lower() == "me":
-                rest_first_line = first_line[len(first_token):].lstrip()
-                rest_lines = "\n".join(raw_args.splitlines()[1:])
-
-                parts = []
-                if rest_first_line:
-                    parts.append(rest_first_line)
-                if rest_lines.strip():
-                    parts.append(rest_lines)
-
-                raw_args = "\n".join(parts).strip()
+                raw_args = strip_first_token_from_first_line(raw_args, first_token)
 
                 if not raw_args:
                     await safe_reply(
@@ -2821,16 +2788,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 # Важно: используем общий helper, чтобы maybe_split_alias_first_token()
                 # и remind_command() не расходились по списку smart-prefixes.
                 if not first_token_looks_like_reminder_start(first_token):
-                    rest_first_line = first_line[len(first_token):].lstrip()
-                    rest_lines = "\n".join(raw_args.splitlines()[1:])
-
-                    parts = []
-                    if rest_first_line:
-                        parts.append(rest_first_line)
-                    if rest_lines.strip():
-                        parts.append(rest_lines)
-
-                    raw_args_without_first_token = "\n".join(parts).strip()
+                    raw_args_without_first_token = strip_first_token_from_first_line(raw_args, first_token)
 
                     user_alias_chat_id = get_user_alias_chat_id_for_user(first_token, user.id)
                     if user_alias_chat_id is not None:
