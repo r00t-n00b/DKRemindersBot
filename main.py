@@ -616,7 +616,6 @@ def get_user_chat_id_by_user_id(user_id: int) -> Optional[int]:
     return None
 
 
-
 def get_user_default_time(user_id: Optional[int]) -> Optional[Tuple[int, int]]:
     if user_id is None:
         return None
@@ -676,7 +675,6 @@ def clear_user_default_time(user_id: int) -> None:
         conn.commit()
     finally:
         conn.close()
-
 
 
 def add_reminder(
@@ -1668,10 +1666,6 @@ def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Op
     return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
 
 
-
-
-
-
 def _sync_keyboard_builder_classes() -> None:
     keyboard_builders.InlineKeyboardButton = InlineKeyboardButton
     keyboard_builders.InlineKeyboardMarkup = InlineKeyboardMarkup
@@ -2096,12 +2090,6 @@ def _format_bulk_result(
     return " ".join(parts)
 
 
-
-
-
-
-
-
 def _format_known_aliases_for_voice_prompt(created_by: int) -> str:
     return format_known_aliases_for_voice_prompt(
         created_by,
@@ -2349,7 +2337,6 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
     await remind_command(proxy_update, context)
 
 
-
 def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:
     return normalize_plain_text_reminder_locally(
         raw_text,
@@ -2537,7 +2524,6 @@ async def defaulttime_command(update: Update, context: CTX) -> None:
         message,
         f"Ок, время по умолчанию: {format_default_time_value(hour, minute)}."
     )
-
 
 
 async def remind_command(update: Update, context: CTX) -> None:
@@ -2922,7 +2908,6 @@ async def linkuser_command(update: Update, context: CTX) -> None:
     )
 
     await safe_reply(message, f"Ок, alias '{alias}' теперь указывает на {username}.")
-
 
 
 async def list_command(update: Update, context: CTX) -> None:
@@ -3358,8 +3343,6 @@ async def created_back_callback(update: Update, context: CTX) -> None:
     await query.edit_message_reply_markup(
         reply_markup=build_created_reminder_actions_keyboard_for_reminder(reminder_id)
     )
-
-
 
 
 def _build_active_list_response_for_ids(ids):
