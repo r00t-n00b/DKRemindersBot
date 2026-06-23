@@ -4003,11 +4003,10 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):
-            _, rid_str = data.split(":", 1)
-            rid = int(rid_str)
+            callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
+            rid = parse_required_int_callback_id(data, prefix=f"{callback_prefix}_caltoday:")
 
             today = datetime.now(TZ).date()
-            callback_prefix = "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
             kb = build_custom_date_keyboard(
                 rid,
                 year=today.year,
