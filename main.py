@@ -214,6 +214,7 @@ from snooze_direct_flow import handle_direct_snooze_action
 from reminder_done_flow import handle_done_callback
 from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
 from self_remind_cancel_flow import handle_self_remind_cancel
+from self_remind_event_cancel_flow import handle_self_remind_event_cancel
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4083,38 +4084,22 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_event_cancel:"):
-            _, rid_str = data.split(":", 1)
-
             try:
-                rid = int(rid_str)
+                rid = parse_required_int_callback_id(data, prefix="selfremind_event_cancel:")
             except ValueError:
                 await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
-            src = get_reminder(rid)
-            if not src:
-                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
-                return
-
-            base_now = get_self_remind_event_base(src)
-            event_at = extract_event_datetime_from_text(src.text, base_now)
-
-            if event_at is None:
-                await query.edit_message_text(
-                    "Я не смог понять дату события из текста.\n"
-                    "Ты можешь поставить себе обычный ремайндер:",
-                    reply_markup=build_self_remind_choice_keyboard(rid),
-                )
-                await query.answer("Вернул варианты")
-                return
-
-            event_str = event_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(
-                f"Я понял, что событие из напоминания состоится {event_str}.\n"
-                "За сколько до этого времени напомнить?",
-                reply_markup=build_self_remind_event_before_keyboard(rid),
+            await handle_self_remind_event_cancel(
+                reminder_id=rid,
+                query=query,
+                get_reminder=get_reminder,
+                get_self_remind_event_base=get_self_remind_event_base,
+                extract_event_datetime_from_text=extract_event_datetime_from_text,
+                build_self_remind_choice_keyboard=build_self_remind_choice_keyboard,
+                build_self_remind_event_before_keyboard=build_self_remind_event_before_keyboard,
+                msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
             )
-            await query.answer("Вернул варианты до события")
             return
 
         if data.startswith("selfremind_cancel:"):
