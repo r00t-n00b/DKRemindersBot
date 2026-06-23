@@ -208,6 +208,7 @@ from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
 from command_messages import HELP_TEXT, START_TEXT
 from models import Reminder
+from default_time import _default_time_or, format_default_time_value, parse_default_time_value
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -591,25 +592,6 @@ def get_user_chat_id_by_user_id(user_id: int) -> Optional[int]:
         return int(row[0])
     return None
 
-def parse_default_time_value(raw: str) -> Tuple[int, int]:
-    s = (raw or "").strip().lower()
-    s = s.replace(".", ":")
-
-    m = re.fullmatch(r"(\d{1,2}):(\d{2})", s)
-    if not m:
-        raise ValueError("bad time")
-
-    hour = int(m.group(1))
-    minute = int(m.group(2))
-
-    if not (0 <= hour < 24 and 0 <= minute < 60):
-        raise ValueError("bad time")
-
-    return hour, minute
-
-
-def format_default_time_value(hour: int, minute: int) -> str:
-    return f"{int(hour):02d}:{int(minute):02d}"
 
 
 def get_user_default_time(user_id: Optional[int]) -> Optional[Tuple[int, int]]:
@@ -672,11 +654,6 @@ def clear_user_default_time(user_id: int) -> None:
     finally:
         conn.close()
 
-
-def _default_time_or(default_time: Optional[Tuple[int, int]], hour: int, minute: int) -> Tuple[int, int]:
-    if default_time is None:
-        return hour, minute
-    return int(default_time[0]), int(default_time[1])
 
 
 def add_reminder(
