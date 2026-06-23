@@ -102,3 +102,23 @@ def test_remind_command_has_no_old_default_parser_helper_references():
     remind_source = ast.get_source_segment(source, remind_nodes[0])
     assert "parse_date_time_smart_with_default(" not in remind_source
     assert "parse_recurring_with_default(" not in remind_source
+
+
+def test_bulk_create_single_reminder_has_no_old_default_parser_helper_references():
+    import ast
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    tree = ast.parse(source)
+
+    func_nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_create_single_reminder_from_line"
+    ]
+    assert len(func_nodes) == 1
+
+    func_source = ast.get_source_segment(source, func_nodes[0])
+    assert "parse_date_time_smart_with_default(" not in func_source
+    assert "parse_recurring_with_default(" not in func_source
+    assert "parse_with_optional_default_time(" in func_source

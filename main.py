@@ -2059,24 +2059,8 @@ def _create_single_reminder_from_line(
     Бросает исключение при ошибке.
     """
 
-    def parse_date_time_smart_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str]:
-        try:
-            return parse_date_time_smart(raw, current_now, default_time=default_time)
-        except TypeError as e:
-            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
-                raise
-            return parse_date_time_smart(raw, current_now)
-
-    def parse_recurring_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
-        try:
-            return parse_recurring(raw, current_now, default_time=default_time)
-        except TypeError as e:
-            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
-                raise
-            return parse_recurring(raw, current_now)
-
     if looks_like_recurring(line):
-        first_dt, text, pattern_type, payload, hour, minute = parse_recurring_with_default(line, now)
+        first_dt, text, pattern_type, payload, hour, minute = parse_with_optional_default_time(parse_recurring, line, now, default_time=default_time)
 
         tpl_id = create_recurring_template(
             chat_id=target_chat_id,
@@ -2105,7 +2089,7 @@ def _create_single_reminder_from_line(
             text,
         )
     else:
-        remind_at, text = parse_date_time_smart_with_default(line, now)
+        remind_at, text = parse_with_optional_default_time(parse_date_time_smart, line, now, default_time=default_time)
 
         reminder_id = add_reminder(
             chat_id=target_chat_id,
