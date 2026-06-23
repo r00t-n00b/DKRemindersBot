@@ -50,8 +50,11 @@ def test_snooze_callback_uses_custom_snooze_flow():
 
     snooze_source = ast.get_source_segment(source, nodes[0])
 
+    direct_source = Path("snooze_direct_flow.py").read_text()
+
     assert "from snooze_custom_flow import enter_custom_snooze_flow" in source
-    assert "enter_custom_snooze_flow(" in snooze_source
+    assert "enter_custom_snooze_flow=enter_custom_snooze_flow" in snooze_source
+    assert "enter_custom_snooze_flow(" in direct_source
     assert "kb = build_custom_date_keyboard(rid)" not in snooze_source
     assert 'await query.answer("Выбери дату", show_alert=False)' not in snooze_source
 

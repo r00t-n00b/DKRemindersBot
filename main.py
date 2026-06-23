@@ -210,6 +210,7 @@ from snooze_calendar_nav import show_custom_snooze_calendar
 from snooze_time_picker import enter_custom_snooze_time_picker
 from snooze_picktime_flow import handle_custom_snooze_picktime
 from snooze_cancel_flow import handle_custom_snooze_cancel
+from snooze_direct_flow import handle_direct_snooze_action
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4184,36 +4185,26 @@ async def snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("snooze:"):
             _, rid_str, action = data.split(":", 2)
             rid = int(rid_str)
-            r = get_reminder(rid)
-            if not r:
-                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
-                return
 
-            if action == "custom":
-                await enter_custom_snooze_flow(
-                    reminder_id=rid,
-                    query=query,
-                    mark_reminder_acked=mark_reminder_acked,
-                    build_custom_date_keyboard=build_custom_date_keyboard,
-                )
-                return
-            else:
-                try:
-                    new_dt = compute_snooze_target_time(action, get_now(), default_time=get_user_default_time(getattr(getattr(query, 'from_user', None), 'id', None)))
-                except ValueError:
-                    await query.answer(MSG_RESCHEDULE_UNKNOWN_ACTION, show_alert=True)
-                    return
-
-            await apply_snooze_to_reminder(
-                reminder=r,
-                new_dt=new_dt,
+            await handle_direct_snooze_action(
+                reminder_id=rid,
+                action=action,
                 query=query,
                 context=context,
+                get_now=get_now,
+                get_user_default_time=get_user_default_time,
+                get_reminder=get_reminder,
+                compute_snooze_target_time=compute_snooze_target_time,
+                enter_custom_snooze_flow=enter_custom_snooze_flow,
+                apply_snooze_to_reminder=apply_snooze_to_reminder,
                 mark_reminder_acked=mark_reminder_acked,
                 clear_reminder_message_keyboards=clear_reminder_message_keyboards,
                 add_reminder=add_reminder,
+                build_custom_date_keyboard=build_custom_date_keyboard,
                 format_snoozed_reminder_text=format_snoozed_reminder_text,
                 format_snoozed_answer_text=format_snoozed_answer_text,
+                msg_reminder_not_found=MSG_REMINDER_NOT_FOUND,
+                msg_reschedule_unknown_action=MSG_RESCHEDULE_UNKNOWN_ACTION,
             )
             return
 
