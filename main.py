@@ -203,6 +203,7 @@ from parser_recurring_detection import looks_like_recurring
 from bulk_header_detection import drop_optional_bulk_header
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
+from parser_default_time_adapter import parse_with_optional_default_time
 from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
 from reminder_message_proxy import NormalizedReminderMessageProxy
@@ -2599,22 +2600,6 @@ async def remind_command(update: Update, context: CTX) -> None:
     now = get_now()
     default_time = get_user_default_time(user.id)
 
-    def parse_date_time_smart_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str]:
-        try:
-            return parse_date_time_smart(raw, current_now, default_time=default_time)
-        except TypeError as e:
-            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
-                raise
-            return parse_date_time_smart(raw, current_now)
-
-    def parse_recurring_with_default(raw: str, current_now: datetime) -> Tuple[datetime, str, str, Dict[str, Any], int, int]:
-        try:
-            return parse_recurring(raw, current_now, default_time=default_time)
-        except TypeError as e:
-            if "default_time" not in str(e) and "unexpected keyword" not in str(e):
-                raise
-            return parse_recurring(raw, current_now)
-
     raw_text = message.text or ""
 
     logger.info(
@@ -2801,7 +2786,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                                 return
                         elif raw_args_without_first_token and "\n" not in raw_args:
                             try:
-                                parse_date_time_smart_with_default(raw_args_without_first_token, now)
+                                parse_with_optional_default_time(parse_date_time_smart, raw_args_without_first_token, now, default_time=default_time)
                             except Exception:
                                 pass
                             else:
@@ -2889,7 +2874,7 @@ async def remind_command(update: Update, context: CTX) -> None:
     # Сначала пробуем как recurring
     if looks_like_recurring(raw_single):
         try:
-            first_dt, text, pattern_type, payload, hour, minute = parse_recurring_with_default(raw_single, now)
+            first_dt, text, pattern_type, payload, hour, minute = parse_with_optional_default_time(parse_recurring, raw_single, now, default_time=default_time)
         except ValueError as e:
             logger.info(
                 "REMIND recurring parse failed user=%s chat=%s raw=%r error=%s",
@@ -2948,7 +2933,7 @@ async def remind_command(update: Update, context: CTX) -> None:
 
     # Обычное разовое напоминание
     try:
-        remind_at, text = parse_date_time_smart_with_default(raw_single, now)
+        remind_at, text = parse_with_optional_default_time(parse_date_time_smart, raw_single, now, default_time=default_time)
     except ValueError as e:
         original_error = e
         normalized_single = None
@@ -2981,7 +2966,7 @@ async def remind_command(update: Update, context: CTX) -> None:
                 if normalized_single.startswith("/remind"):
                     normalized_single = normalized_single[len("/remind"):].strip()
 
-                remind_at, text = parse_date_time_smart_with_default(normalized_single, now)
+                remind_at, text = parse_with_optional_default_time(parse_date_time_smart, normalized_single, now, default_time=default_time)
             else:
                 raise original_error
         except Exception as fallback_error:
