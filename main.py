@@ -211,6 +211,7 @@ from snooze_time_picker import enter_custom_snooze_time_picker
 from snooze_picktime_flow import handle_custom_snooze_picktime
 from snooze_cancel_flow import handle_custom_snooze_cancel
 from snooze_direct_flow import handle_direct_snooze_action
+from reminder_done_flow import handle_done_callback
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4147,39 +4148,17 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             try:
                 rid = int(rid_str)
             except ValueError:
-                # даже если вдруг id не распарсился, просто пометим сообщение завершенным
                 rid = None
 
-            if rid is not None:
-                mark_reminder_acked(rid)
-                await clear_reminder_message_keyboards(context.bot, rid)
-
-            # исходный текст сообщения
-            original_text = query.message.text if query.message and query.message.text else ""
-
-            # если есть оригинальный текст ремайндерa в БД - можно взять его
-            if rid is not None:
-                r = get_reminder(rid)
-            else:
-                r = None
-
-            base_text = r.text if r else original_text or "Напоминание"
-            new_text = format_completed_reminder_text(base_text)
-
-            # Пытаемся обновить сообщение, но в тестах этих методов может не быть
-            if hasattr(query, "edit_message_text"):
-                try:
-                    await query.edit_message_text(new_text)
-                except Exception:
-                    pass
-
-            if hasattr(query, "edit_message_reply_markup"):
-                try:
-                    await query.edit_message_reply_markup(reply_markup=None)
-                except Exception:
-                    pass
-
-            await query.answer("Отмечено как завершенное")
+            await handle_done_callback(
+                reminder_id=rid,
+                query=query,
+                context=context,
+                mark_reminder_acked=mark_reminder_acked,
+                clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+                get_reminder=get_reminder,
+                format_completed_reminder_text=format_completed_reminder_text,
+            )
             return
 
         if data.startswith("snooze:"):
