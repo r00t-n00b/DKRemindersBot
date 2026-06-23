@@ -206,6 +206,7 @@ from single_recurring_reminder import try_handle_single_recurring_reminder
 from single_oneoff_reminder import handle_single_oneoff_reminder
 from snooze_apply import apply_snooze_to_reminder
 from snooze_custom_flow import enter_custom_snooze_flow
+from snooze_calendar_nav import show_custom_snooze_calendar
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4221,9 +4222,13 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             year = int(year_str)
             month = int(month_str)
 
-            kb = build_custom_date_keyboard(rid, year=year, month=month)
-            await query.edit_message_reply_markup(reply_markup=kb)
-            await query.answer()
+            await show_custom_snooze_calendar(
+                reminder_id=rid,
+                query=query,
+                year=year,
+                month=month,
+                build_custom_date_keyboard=build_custom_date_keyboard,
+            )
             return
 
         if data.startswith("snooze_caltoday:"):
@@ -4231,14 +4236,14 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             rid = int(rid_str)
 
             today = datetime.now(TZ).date()
-            kb = build_custom_date_keyboard(rid, year=today.year, month=today.month)
-
-            try:
-                await query.edit_message_reply_markup(reply_markup=kb)
-            except Exception:
-                pass
-
-            await query.answer()
+            await show_custom_snooze_calendar(
+                reminder_id=rid,
+                query=query,
+                year=today.year,
+                month=today.month,
+                build_custom_date_keyboard=build_custom_date_keyboard,
+                ignore_edit_errors=True,
+            )
             return
 
         if data.startswith("snooze_pickdate:"):
