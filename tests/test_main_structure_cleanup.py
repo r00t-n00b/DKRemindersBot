@@ -21,3 +21,11 @@ def test_main_has_no_blank_line_artifacts_inside_start_command():
     content = Path("main.py").read_text()
 
     assert '""").strip()\n\n\n    msg = update.effective_message' not in content
+
+
+def test_main_has_no_command_message_extraction_artifacts():
+    content = Path("main.py").read_text()
+
+    assert "safe_reply(message,text)" not in content
+    assert "\nfrom typing import Tuple\n\nasync def aliases_command" not in content
+    assert "text = HELP_TEXT\n\n\n\n\n    await safe_reply" not in content

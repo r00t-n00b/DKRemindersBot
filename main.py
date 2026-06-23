@@ -1801,10 +1801,7 @@ async def help_command(update: Update, context: CTX) -> None:
 
     text = HELP_TEXT
 
-
-
-
-    await safe_reply(message,text)
+    await safe_reply(message, text)
 
 
 async def linkchat_command(update: Update, context: CTX) -> None:
@@ -1851,8 +1848,6 @@ async def linkchat_command(update: Update, context: CTX) -> None:
         f"или командой:\n"
         f"/remind {alias} 28.11 12:00 - завтра футбол"
     )
-
-from typing import Tuple
 
 async def aliases_command(update: Update, context: CTX) -> None:
     message = update.effective_message
