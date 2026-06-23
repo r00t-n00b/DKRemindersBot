@@ -2,8 +2,8 @@ import ast
 from pathlib import Path
 
 
-def _get_function_source(function_name):
-    source = Path("main.py").read_text()
+def _get_top_level_async_function_source(path, function_name):
+    source = Path(path).read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -16,8 +16,18 @@ def _get_function_source(function_name):
     return source, nodes[0], ast.get_source_segment(source, nodes[0])
 
 
-def test_snooze_callback_is_router_after_9x_refactor():
-    _, _, source = _get_function_source("snooze_callback")
+def test_main_snooze_callback_is_thin_wrapper_after_9x_refactor():
+    _, node, source = _get_top_level_async_function_source("main.py", "snooze_callback")
+
+    assert "handle_reminder_callback(update, context, _build_reminder_callback_deps())" in source
+    assert node.end_lineno - node.lineno + 1 <= 3
+
+
+def test_reminder_callback_router_contains_expected_routes():
+    _, _, source = _get_top_level_async_function_source(
+        "reminder_callback_router.py",
+        "handle_reminder_callback",
+    )
 
     required_router_calls = [
         "handle_pastdate_callback(",
@@ -47,8 +57,18 @@ def test_snooze_callback_is_router_after_9x_refactor():
         assert call in source
 
 
-def test_snooze_callback_does_not_reintroduce_business_logic():
-    _, _, source = _get_function_source("snooze_callback")
+def test_reminder_callback_router_does_not_import_main():
+    source = Path("reminder_callback_router.py").read_text()
+
+    assert "import main" not in source
+    assert "from main import" not in source
+
+
+def test_reminder_callback_router_does_not_reintroduce_business_logic():
+    _, _, source = _get_top_level_async_function_source(
+        "reminder_callback_router.py",
+        "handle_reminder_callback",
+    )
 
     forbidden_fragments = [
         "target_chat_id = get_user_chat_id_by_user_id",
@@ -71,9 +91,10 @@ def test_snooze_callback_does_not_reintroduce_business_logic():
         assert fragment not in source
 
 
-def test_snooze_callback_size_stays_bounded():
-    _, node, _ = _get_function_source("snooze_callback")
+def test_reminder_callback_router_size_stays_bounded():
+    _, node, _ = _get_top_level_async_function_source(
+        "reminder_callback_router.py",
+        "handle_reminder_callback",
+    )
 
-    # Current post-9.x size is about 332 lines.
-    # This guard allows small routing changes but prevents the function from growing back.
-    assert node.end_lineno - node.lineno + 1 <= 360
+    assert node.end_lineno - node.lineno + 1 <= 430

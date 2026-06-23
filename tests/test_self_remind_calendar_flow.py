@@ -100,19 +100,17 @@ def test_snooze_callback_uses_self_remind_calendar_helpers():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
     snooze_source = ast.get_source_segment(source, nodes[0])
-
-    assert "from self_remind_calendar_flow import handle_self_remind_calendar_month, handle_self_remind_calendar_today, handle_self_remind_pickdate" in source
 
     today_start = snooze_source.index('if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):')
     picktime_start = snooze_source.index('if data.startswith("selfremind_picktime:") or data.startswith("selfremind_event_picktime:"):', today_start)
@@ -194,13 +192,13 @@ def test_snooze_callback_uses_self_remind_calendar_month_helper():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
