@@ -208,6 +208,7 @@ from parser_recurring_detection import looks_like_recurring
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
+from reply_utils import safe_reply
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -1761,13 +1762,6 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix:
 
 # ===== Хендлеры команд =====
 
-async def safe_reply(message, text: str, **kwargs):
-    if not message or not hasattr(message, "reply_text"):
-        return
-
-    res = message.reply_text(text, **kwargs)
-    if inspect.isawaitable(res):
-        await res
 
 async def start(update: Update, context: CTX) -> None:
     chat = update.effective_chat
