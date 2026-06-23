@@ -209,6 +209,7 @@ from parser_recurring_schedule import _add_months_clamped, compute_next_occurren
 from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
+from command_messages import HELP_TEXT, START_TEXT
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -1782,36 +1783,7 @@ async def start(update: Update, context: CTX) -> None:
         last_name=getattr(user, "last_name", None),
     )
 
-    text = dedent("""
-        👋 Привет. Я бот для напоминаний.
-
-        ✨ Что я умею:
-        ставить разовые и повторяющиеся напоминания,
-        принимать голосовые в личке,
-        напоминать тебе, человеку или в привязанный чат.
-
-        📝 Просто напиши, что и когда напомнить:
-
-        напомни завтра в 11 купить молоко
-        через 2 часа проверить духовку
-        каждый вторник пить таблетки
-        напомни Наташе завтра в 12 позвонить
-
-        ⚙️ Команды:
-        /help - короткая справка
-        /list - активные напоминания
-        /defaulttime - время по умолчанию
-
-        Еще примеры:
-        /remind завтра 11:00 - купить молоко
-        /remind every day 10:00 - пить воду
-        /linkuser Наташа @username
-        /aliases - показать все алиасы
-
-        Все форматы и подробности: /help
-
-        Если в дате нет времени, использую 10:00.
-    """).strip()
+    text = START_TEXT
 
     msg = update.effective_message
     if msg and hasattr(msg, "reply_text"):
@@ -1827,106 +1799,7 @@ async def help_command(update: Update, context: CTX) -> None:
     if message is None:
         return
 
-    text = dedent("""
-        📌 Reminders - справка
-
-        🟢 САМЫЙ ПРОСТОЙ СПОСОБ
-
-        Просто напиши обычным текстом, что и когда напомнить.
-
-        Примеры:
-        напомни завтра в 18 купить молоко
-        сегодня в 18:00 позвонить маме
-        через 2 часа проверить духовку
-        каждый вторник пить таблетки
-
-        Голосом тоже можно:
-        отправь голосовое в личке, например:
-        «напомни завтра в 11 купить молоко»
-
-
-        ✍️ ЯВНЫЙ ФОРМАТ
-
-        /remind ДАТА ВРЕМЯ - текст
-
-        Примеры:
-        /remind tomorrow - купить молоко
-        /remind 29.11 18:30 - текст
-        /remind 23:59 - текст
-        /remind in 45 minutes - текст
-        /remind в следующую среду - текст
-        /remind weekend - текст
-
-
-        ⏱ ВРЕМЯ ПО УМОЛЧАНИЮ
-
-        Если дата есть, а времени нет, бот использует 10:00.
-
-        /defaulttime - показать настройку
-        /defaulttime 09:30 - использовать 09:30
-        /defaulttime reset - сбросить на 10:00
-
-        Явное время всегда важнее настройки:
-        /remind tomorrow 18:20 - текст
-
-
-        🔁 ПОВТОРЯЮЩИЕСЯ
-
-        /remind every day - пить воду
-        /remind every Monday 10:00 - текст
-        /remind каждый день 10:00 - текст
-        /remind every month 15 10:00 - текст
-
-        Интервалы:
-        /remind every 3 days - пить лекарство
-        /remind каждые 2 часа - размяться
-        /remind every 10 minutes - выпить воды
-        /remind каждые 2 недели 09:00 - отчет
-        /remind every 90 minutes - попить воды
-
-        Если время в recurring не указано, используется твое /defaulttime или 10:00.
-
-        При удалении recurring бот спросит:
-        удалить только ближайшее или всю серию.
-
-
-        📋 СПИСОК
-
-        /list - активные напоминания
-        /list Наташа - для user-alias
-        /list football - для chat-alias
-        /list @username - напоминания, которые ты поставил этому пользователю
-
-
-        🔗 АЛИАСЫ
-
-        /linkuser misha @username
-        /linkuser Наташа @username
-        /linkchat football
-        /aliases
-        /unalias Наташа
-        /renamealias Наташа -> Ната
-
-        Chat-alias создается в нужном групповом чате.
-        User-alias работает только если пользователь уже писал боту в личку.
-
-
-        👤 НАПОМНИТЬ МНЕ ЛИЧНО
-
-        В группе под напоминанием есть кнопка «Напомнить мне лично».
-
-        Можно выбрать:
-        обычное личное напоминание
-        или напоминание до события.
-
-
-        ⏰ ПОСЛЕ СРАБАТЫВАНИЯ
-
-        Доступны кнопки:
-        +20 минут, +1 час, +3 часа, завтра,
-        следующий понедельник, кастомная дата,
-        Mark complete.
-    """).strip()
+    text = HELP_TEXT
 
 
 
