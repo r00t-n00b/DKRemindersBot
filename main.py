@@ -207,6 +207,7 @@ from single_oneoff_reminder import handle_single_oneoff_reminder
 from snooze_apply import apply_snooze_to_reminder
 from snooze_custom_flow import enter_custom_snooze_flow
 from snooze_calendar_nav import show_custom_snooze_calendar
+from snooze_time_picker import enter_custom_snooze_time_picker
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4250,12 +4251,13 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             _, rid_str, date_str = data.split(":", 2)
             rid = int(rid_str)
 
-            # выбор даты - реакция
-            mark_reminder_acked(rid)
-
-            kb = build_custom_time_keyboard(rid, date_str)
-            await query.edit_message_reply_markup(reply_markup=kb)
-            await query.answer("Выбери время")
+            await enter_custom_snooze_time_picker(
+                reminder_id=rid,
+                date_str=date_str,
+                query=query,
+                mark_reminder_acked=mark_reminder_acked,
+                build_custom_time_keyboard=build_custom_time_keyboard,
+            )
             return
 
         if data.startswith("snooze_picktime:"):
