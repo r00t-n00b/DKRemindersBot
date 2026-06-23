@@ -18,3 +18,11 @@ def parse_snooze_action_callback_data(data: str):
     _, raw_id, action = data.split(":", 2)
     return int(raw_id), action
 
+def parse_snooze_calendar_callback_data(data: str):
+    if not data.startswith("snooze_cal:"):
+        raise ValueError("callback data must start with 'snooze_cal:'")
+
+    _, raw_id, ym = data.split(":", 2)
+    year_str, month_str = ym.split("-", 1)
+    return int(raw_id), int(year_str), int(month_str)
+

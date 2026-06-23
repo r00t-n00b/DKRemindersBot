@@ -1,7 +1,7 @@
 import pytest
 
 import main
-from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data
+from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data
 
 
 def test_parse_optional_int_callback_id_returns_int_for_valid_id():
@@ -17,6 +17,50 @@ def test_parse_optional_int_callback_id_rejects_wrong_prefix():
         parse_optional_int_callback_id("snooze:123", prefix="done:")
 
 
+
+
+def test_parse_snooze_calendar_callback_data_returns_id_year_month():
+    assert parse_snooze_calendar_callback_data("snooze_cal:123:2026-07") == (123, 2026, 7)
+
+
+def test_parse_snooze_calendar_callback_data_rejects_wrong_prefix():
+    with pytest.raises(ValueError):
+        parse_snooze_calendar_callback_data("snooze:123:1h")
+
+
+def test_parse_snooze_calendar_callback_data_rejects_invalid_id_or_month():
+    with pytest.raises(ValueError):
+        parse_snooze_calendar_callback_data("snooze_cal:not-int:2026-07")
+
+    with pytest.raises(ValueError):
+        parse_snooze_calendar_callback_data("snooze_cal:123:2026-bad")
+
+
+def test_snooze_calendar_uses_callback_parser():
+    import ast
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    tree = ast.parse(source)
+
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+    ]
+    assert len(nodes) == 1
+
+    snooze_source = ast.get_source_segment(source, nodes[0])
+
+    assert "parse_snooze_calendar_callback_data" in source
+
+    cal_start = snooze_source.index('if data.startswith("snooze_cal:"):')
+    today_start = snooze_source.index('if data.startswith("snooze_caltoday:"):', cal_start)
+    cal_source = snooze_source[cal_start:today_start]
+
+    assert "parse_snooze_calendar_callback_data(data)" in cal_source
+    assert '_, rid_str, ym = data.split(":", 2)' not in cal_source
+    assert "year_str, month_str = ym.split" not in cal_source
 
 def test_parse_snooze_action_callback_data_returns_id_and_action():
     assert parse_snooze_action_callback_data("snooze:123:1h") == (123, "1h")
