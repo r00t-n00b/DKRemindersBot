@@ -5,7 +5,6 @@ import re
 import sqlite3
 import json
 import secrets
-import tempfile
 try:
     from google import genai
     from google.genai import types as genai_types
@@ -205,6 +204,7 @@ from parser_recurring_schedule import _add_months_clamped, compute_next_occurren
 from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
+from voice_file_io import download_telegram_file_bytes
 from command_messages import HELP_TEXT, START_TEXT
 from models import Reminder
 from default_time import _default_time_or, format_default_time_value, parse_default_time_value
@@ -2683,31 +2683,15 @@ async def transcribe_voice_message(update: Update, context: CTX) -> str:
         raise RuntimeError("Пакет google-genai не установлен")
 
     tg_file = await context.bot.get_file(message.voice.file_id)
+    audio_bytes = await download_telegram_file_bytes(tg_file, suffix=".ogg")
 
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
-        tmp_path = tmp.name
+    client = genai.Client(api_key=token)
 
-    try:
-        await tg_file.download_to_drive(tmp_path)
-
-        with open(tmp_path, "rb") as audio_file:
-            audio_bytes = audio_file.read()
-
-        if not audio_bytes:
-            raise RuntimeError("Telegram voice file пустой")
-
-        client = genai.Client(api_key=token)
-
-        return await _gemini_transcribe_audio_with_retries(
-            client=client,
-            audio_bytes=audio_bytes,
-            aliases_prompt=_format_known_aliases_for_voice_prompt(update.effective_user.id),
-        )
-    finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+    return await _gemini_transcribe_audio_with_retries(
+        client=client,
+        audio_bytes=audio_bytes,
+        aliases_prompt=_format_known_aliases_for_voice_prompt(update.effective_user.id),
+    )
 
 async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) -> str:
     raw = (text or "").strip()
