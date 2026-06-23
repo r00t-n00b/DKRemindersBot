@@ -204,6 +204,7 @@ from bulk_header_detection import drop_optional_bulk_header
 from bulk_single_reminder import create_single_reminder_from_line
 from single_recurring_reminder import try_handle_single_recurring_reminder
 from single_oneoff_reminder import handle_single_oneoff_reminder
+from snooze_apply import apply_snooze_to_reminder
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4198,30 +4199,17 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                     await query.answer(MSG_RESCHEDULE_UNKNOWN_ACTION, show_alert=True)
                     return
 
-            # УСПЕШНЫЙ snooze = реакция пользователя
-            mark_reminder_acked(rid)
-            await clear_reminder_message_keyboards(context.bot, rid)
-
-            add_reminder(
-                chat_id=r.chat_id,
-                text=r.text,
-                remind_at=new_dt,
-                created_by=r.created_by,
-                template_id=None,
+            await apply_snooze_to_reminder(
+                reminder=r,
+                new_dt=new_dt,
+                query=query,
+                context=context,
+                mark_reminder_acked=mark_reminder_acked,
+                clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+                add_reminder=add_reminder,
+                format_snoozed_reminder_text=format_snoozed_reminder_text,
+                format_snoozed_answer_text=format_snoozed_answer_text,
             )
-            when_str = new_dt.strftime("%d.%m %H:%M")
-
-            # Пытаемся обновить текст сообщения
-            try:
-                await query.edit_message_text(format_snoozed_reminder_text(r.text, when_str))
-            except Exception:
-                # если не получилось - хотя бы уберем клавиатуру
-                try:
-                    await query.edit_message_reply_markup(reply_markup=None)
-                except Exception:
-                    pass
-
-            await query.answer(format_snoozed_answer_text(when_str))
             return
 
         if data.startswith("snooze_cal:"):
@@ -4284,26 +4272,17 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
                 return
 
-            # успешный picktime - реакция
-            mark_reminder_acked(rid)
-            await clear_reminder_message_keyboards(context.bot, rid)
-
-            add_reminder(
-                chat_id=r.chat_id,
-                text=r.text,
-                remind_at=new_dt,
-                created_by=r.created_by,
-                template_id=None,
+            await apply_snooze_to_reminder(
+                reminder=r,
+                new_dt=new_dt,
+                query=query,
+                context=context,
+                mark_reminder_acked=mark_reminder_acked,
+                clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+                add_reminder=add_reminder,
+                format_snoozed_reminder_text=format_snoozed_reminder_text,
+                format_snoozed_answer_text=format_snoozed_answer_text,
             )
-            when_str = new_dt.strftime("%d.%m %H:%M")
-            try:
-                await query.edit_message_text(format_snoozed_reminder_text(r.text, when_str))
-            except Exception:
-                try:
-                    await query.edit_message_reply_markup(reply_markup=None)
-                except Exception:
-                    pass
-            await query.answer(format_snoozed_answer_text(when_str))
             return
 
         if data.startswith("snooze_cancel:"):
