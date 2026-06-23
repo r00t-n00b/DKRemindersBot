@@ -209,6 +209,7 @@ from snooze_custom_flow import enter_custom_snooze_flow
 from snooze_calendar_nav import show_custom_snooze_calendar
 from snooze_time_picker import enter_custom_snooze_time_picker
 from snooze_picktime_flow import handle_custom_snooze_picktime
+from snooze_cancel_flow import handle_custom_snooze_cancel
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4293,16 +4294,13 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             except ValueError:
                 rid = None
 
-            if rid is not None:
-                mark_reminder_acked(rid)
-
-                await query.edit_message_reply_markup(
-                    reply_markup=build_snooze_keyboard(rid)
-                )
-                await query.answer("Вернул варианты")
-                return
-
-            await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
+            await handle_custom_snooze_cancel(
+                reminder_id=rid,
+                query=query,
+                mark_reminder_acked=mark_reminder_acked,
+                build_snooze_keyboard=build_snooze_keyboard,
+                msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
+            )
             return
 
         if data == "noop":
