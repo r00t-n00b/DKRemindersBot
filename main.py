@@ -19,7 +19,6 @@ from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
-from textwrap import dedent
 
 # --- Telegram imports ---
 # Во время тестов telegram не установлен, поэтому:

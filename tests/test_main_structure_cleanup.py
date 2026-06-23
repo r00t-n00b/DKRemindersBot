@@ -29,3 +29,10 @@ def test_main_has_no_command_message_extraction_artifacts():
     assert "safe_reply(message,text)" not in content
     assert "\nfrom typing import Tuple\n\nasync def aliases_command" not in content
     assert "text = HELP_TEXT\n\n\n\n\n    await safe_reply" not in content
+
+
+def test_main_does_not_import_dedent_after_command_messages_extraction():
+    content = Path("main.py").read_text()
+
+    assert "from textwrap import dedent" not in content
+    assert "dedent(" not in content
