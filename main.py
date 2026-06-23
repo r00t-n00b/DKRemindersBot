@@ -206,6 +206,7 @@ from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
 from reminder_message_proxy import NormalizedReminderMessageProxy
 from voice_file_io import download_telegram_file_bytes
+from plain_text_local_normalization import normalize_plain_text_reminder_locally
 from voice_text_normalization import (
     _normalize_plain_text_relative_reminder_locally,
     _normalize_voice_ru_months,
@@ -2395,67 +2396,12 @@ async def voice_remind_command(update: Update, context: CTX) -> None:
 
 
 def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:
-    """Fast local path for plain text reminders before Gemini.
-
-    Converts simple natural messages like:
-    "напомни 1 октября пересчитать страховку"
-    into:
-    "1 октября - пересчитать страховку"
-
-    Returns None if local parser cannot confidently split date/time and text.
-    """
-    candidate = (raw_text or "").strip()
-    if not candidate:
-        return None
-
-    candidate = re.sub(
-        r"^\s*(?:напомни(?:\s+мне)?|напомнить(?:\s+мне)?|remind(?:\s+me)?(?:\s+to)?)\s+",
-        "",
-        candidate,
-        flags=re.IGNORECASE,
-    ).strip()
-
-    if not candidate:
-        return None
-
-    # Keep this local fast path deliberately narrow.
-    # Broader phrases like "напомни завтра поздравить Саню" should still go to Gemini,
-    # because Gemini may add useful default time details such as 18:00.
-    m = re.match(
-        r"^\s*((?:сегодня|завтра|послезавтра|today|tomorrow|day after tomorrow)\s+(?:в|at)\s+\d{1,2}[:.]\d{2})\s+(.+)$",
-        candidate,
-        flags=re.IGNORECASE,
+    return normalize_plain_text_reminder_locally(
+        raw_text,
+        split_expr_and_text=_split_expr_and_text,
+        parse_date_time_smart=parse_date_time_smart,
+        get_now=get_now,
     )
-    if m:
-        expr = re.sub(r"\s+(?:в|at)\s+", " ", m.group(1).strip(), flags=re.IGNORECASE)
-        reminder_text = m.group(2).strip()
-        if not expr or not reminder_text:
-            return None
-        try:
-            parse_date_time_smart(f"{expr} - {reminder_text}", get_now())
-        except Exception:
-            return None
-        return f"{expr} - {reminder_text}"
-
-    if not re.match(
-        r"^\s*\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+(?:в\s+)?\d{1,2}[:.]\d{2})?\s+.+$",
-        candidate,
-        flags=re.IGNORECASE,
-    ):
-        return None
-
-    try:
-        expr, reminder_text = _split_expr_and_text(candidate)
-        parse_date_time_smart(candidate, get_now())
-    except Exception:
-        return None
-
-    expr = expr.strip()
-    reminder_text = reminder_text.strip()
-    if not expr or not reminder_text:
-        return None
-
-    return f"{expr} - {reminder_text}"
 
 
 async def plain_text_remind_command(update: Update, context: CTX) -> None:
