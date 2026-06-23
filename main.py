@@ -208,6 +208,7 @@ from snooze_apply import apply_snooze_to_reminder
 from snooze_custom_flow import enter_custom_snooze_flow
 from snooze_calendar_nav import show_custom_snooze_calendar
 from snooze_time_picker import enter_custom_snooze_time_picker
+from snooze_picktime_flow import handle_custom_snooze_picktime
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4263,33 +4264,25 @@ async def snooze_callback(update: Update, context: CTX) -> None:
         if data.startswith("snooze_picktime:"):
             _, rid_str, date_str, time_str = data.split(":", 3)
             rid = int(rid_str)
-            r = get_reminder(rid)
-            if not r:
-                await query.answer(MSG_REMINDER_NOT_FOUND, show_alert=True)
-                return
 
-            try:
-                year, month, day = map(int, date_str.split("-"))
-                hour, minute = map(int, time_str.split(":"))
-                new_dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
-            except Exception:
-                await query.answer(MSG_RESCHEDULE_BAD_DATETIME, show_alert=True)
-                return
-
-            if new_dt <= get_now():
-                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
-                return
-
-            await apply_snooze_to_reminder(
-                reminder=r,
-                new_dt=new_dt,
+            await handle_custom_snooze_picktime(
+                reminder_id=rid,
+                date_str=date_str,
+                time_str=time_str,
                 query=query,
                 context=context,
+                tz=TZ,
+                get_now=get_now,
+                get_reminder=get_reminder,
                 mark_reminder_acked=mark_reminder_acked,
                 clear_reminder_message_keyboards=clear_reminder_message_keyboards,
                 add_reminder=add_reminder,
+                apply_snooze_to_reminder=apply_snooze_to_reminder,
                 format_snoozed_reminder_text=format_snoozed_reminder_text,
                 format_snoozed_answer_text=format_snoozed_answer_text,
+                msg_reminder_not_found=MSG_REMINDER_NOT_FOUND,
+                msg_reschedule_bad_datetime=MSG_RESCHEDULE_BAD_DATETIME,
+                msg_reschedule_past_time=MSG_RESCHEDULE_PAST_TIME,
             )
             return
 

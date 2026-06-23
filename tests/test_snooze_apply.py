@@ -119,7 +119,8 @@ def test_snooze_callback_uses_extracted_apply_helper():
     snooze_source = ast.get_source_segment(source, nodes[0])
 
     assert "from snooze_apply import apply_snooze_to_reminder" in source
-    assert snooze_source.count("apply_snooze_to_reminder(") == 2
+    assert snooze_source.count("apply_snooze_to_reminder(") == 1
+    assert "apply_snooze_to_reminder(" in Path("snooze_picktime_flow.py").read_text()
     # clear_reminder_message_keyboards(context.bot, rid) may still be used by done: branch.
     assert "format_snoozed_reminder_text(r.text, when_str)" not in snooze_source
     assert "format_snoozed_answer_text(when_str)" not in snooze_source
