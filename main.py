@@ -13,7 +13,6 @@ try:
 except ImportError:
     genai = None
     genai_types = None
-from dataclasses import dataclass
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 from types import SimpleNamespace
@@ -208,6 +207,7 @@ from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
 from command_messages import HELP_TEXT, START_TEXT
+from models import Reminder
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -239,16 +239,6 @@ from parser_lexicon import (
 )
 
 # ===== Модель данных =====
-
-@dataclass
-class Reminder:
-    id: int
-    chat_id: int
-    text: str
-    remind_at: datetime
-    created_by: Optional[int]
-    template_id: Optional[int] = None
-    sent_at: Optional[datetime] = None
 
 
 # ===== Работа с БД =====
