@@ -58,3 +58,12 @@ def test_safe_reply_ignores_missing_message_or_reply_text():
 
 def test_main_reexports_safe_reply_for_existing_callers():
     assert main.safe_reply is safe_reply
+
+
+def test_start_handler_uses_safe_reply_helper_instead_of_manual_reply_block():
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+
+    assert "await safe_reply(msg, text)" in source
+    assert "res = msg.reply_text(text)" not in source

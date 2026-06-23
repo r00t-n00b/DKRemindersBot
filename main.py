@@ -6,7 +6,6 @@ import sqlite3
 import json
 import secrets
 import calendar
-import inspect
 import tempfile
 try:
     from google import genai
@@ -1785,10 +1784,7 @@ async def start(update: Update, context: CTX) -> None:
     text = START_TEXT
 
     msg = update.effective_message
-    if msg and hasattr(msg, "reply_text"):
-        res = msg.reply_text(text)
-        if inspect.isawaitable(res):
-            await res
+    await safe_reply(msg, text)
 
 async def start_command(update: Update, context: CTX) -> None:
     await start(update, context)
