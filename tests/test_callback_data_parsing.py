@@ -1,7 +1,7 @@
 import pytest
 
 import main
-from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data
+from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data
 
 
 def test_parse_optional_int_callback_id_returns_int_for_valid_id():
@@ -18,6 +18,47 @@ def test_parse_optional_int_callback_id_rejects_wrong_prefix():
 
 
 
+
+
+def test_parse_snooze_pickdate_callback_data_returns_id_and_date():
+    assert parse_snooze_pickdate_callback_data("snooze_pickdate:123:2026-07-15") == (123, "2026-07-15")
+
+
+def test_parse_snooze_pickdate_callback_data_rejects_wrong_prefix():
+    with pytest.raises(ValueError):
+        parse_snooze_pickdate_callback_data("snooze_cal:123:2026-07")
+
+
+def test_parse_snooze_pickdate_callback_data_rejects_invalid_id():
+    with pytest.raises(ValueError):
+        parse_snooze_pickdate_callback_data("snooze_pickdate:not-int:2026-07-15")
+
+
+def test_snooze_pickdate_uses_callback_parser():
+    import ast
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    tree = ast.parse(source)
+
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+    ]
+    assert len(nodes) == 1
+
+    snooze_source = ast.get_source_segment(source, nodes[0])
+
+    assert "parse_snooze_pickdate_callback_data" in source
+
+    pickdate_start = snooze_source.index('if data.startswith("snooze_pickdate:"):')
+    picktime_start = snooze_source.index('if data.startswith("snooze_picktime:"):', pickdate_start)
+    pickdate_source = snooze_source[pickdate_start:picktime_start]
+
+    assert "parse_snooze_pickdate_callback_data(data)" in pickdate_source
+    assert '_, rid_str, date_str = data.split(":", 2)' not in pickdate_source
+    assert "rid = int(rid_str)" not in pickdate_source
 
 def test_parse_snooze_calendar_callback_data_returns_id_year_month():
     assert parse_snooze_calendar_callback_data("snooze_cal:123:2026-07") == (123, 2026, 7)

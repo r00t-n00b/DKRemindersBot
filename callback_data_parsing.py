@@ -26,3 +26,10 @@ def parse_snooze_calendar_callback_data(data: str):
     year_str, month_str = ym.split("-", 1)
     return int(raw_id), int(year_str), int(month_str)
 
+def parse_snooze_pickdate_callback_data(data: str):
+    if not data.startswith("snooze_pickdate:"):
+        raise ValueError("callback data must start with 'snooze_pickdate:'")
+
+    _, raw_id, date_str = data.split(":", 2)
+    return int(raw_id), date_str
+
