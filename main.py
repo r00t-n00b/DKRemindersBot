@@ -201,6 +201,7 @@ from parser_absolute import _parse_absolute
 from parser_date_time_smart import parse_date_time_smart
 from parser_recurring_detection import looks_like_recurring
 from bulk_header_detection import drop_optional_bulk_header
+from bulk_single_reminder import create_single_reminder_from_line
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -2054,57 +2055,21 @@ def _create_single_reminder_from_line(
     user,
     default_time: Optional[Tuple[int, int]] = None,
 ):
-    """
-    Создает одно напоминание (oneoff или recurring) из строки.
-    Бросает исключение при ошибке.
-    """
+    return create_single_reminder_from_line(
+        line=line,
+        now=now,
+        target_chat_id=target_chat_id,
+        user=user,
+        default_time=default_time,
+        looks_like_recurring=looks_like_recurring,
+        parse_with_optional_default_time=parse_with_optional_default_time,
+        parse_recurring=parse_recurring,
+        parse_date_time_smart=parse_date_time_smart,
+        create_recurring_template=create_recurring_template,
+        add_reminder=add_reminder,
+        logger=logger,
+    )
 
-    if looks_like_recurring(line):
-        first_dt, text, pattern_type, payload, hour, minute = parse_with_optional_default_time(parse_recurring, line, now, default_time=default_time)
-
-        tpl_id = create_recurring_template(
-            chat_id=target_chat_id,
-            text=text,
-            pattern_type=pattern_type,
-            payload=payload,
-            time_hour=hour,
-            time_minute=minute,
-            created_by=user.id,
-        )
-
-        reminder_id = add_reminder(
-            chat_id=target_chat_id,
-            text=text,
-            remind_at=first_dt,
-            created_by=user.id,
-            template_id=tpl_id,
-        )
-
-        logger.info(
-            "Создан bulk recurring reminder id=%s tpl_id=%s chat_id=%s at=%s text=%s",
-            reminder_id,
-            tpl_id,
-            target_chat_id,
-            first_dt.isoformat(),
-            text,
-        )
-    else:
-        remind_at, text = parse_with_optional_default_time(parse_date_time_smart, line, now, default_time=default_time)
-
-        reminder_id = add_reminder(
-            chat_id=target_chat_id,
-            text=text,
-            remind_at=remind_at,
-            created_by=user.id,
-        )
-
-        logger.info(
-            "Создан bulk reminder id=%s chat_id=%s at=%s text=%s",
-            reminder_id,
-            target_chat_id,
-            remind_at.isoformat(),
-            text,
-        )
 
 def _format_bulk_result(
     *,

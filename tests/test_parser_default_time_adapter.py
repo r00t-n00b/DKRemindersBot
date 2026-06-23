@@ -121,4 +121,4 @@ def test_bulk_create_single_reminder_has_no_old_default_parser_helper_references
     func_source = ast.get_source_segment(source, func_nodes[0])
     assert "parse_date_time_smart_with_default(" not in func_source
     assert "parse_recurring_with_default(" not in func_source
-    assert "parse_with_optional_default_time(" in func_source
+    assert "parse_with_optional_default_time=parse_with_optional_default_time" in func_source
