@@ -4255,11 +4255,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("snooze_cancel:"):
-            _, rid_str = data.split(":", 1)
-            try:
-                rid = int(rid_str)
-            except ValueError:
-                rid = None
+            rid = parse_optional_int_callback_id(data, prefix="snooze_cancel:")
 
             await handle_custom_snooze_cancel(
                 reminder_id=rid,
