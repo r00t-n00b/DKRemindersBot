@@ -219,6 +219,7 @@ from self_remind_calendar_flow import handle_self_remind_calendar_month, handle_
 from self_remind_picktime_flow import handle_self_remind_picktime
 from self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
 from self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
+from callback_simple_flows import handle_done_callback_data, handle_noop_callback, handle_pastdate_callback, handle_self_remind_cancel_callback, handle_self_remind_event_cancel_callback, handle_snooze_cancel_callback_data, handle_snooze_current_month_callback
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -3732,7 +3733,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             or data.startswith("selfremind_pastdate:")
             or data.startswith("selfremind_event_pastdate:")
         ):
-            await query.answer("Эта дата уже прошла. Выбери другую.", show_alert=True)
+            await handle_pastdate_callback(query=query)
             return
 
         if data.startswith("selfremind:ask:"):
@@ -3902,49 +3903,43 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_event_cancel:"):
-            try:
-                rid = parse_required_int_callback_id(data, prefix="selfremind_event_cancel:")
-            except ValueError:
-                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
-                return
-
-            await handle_self_remind_event_cancel(
-                reminder_id=rid,
+            await handle_self_remind_event_cancel_callback(
+                data=data,
                 query=query,
+                parse_required_int_callback_id=parse_required_int_callback_id,
+                handle_self_remind_event_cancel=handle_self_remind_event_cancel,
                 get_reminder=get_reminder,
                 get_self_remind_event_base=get_self_remind_event_base,
                 extract_event_datetime_from_text=extract_event_datetime_from_text,
                 build_self_remind_choice_keyboard=build_self_remind_choice_keyboard,
                 build_self_remind_event_before_keyboard=build_self_remind_event_before_keyboard,
+                msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
                 msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
             )
             return
 
         if data.startswith("selfremind_cancel:"):
-            try:
-                rid = parse_required_int_callback_id(data, prefix="selfremind_cancel:")
-            except ValueError:
-                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
-                return
-
-            await handle_self_remind_cancel(
-                reminder_id=rid,
+            await handle_self_remind_cancel_callback(
+                data=data,
                 query=query,
                 context=context,
+                parse_required_int_callback_id=parse_required_int_callback_id,
+                handle_self_remind_cancel=handle_self_remind_cancel,
                 get_reminder=get_reminder,
                 get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
                 build_self_remind_choice_keyboard=build_self_remind_choice_keyboard,
+                msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
                 msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
             )
             return
 
         if data.startswith("done:"):
-            rid = parse_optional_int_callback_id(data, prefix="done:")
-
-            await handle_done_callback(
-                reminder_id=rid,
+            await handle_done_callback_data(
+                data=data,
                 query=query,
                 context=context,
+                parse_optional_int_callback_id=parse_optional_int_callback_id,
+                handle_done_callback=handle_done_callback,
                 mark_reminder_acked=mark_reminder_acked,
                 clear_reminder_message_keyboards=clear_reminder_message_keyboards,
                 get_reminder=get_reminder,
@@ -3990,16 +3985,13 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("snooze_caltoday:"):
-            rid = parse_required_int_callback_id(data, prefix="snooze_caltoday:")
-
-            today = datetime.now(TZ).date()
-            await show_custom_snooze_calendar(
-                reminder_id=rid,
+            await handle_snooze_current_month_callback(
+                data=data,
                 query=query,
-                year=today.year,
-                month=today.month,
+                get_today=lambda: datetime.now(TZ).date(),
+                parse_required_int_callback_id=parse_required_int_callback_id,
+                show_custom_snooze_calendar=show_custom_snooze_calendar,
                 build_custom_date_keyboard=build_custom_date_keyboard,
-                ignore_edit_errors=True,
             )
             return
 
@@ -4040,11 +4032,11 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("snooze_cancel:"):
-            rid = parse_optional_int_callback_id(data, prefix="snooze_cancel:")
-
-            await handle_custom_snooze_cancel(
-                reminder_id=rid,
+            await handle_snooze_cancel_callback_data(
+                data=data,
                 query=query,
+                parse_optional_int_callback_id=parse_optional_int_callback_id,
+                handle_custom_snooze_cancel=handle_custom_snooze_cancel,
                 mark_reminder_acked=mark_reminder_acked,
                 build_snooze_keyboard=build_snooze_keyboard,
                 msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
@@ -4052,7 +4044,7 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data == "noop":
-            await query.answer()
+            await handle_noop_callback(query=query)
             return
 
     except Exception:

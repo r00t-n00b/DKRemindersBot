@@ -115,7 +115,8 @@ def test_snooze_callback_uses_self_remind_event_cancel_flow_helper():
     cancel_start = snooze_source.index('if data.startswith("selfremind_cancel:"):', event_cancel_start)
     event_cancel_source = snooze_source[event_cancel_start:cancel_start]
 
-    assert "handle_self_remind_event_cancel(" in event_cancel_source
+    assert "handle_self_remind_event_cancel_callback(" in event_cancel_source
+    assert "handle_self_remind_event_cancel=handle_self_remind_event_cancel" in event_cancel_source
     assert "src = get_reminder(rid)" not in event_cancel_source
     assert "event_at = extract_event_datetime_from_text(src.text, base_now)" not in event_cancel_source
     assert "build_self_remind_event_before_keyboard(rid)" not in event_cancel_source

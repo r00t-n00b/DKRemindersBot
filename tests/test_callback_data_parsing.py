@@ -69,10 +69,12 @@ def test_selfremind_event_cancel_uses_required_id_parser():
     cancel_start = snooze_source.index('if data.startswith("selfremind_cancel:"):', event_cancel_start)
     event_cancel_source = snooze_source[event_cancel_start:cancel_start]
 
-    assert 'parse_required_int_callback_id(data, prefix="selfremind_event_cancel:")' in event_cancel_source
+    assert "handle_self_remind_event_cancel_callback(" in event_cancel_source
+    assert "parse_required_int_callback_id=parse_required_int_callback_id" in event_cancel_source
     assert '_, rid_str = data.split(":", 1)' not in event_cancel_source
     assert "rid = int(rid_str)" not in event_cancel_source
-    assert "await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)" in event_cancel_source
+    simple_flows_source = Path("callback_simple_flows.py").read_text()
+    assert "await query.answer(msg_invalid_reminder_id, show_alert=True)" in simple_flows_source
 
 def test_selfremind_cancel_uses_required_id_parser():
     import ast
@@ -94,10 +96,12 @@ def test_selfremind_cancel_uses_required_id_parser():
     done_start = snooze_source.index('if data.startswith("done:"):', cancel_start)
     cancel_source = snooze_source[cancel_start:done_start]
 
-    assert 'parse_required_int_callback_id(data, prefix="selfremind_cancel:")' in cancel_source
+    assert "handle_self_remind_cancel_callback(" in cancel_source
+    assert "parse_required_int_callback_id=parse_required_int_callback_id" in cancel_source
     assert '_, rid_str = data.split(":", 1)' not in cancel_source
     assert "rid = int(rid_str)" not in cancel_source
-    assert "await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)" in cancel_source
+    simple_flows_source = Path("callback_simple_flows.py").read_text()
+    assert "await query.answer(msg_invalid_reminder_id, show_alert=True)" in simple_flows_source
 
 def test_snooze_caltoday_uses_required_id_parser():
     import ast
@@ -121,7 +125,8 @@ def test_snooze_caltoday_uses_required_id_parser():
     pickdate_start = snooze_source.index('if data.startswith("snooze_pickdate:"):', today_start)
     today_source = snooze_source[today_start:pickdate_start]
 
-    assert 'parse_required_int_callback_id(data, prefix="snooze_caltoday:")' in today_source
+    assert "handle_snooze_current_month_callback(" in today_source
+    assert "parse_required_int_callback_id=parse_required_int_callback_id" in today_source
     assert '_, rid_str = data.split(":", 1)' not in today_source
     assert "rid = int(rid_str)" not in today_source
 
@@ -334,7 +339,8 @@ def test_snooze_callback_uses_done_callback_id_parser():
     snooze_start = snooze_source.index('if data.startswith("snooze:"):', done_start)
     done_source = snooze_source[done_start:snooze_start]
 
-    assert 'parse_optional_int_callback_id(data, prefix="done:")' in done_source
+    assert "handle_done_callback_data(" in done_source
+    assert "parse_optional_int_callback_id=parse_optional_int_callback_id" in done_source
     assert "_, rid_str = data.split" not in done_source
     assert "rid = int(rid_str)" not in done_source
 
@@ -360,7 +366,8 @@ def test_snooze_cancel_uses_callback_id_parser():
     noop_start = snooze_source.index('if data == "noop":', cancel_start)
     cancel_source = snooze_source[cancel_start:noop_start]
 
-    assert 'parse_optional_int_callback_id(data, prefix="snooze_cancel:")' in cancel_source
+    assert "handle_snooze_cancel_callback_data(" in cancel_source
+    assert "parse_optional_int_callback_id=parse_optional_int_callback_id" in cancel_source
     assert "_, rid_str = data.split" not in cancel_source
     assert "rid = int(rid_str)" not in cancel_source
 

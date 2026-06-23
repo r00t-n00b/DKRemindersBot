@@ -90,7 +90,7 @@ def test_snooze_callback_uses_calendar_nav_helper():
     snooze_source = ast.get_source_segment(source, nodes[0])
 
     assert "from snooze_calendar_nav import show_custom_snooze_calendar" in source
-    assert snooze_source.count("show_custom_snooze_calendar(") == 2
+    assert snooze_source.count("show_custom_snooze_calendar(") == 1
     assert "kb = build_custom_date_keyboard(rid, year=year, month=month)" not in snooze_source
     assert "kb = build_custom_date_keyboard(rid, year=today.year, month=today.month)" not in snooze_source
 

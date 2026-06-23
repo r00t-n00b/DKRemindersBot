@@ -91,7 +91,8 @@ def test_snooze_callback_uses_self_remind_cancel_flow_helper():
     done_start = snooze_source.index('if data.startswith("done:"):', cancel_start)
     cancel_source = snooze_source[cancel_start:done_start]
 
-    assert "handle_self_remind_cancel(" in cancel_source
+    assert "handle_self_remind_cancel_callback(" in cancel_source
+    assert "handle_self_remind_cancel=handle_self_remind_cancel" in cancel_source
     assert "src = get_reminder(rid)" not in cancel_source
     assert "source_chat_title = await get_source_chat_title_for_self_remind" not in cancel_source
     assert "reply_markup=build_self_remind_choice_keyboard(rid)" not in cancel_source

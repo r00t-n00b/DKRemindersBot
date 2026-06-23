@@ -71,7 +71,8 @@ def test_snooze_callback_uses_cancel_flow_helper():
     snooze_source = ast.get_source_segment(source, nodes[0])
 
     assert "from snooze_cancel_flow import handle_custom_snooze_cancel" in source
-    assert "handle_custom_snooze_cancel(" in snooze_source
+    assert "handle_snooze_cancel_callback_data(" in snooze_source
+    assert "handle_custom_snooze_cancel=handle_custom_snooze_cancel" in snooze_source
 
     cancel_start = snooze_source.index('if data.startswith("snooze_cancel:"):')
     noop_start = snooze_source.index('if data == "noop":', cancel_start)

@@ -113,7 +113,8 @@ def test_snooze_callback_uses_done_flow_helper():
     snooze_source = ast.get_source_segment(source, nodes[0])
 
     assert "from reminder_done_flow import handle_done_callback" in source
-    assert "handle_done_callback(" in snooze_source
+    assert "handle_done_callback_data(" in snooze_source
+    assert "handle_done_callback=handle_done_callback" in snooze_source
 
     done_start = snooze_source.index('if data.startswith("done:"):')
     snooze_start = snooze_source.index('if data.startswith("snooze:"):', done_start)
