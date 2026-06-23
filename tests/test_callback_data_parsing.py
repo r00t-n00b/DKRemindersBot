@@ -19,6 +19,32 @@ def test_parse_required_int_callback_id_rejects_invalid_id():
         parse_required_int_callback_id("snooze_caltoday:not-int", prefix="snooze_caltoday:")
 
 
+
+def test_selfremind_cancel_uses_required_id_parser():
+    import ast
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    tree = ast.parse(source)
+
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+    ]
+    assert len(nodes) == 1
+
+    snooze_source = ast.get_source_segment(source, nodes[0])
+
+    cancel_start = snooze_source.index('if data.startswith("selfremind_cancel:"):')
+    done_start = snooze_source.index('if data.startswith("done:"):', cancel_start)
+    cancel_source = snooze_source[cancel_start:done_start]
+
+    assert 'parse_required_int_callback_id(data, prefix="selfremind_cancel:")' in cancel_source
+    assert '_, rid_str = data.split(":", 1)' not in cancel_source
+    assert "rid = int(rid_str)" not in cancel_source
+    assert "await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)" in cancel_source
+
 def test_snooze_caltoday_uses_required_id_parser():
     import ast
     from pathlib import Path

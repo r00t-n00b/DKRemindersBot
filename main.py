@@ -4117,10 +4117,8 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind_cancel:"):
-            _, rid_str = data.split(":", 1)
-
             try:
-                rid = int(rid_str)
+                rid = parse_required_int_callback_id(data, prefix="selfremind_cancel:")
             except ValueError:
                 await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
