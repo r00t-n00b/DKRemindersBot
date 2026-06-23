@@ -33,3 +33,10 @@ def parse_snooze_pickdate_callback_data(data: str):
     _, raw_id, date_str = data.split(":", 2)
     return int(raw_id), date_str
 
+def parse_snooze_picktime_callback_data(data: str):
+    if not data.startswith("snooze_picktime:"):
+        raise ValueError("callback data must start with 'snooze_picktime:'")
+
+    _, raw_id, date_str, time_str = data.split(":", 3)
+    return int(raw_id), date_str, time_str
+
