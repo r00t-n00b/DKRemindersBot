@@ -213,6 +213,7 @@ from snooze_cancel_flow import handle_custom_snooze_cancel
 from snooze_direct_flow import handle_direct_snooze_action
 from reminder_done_flow import handle_done_callback
 from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
+from self_remind_cancel_flow import handle_self_remind_cancel
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -4123,25 +4124,17 @@ async def snooze_callback(update: Update, context: CTX) -> None:
                 await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
                 return
 
-            src = get_reminder(rid)
-            if not src:
-                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
-                return
-
-            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
-
-            await query.edit_message_text(
-                f'Когда напомнить тебе о "{src.text}" из чата "{source_chat_title}"?'
+            await handle_self_remind_cancel(
+                reminder_id=rid,
+                query=query,
+                context=context,
+                get_reminder=get_reminder,
+                get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
+                build_self_remind_choice_keyboard=build_self_remind_choice_keyboard,
+                msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
             )
-
-            await query.edit_message_reply_markup(
-                reply_markup=build_self_remind_choice_keyboard(rid)
-            )
-
-            await query.answer("Вернул варианты")
             return
 
-        # mark complete
         if data.startswith("done:"):
             rid = parse_optional_int_callback_id(data, prefix="done:")
 
