@@ -1,8 +1,49 @@
 import pytest
 
 import main
-from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data
+from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
 
+
+
+def test_parse_required_int_callback_id_returns_int_for_valid_id():
+    assert parse_required_int_callback_id("snooze_caltoday:123", prefix="snooze_caltoday:") == 123
+
+
+def test_parse_required_int_callback_id_rejects_wrong_prefix():
+    with pytest.raises(ValueError):
+        parse_required_int_callback_id("done:123", prefix="snooze_caltoday:")
+
+
+def test_parse_required_int_callback_id_rejects_invalid_id():
+    with pytest.raises(ValueError):
+        parse_required_int_callback_id("snooze_caltoday:not-int", prefix="snooze_caltoday:")
+
+
+def test_snooze_caltoday_uses_required_id_parser():
+    import ast
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    tree = ast.parse(source)
+
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+    ]
+    assert len(nodes) == 1
+
+    snooze_source = ast.get_source_segment(source, nodes[0])
+
+    assert "parse_required_int_callback_id" in source
+
+    today_start = snooze_source.index('if data.startswith("snooze_caltoday:"):')
+    pickdate_start = snooze_source.index('if data.startswith("snooze_pickdate:"):', today_start)
+    today_source = snooze_source[today_start:pickdate_start]
+
+    assert 'parse_required_int_callback_id(data, prefix="snooze_caltoday:")' in today_source
+    assert '_, rid_str = data.split(":", 1)' not in today_source
+    assert "rid = int(rid_str)" not in today_source
 
 def test_parse_optional_int_callback_id_returns_int_for_valid_id():
     assert parse_optional_int_callback_id("done:123", prefix="done:") == 123

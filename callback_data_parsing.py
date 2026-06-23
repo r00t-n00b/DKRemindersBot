@@ -11,6 +11,14 @@ def parse_optional_int_callback_id(data: str, *, prefix: str):
     except ValueError:
         return None
 
+
+def parse_required_int_callback_id(data: str, *, prefix: str) -> int:
+    if not data.startswith(prefix):
+        raise ValueError(f"callback data must start with {prefix!r}")
+
+    raw_id = data[len(prefix):]
+    return int(raw_id)
+
 def parse_snooze_action_callback_data(data: str):
     if not data.startswith("snooze:"):
         raise ValueError("callback data must start with 'snooze:'")
