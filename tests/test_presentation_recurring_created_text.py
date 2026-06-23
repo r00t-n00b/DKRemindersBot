@@ -44,8 +44,10 @@ def test_format_created_recurring_reminder_text_without_human_suffix():
 
 def test_recurring_created_text_is_used_from_presentation():
     main_source = Path("main.py").read_text()
+    recurring_source = Path("single_recurring_reminder.py").read_text()
 
-    assert "format_created_recurring_reminder_text(" in main_source
+    assert "format_created_recurring_reminder_text=format_created_recurring_reminder_text" in main_source
+    assert "format_created_recurring_reminder_text(" in recurring_source
     assert 'f"Ок, создал повторяющееся напоминание в чате' not in main_source
     assert 'f"Ок, создал повторяющееся напоминание.\\\\n"' not in main_source
     assert 'f"Первое напоминание будет {when_str}: {text}"' not in main_source
