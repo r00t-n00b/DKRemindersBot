@@ -5,7 +5,6 @@ import re
 import sqlite3
 import json
 import secrets
-import calendar
 import tempfile
 try:
     from google import genai

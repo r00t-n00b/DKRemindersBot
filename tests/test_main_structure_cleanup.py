@@ -43,3 +43,10 @@ def test_main_has_no_empty_model_section_after_model_extraction():
 
     assert "# ===== Модель данных =====" not in content
     assert "from models import Reminder" in content
+
+
+def test_main_does_not_import_calendar_after_keyboard_extraction():
+    content = Path("main.py").read_text()
+
+    assert "import calendar" not in content
+    assert "calendar." not in content
