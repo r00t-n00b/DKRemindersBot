@@ -217,6 +217,7 @@ from self_remind_cancel_flow import handle_self_remind_cancel
 from self_remind_event_cancel_flow import handle_self_remind_event_cancel
 from self_remind_calendar_flow import handle_self_remind_calendar_today, handle_self_remind_pickdate
 from self_remind_picktime_flow import handle_self_remind_picktime
+from self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -3863,131 +3864,61 @@ async def snooze_callback(update: Update, context: CTX) -> None:
             return
 
         if data.startswith("selfremind:event_custom:"):
-            _, _, rid_str = data.split(":", 2)
-
-            try:
-                rid = int(rid_str)
-            except ValueError:
-                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
-                return
-
-            src = get_reminder(rid)
-            if not src:
-                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
-                return
-
-            kb = build_custom_date_keyboard(rid, callback_prefix="selfremind_event")
-            await query.edit_message_reply_markup(reply_markup=kb)
-            await query.answer("Выбери дату")
+            await handle_self_remind_event_custom(
+                data=data,
+                query=query,
+                get_reminder=get_reminder,
+                build_custom_date_keyboard=build_custom_date_keyboard,
+                msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
+                msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
+            )
             return
 
         if data.startswith("selfremind:event_before:"):
-            _, _, rid_str, option = data.split(":", 3)
-
-            try:
-                rid = int(rid_str)
-            except ValueError:
-                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
-                return
-
-            user_id = getattr(query.from_user, "id", None)
-            if user_id is None:
-                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
-                return
-
-            target_chat_id = get_user_chat_id_by_user_id(user_id)
-            if target_chat_id is None:
-                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
-                return
-
-            src = get_reminder(rid)
-            if not src:
-                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
-                return
-
-            base_now = get_self_remind_event_base(src)
-            event_at = extract_event_datetime_from_text(src.text, base_now)
-            if event_at is None:
-                await query.answer(MSG_EVENT_DATE_NOT_FOUND, show_alert=True)
-                return
-
-            remind_at = compute_event_before_time(option, event_at)
-            if remind_at is None:
-                await query.answer(MSG_UNKNOWN_TIME_OPTION, show_alert=True)
-                return
-
-            if remind_at <= get_now():
-                await query.answer(MSG_RESCHEDULE_PAST_TIME, show_alert=True)
-                return
-
-            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
-            normalized_src_text = normalize_relative_event_date_in_text(src.text, event_at)
-            personal_text = format_self_remind_text(source_chat_title, normalized_src_text)
-
-            new_reminder_id = add_reminder(
-                chat_id=target_chat_id,
-                text=personal_text,
-                remind_at=remind_at,
-                created_by=user_id,
+            await handle_self_remind_event_before(
+                data=data,
+                query=query,
+                context=context,
+                get_now=get_now,
+                get_user_chat_id_by_user_id=get_user_chat_id_by_user_id,
+                get_reminder=get_reminder,
+                get_self_remind_event_base=get_self_remind_event_base,
+                extract_event_datetime_from_text=extract_event_datetime_from_text,
+                compute_event_before_time=compute_event_before_time,
+                get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
+                normalize_relative_event_date_in_text=normalize_relative_event_date_in_text,
+                format_self_remind_text=format_self_remind_text,
+                add_reminder=add_reminder,
+                format_created_reminder_text=format_created_reminder_text,
+                build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
+                msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
+                msg_user_context_missing=MSG_USER_CONTEXT_MISSING,
+                msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
+                msg_event_date_not_found=MSG_EVENT_DATE_NOT_FOUND,
+                msg_unknown_time_option=MSG_UNKNOWN_TIME_OPTION,
+                msg_reschedule_past_time=MSG_RESCHEDULE_PAST_TIME,
             )
-
-            when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(
-                format_created_reminder_text(when_str, personal_text),
-                reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
-            )
-            await query.answer("Личное напоминание создано")
             return
 
         if data.startswith("selfremind:set:"):
-            _, _, rid_str, option = data.split(":", 3)
-
-            try:
-                rid = int(rid_str)
-            except ValueError:
-                await query.answer(MSG_INVALID_REMINDER_ID, show_alert=True)
-                return
-
-            user_id = getattr(query.from_user, "id", None)
-            if user_id is None:
-                await query.answer(MSG_USER_CONTEXT_MISSING, show_alert=True)
-                return
-
-            target_chat_id = get_user_chat_id_by_user_id(user_id)
-            if target_chat_id is None:
-                await query.answer("Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате", show_alert=True)
-                return
-
-            src = get_reminder(rid)
-            if not src:
-                await query.answer(MSG_SOURCE_REMINDER_NOT_FOUND, show_alert=True)
-                return
-
-            if option == "custom":
-                kb = build_custom_date_keyboard(rid, callback_prefix="selfremind")
-                await query.edit_message_reply_markup(reply_markup=kb)
-                await query.answer("Выбери дату")
-                return
-
-            remind_at = compute_self_remind_time(option, get_now())
-
-            source_chat_title = await get_source_chat_title_for_self_remind(context, src, query)
-            personal_text = format_self_remind_text(source_chat_title, src.text)
-
-            new_reminder_id = add_reminder(
-                chat_id=target_chat_id,
-                text=personal_text,
-                remind_at=remind_at,
-                created_by=user_id,
-                template_id=None,
+            await handle_self_remind_set(
+                data=data,
+                query=query,
+                context=context,
+                get_now=get_now,
+                get_user_chat_id_by_user_id=get_user_chat_id_by_user_id,
+                get_reminder=get_reminder,
+                compute_self_remind_time=compute_self_remind_time,
+                get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
+                format_self_remind_text=format_self_remind_text,
+                add_reminder=add_reminder,
+                build_custom_date_keyboard=build_custom_date_keyboard,
+                format_created_reminder_text=format_created_reminder_text,
+                build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
+                msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
+                msg_user_context_missing=MSG_USER_CONTEXT_MISSING,
+                msg_source_reminder_not_found=MSG_SOURCE_REMINDER_NOT_FOUND,
             )
-
-            when_str = remind_at.strftime("%d.%m %H:%M")
-            await query.edit_message_text(
-                format_created_reminder_text(when_str, personal_text),
-                reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
-            )
-            await query.answer("Личное напоминание создано")
             return
 
         if data.startswith("selfremind_cal:") or data.startswith("selfremind_event_cal:"):
