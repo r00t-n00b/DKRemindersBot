@@ -205,6 +205,7 @@ from parser_recurring import parse_recurring
 from self_remind_time import compute_self_remind_time
 from reply_utils import safe_reply
 from voice_file_io import download_telegram_file_bytes
+from voice_alias_prompt import format_known_aliases_for_voice_prompt
 from command_messages import HELP_TEXT, START_TEXT
 from models import Reminder
 from default_time import _default_time_or, format_default_time_value, parse_default_time_value
@@ -2493,47 +2494,13 @@ def _is_gemini_quota_error(exc: Exception) -> bool:
     )
 
 def _format_known_aliases_for_voice_prompt(created_by: int) -> str:
-    """
-    Собираем известные aliases текущего пользователя для Gemini voice-normalization.
+    return format_known_aliases_for_voice_prompt(
+        created_by,
+        get_all_user_aliases=get_all_user_aliases,
+        get_all_aliases=get_all_aliases,
+        logger=logger,
+    )
 
-    Gemini не должен видеть чужие aliases и не должен придумывать aliases из воздуха.
-    """
-    user_aliases = []
-    chat_aliases = []
-
-    try:
-        user_aliases = [a for a, _chat_id in get_all_user_aliases(created_by)]
-    except Exception:
-        logger.exception("Не смог получить user aliases для voice prompt")
-        user_aliases = []
-
-    try:
-        chat_aliases = [a for a, _chat_id, _title in get_all_aliases(created_by)]
-    except Exception:
-        logger.exception("Не смог получить chat aliases для voice prompt")
-        chat_aliases = []
-
-    lines = [
-        "Known aliases. Use these only if the spoken target clearly matches one of them.",
-        "",
-        "Known user aliases:",
-    ]
-
-    if user_aliases:
-        for alias in sorted(set(user_aliases), key=str.lower):
-            lines.append(f"- {alias}")
-    else:
-        lines.append("- none")
-
-    lines.extend(["", "Known chat aliases:"])
-
-    if chat_aliases:
-        for alias in sorted(set(chat_aliases), key=str.lower):
-            lines.append(f"- {alias}")
-    else:
-        lines.append("- none")
-
-    return "\n".join(lines)
 
 async def _gemini_transcribe_audio_with_retries(
     *,
