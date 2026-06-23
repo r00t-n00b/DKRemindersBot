@@ -58,19 +58,17 @@ def test_snooze_callback_uses_cancel_flow_helper():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
     snooze_source = ast.get_source_segment(source, nodes[0])
-
-    assert "from snooze_cancel_flow import handle_custom_snooze_cancel" in source
     assert "handle_snooze_cancel_callback_data(" in snooze_source
     assert "handle_custom_snooze_cancel=handle_custom_snooze_cancel" in snooze_source
 

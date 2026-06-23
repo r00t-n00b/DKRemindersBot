@@ -77,19 +77,17 @@ def test_snooze_callback_uses_calendar_nav_helper():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
     snooze_source = ast.get_source_segment(source, nodes[0])
-
-    assert "from snooze_calendar_nav import show_custom_snooze_calendar" in source
     assert snooze_source.count("show_custom_snooze_calendar(") == 1
     assert "kb = build_custom_date_keyboard(rid, year=year, month=month)" not in snooze_source
     assert "kb = build_custom_date_keyboard(rid, year=today.year, month=today.month)" not in snooze_source

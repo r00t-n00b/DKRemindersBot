@@ -26,13 +26,13 @@ def test_selfremind_caltoday_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -53,13 +53,13 @@ def test_selfremind_event_cancel_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -80,13 +80,13 @@ def test_selfremind_cancel_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -107,13 +107,13 @@ def test_snooze_caltoday_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -172,13 +172,13 @@ def test_snooze_picktime_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -212,13 +212,13 @@ def test_snooze_pickdate_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -255,13 +255,13 @@ def test_snooze_calendar_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -295,13 +295,13 @@ def test_snooze_action_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
@@ -321,19 +321,17 @@ def test_snooze_callback_uses_done_callback_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
     snooze_source = ast.get_source_segment(source, nodes[0])
-
-    assert "from callback_data_parsing import parse_optional_int_callback_id" in source
 
     done_start = snooze_source.index('if data.startswith("done:"):')
     snooze_start = snooze_source.index('if data.startswith("snooze:"):', done_start)
@@ -350,13 +348,13 @@ def test_snooze_cancel_uses_callback_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 

@@ -38,21 +38,19 @@ def test_snooze_callback_uses_custom_snooze_flow():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "snooze_callback"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_reminder_callback"
     ]
     assert len(nodes) == 1
 
     snooze_source = ast.get_source_segment(source, nodes[0])
 
     direct_source = Path("snooze_direct_flow.py").read_text()
-
-    assert "from snooze_custom_flow import enter_custom_snooze_flow" in source
     assert "enter_custom_snooze_flow=enter_custom_snooze_flow" in snooze_source
     assert "enter_custom_snooze_flow(" in direct_source
     assert "kb = build_custom_date_keyboard(rid)" not in snooze_source
