@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import json
+import inspect
 import secrets
 try:
     from google import genai
@@ -276,6 +277,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
 from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
 from storage_write import add_reminder_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_sent_impl, update_reminder_time_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
@@ -1044,305 +1046,59 @@ def make_undo_token() -> str:
     return secrets.token_urlsafe(8)
 
 
-def _find_existing_alias_casefold(
-    c: sqlite3.Cursor,
-    table: str,
-    alias: str,
-    created_by: int,
-) -> Optional[str]:
-    target = alias.casefold()
-
-    c.execute(
-        f"""
-        SELECT alias
-        FROM {table}
-        WHERE created_by = ?
-        """,
-        (created_by,),
+def _build_storage_aliases_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        TZ=TZ,
+        sqlite3=sqlite3,
     )
 
-    for row in c.fetchall():
-        existing_alias = str(row[0])
-        if existing_alias.casefold() == target:
-            return existing_alias
+def set_chat_alias(alias: str, chat_id: int, title: Optional[str], created_by: int=0) -> None:
+    return set_chat_alias_impl(alias, chat_id, title, created_by, deps=_build_storage_aliases_deps())
 
-    return None
-
-
-def set_chat_alias(alias: str, chat_id: int, title: Optional[str], created_by: int = 0) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_alias = _find_existing_alias_casefold(c, "chat_aliases", alias, created_by)
-
-    if existing_alias is not None:
-        c.execute(
-            """
-            UPDATE chat_aliases
-            SET chat_id = ?, title = ?
-            WHERE alias = ? AND created_by = ?
-            """,
-            (chat_id, title, existing_alias, created_by),
-        )
-    else:
-        c.execute(
-            """
-            INSERT INTO chat_aliases(alias, chat_id, title, created_by)
-            VALUES (?, ?, ?, ?)
-            """,
-            (alias, chat_id, title, created_by),
-        )
-
-    conn.commit()
-    conn.close()
-
-
-def get_chat_id_by_alias(alias: str, created_by: int = 0) -> Optional[int]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_alias = _find_existing_alias_casefold(c, "chat_aliases", alias, created_by)
-    if existing_alias is None:
-        conn.close()
-        return None
-
-    c.execute(
-        """
-        SELECT chat_id
-        FROM chat_aliases
-        WHERE alias = ? AND created_by = ?
-        """,
-        (existing_alias, created_by),
-    )
-    row = c.fetchone()
-    conn.close()
-
-    if row:
-        return int(row[0])
-    return None
-
+def get_chat_id_by_alias(alias: str, created_by: int=0) -> Optional[int]:
+    return get_chat_id_by_alias_impl(alias, created_by, deps=_build_storage_aliases_deps())
 
 def get_all_aliases(created_by: int):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT alias, chat_id, title
-        FROM chat_aliases
-        WHERE created_by = ?
-        ORDER BY alias COLLATE NOCASE
-        """,
-        (created_by,),
-    )
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
+    return get_all_aliases_impl(created_by, deps=_build_storage_aliases_deps())
 
 def get_user_alias(alias: str, created_by: int) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
+    return get_user_alias_impl(alias, created_by, deps=_build_storage_aliases_deps())
 
-    existing_alias = _find_existing_alias_casefold(c, "user_aliases", alias, created_by)
-    if existing_alias is None:
-        conn.close()
-        return None
+def set_user_alias(alias: str, user_id: int, chat_id: int, username: Optional[str], created_by: int) -> None:
+    return set_user_alias_impl(alias, user_id, chat_id, username, created_by, deps=_build_storage_aliases_deps())
 
-    c.execute(
-        """
-        SELECT alias, user_id, chat_id, username, created_by, created_at
-        FROM user_aliases
-        WHERE alias = ? AND created_by = ?
-        """,
-        (existing_alias, created_by),
-    )
-    row = c.fetchone()
-    conn.close()
-
-    if not row:
-        return None
-
-    return dict(row)
-
-
-def set_user_alias(
-    alias: str,
-    user_id: int,
-    chat_id: int,
-    username: Optional[str],
-    created_by: int,
-) -> None:
-    now_iso = datetime.now(TZ).isoformat()
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_alias = _find_existing_alias_casefold(c, "user_aliases", alias, created_by)
-
-    if existing_alias is not None:
-        c.execute(
-            """
-            UPDATE user_aliases
-            SET user_id = ?, chat_id = ?, username = ?, created_at = ?
-            WHERE alias = ? AND created_by = ?
-            """,
-            (user_id, chat_id, username, now_iso, existing_alias, created_by),
-        )
-    else:
-        c.execute(
-            """
-            INSERT INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (alias, user_id, chat_id, username, created_by, now_iso),
-        )
-
-    conn.commit()
-    conn.close()
-
-def get_user_alias_chat_id(alias: str, created_by: int = 0) -> Optional[int]:
-    row = get_user_alias(alias, created_by)
-    if not row:
-        return None
-    return int(row["chat_id"])
-
+def get_user_alias_chat_id(alias: str, created_by: int=0) -> Optional[int]:
+    return get_user_alias_chat_id_impl(alias, created_by, deps=_build_storage_aliases_deps())
 
 def get_all_user_aliases(created_by: int) -> List[Tuple[str, int]]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT alias, chat_id
-        FROM user_aliases
-        WHERE created_by = ?
-        ORDER BY alias COLLATE NOCASE
-        """,
-        (created_by,),
-    )
-    rows = c.fetchall()
-    conn.close()
-    return [(str(alias), int(chat_id)) for alias, chat_id in rows]
-
+    return get_all_user_aliases_impl(created_by, deps=_build_storage_aliases_deps())
 
 def delete_chat_alias(alias: str, created_by: int) -> bool:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_alias = _find_existing_alias_casefold(c, "chat_aliases", alias, created_by)
-    if existing_alias is None:
-        conn.close()
-        return False
-
-    c.execute(
-        "DELETE FROM chat_aliases WHERE alias = ? AND created_by = ?",
-        (existing_alias, created_by),
-    )
-    deleted = c.rowcount > 0
-    conn.commit()
-    conn.close()
-    return deleted
+    return delete_chat_alias_impl(alias, created_by, deps=_build_storage_aliases_deps())
 
 def delete_user_alias(alias: str, created_by: int) -> bool:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_alias = _find_existing_alias_casefold(c, "user_aliases", alias, created_by)
-    if existing_alias is None:
-        conn.close()
-        return False
-
-    c.execute(
-        "DELETE FROM user_aliases WHERE alias = ? AND created_by = ?",
-        (existing_alias, created_by),
-    )
-    deleted = c.rowcount > 0
-    conn.commit()
-    conn.close()
-    return deleted
-
+    return delete_user_alias_impl(alias, created_by, deps=_build_storage_aliases_deps())
 
 def rename_chat_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_old_alias = _find_existing_alias_casefold(c, "chat_aliases", old_alias, created_by)
-    if existing_old_alias is None:
-        conn.close()
-        return False
-
-    if old_alias.casefold() != new_alias.casefold():
-        if _find_existing_alias_casefold(c, "chat_aliases", new_alias, created_by) is not None:
-            conn.close()
-            raise ValueError(f"Chat-alias '{new_alias}' уже существует")
-
-    c.execute(
-        """
-        UPDATE chat_aliases
-        SET alias = ?
-        WHERE alias = ? AND created_by = ?
-        """,
-        (new_alias, existing_old_alias, created_by),
-    )
-    conn.commit()
-    conn.close()
-    return True
-
+    return rename_chat_alias_impl(old_alias, new_alias, created_by, deps=_build_storage_aliases_deps())
 
 def rename_user_alias(old_alias: str, new_alias: str, created_by: int) -> bool:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    existing_old_alias = _find_existing_alias_casefold(c, "user_aliases", old_alias, created_by)
-    if existing_old_alias is None:
-        conn.close()
-        return False
-
-    if old_alias.casefold() != new_alias.casefold():
-        if _find_existing_alias_casefold(c, "user_aliases", new_alias, created_by) is not None:
-            conn.close()
-            raise ValueError(f"User-alias '{new_alias}' уже существует")
-
-    c.execute(
-        """
-        UPDATE user_aliases
-        SET alias = ?
-        WHERE alias = ? AND created_by = ?
-        """,
-        (new_alias, existing_old_alias, created_by),
-    )
-    conn.commit()
-    conn.close()
-    return True
+    return rename_user_alias_impl(old_alias, new_alias, created_by, deps=_build_storage_aliases_deps())
 
 def get_private_chat_id_by_username(username: str) -> Optional[int]:
-    if not username:
-        return None
+    return get_private_chat_id_by_username_impl(username, deps=_build_storage_aliases_deps())
 
-    u = username.strip()
-    if u.startswith("@"):
-        u = u[1:]
-    if not u:
-        return None
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+def _set_chat_alias_accepts_created_by() -> bool:
     try:
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT chat_id
-            FROM user_chats
-            WHERE LOWER(username) = LOWER(?)
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """,
-            (u,),
-        )
-        row = c.fetchone()
-        return int(row["chat_id"]) if row else None
-    finally:
-        conn.close()
+        return "created_by" in inspect.signature(set_chat_alias).parameters
+    except (TypeError, ValueError):
+        return True
+
+
+def set_chat_alias_for_user(alias: str, chat_id: int, title: Optional[str], created_by: int = 0) -> None:
+    return set_chat_alias(alias=alias, chat_id=chat_id, title=title, **({"created_by": created_by} if _set_chat_alias_accepts_created_by() else {}))
+
 
 # ===== Повторяющиеся шаблоны =====
 
@@ -1707,24 +1463,6 @@ def get_user_alias_chat_id_for_user(alias: str, created_by: int):
         except TypeError:
             raise original_error
 
-
-def set_chat_alias_for_user(alias: str, chat_id: int, title: Optional[str], created_by: int) -> None:
-    try:
-        set_chat_alias(
-            alias=alias,
-            chat_id=chat_id,
-            title=title,
-            created_by=created_by,
-        )
-    except TypeError as original_error:
-        try:
-            set_chat_alias(
-                alias=alias,
-                chat_id=chat_id,
-                title=title,
-            )
-        except TypeError:
-            raise original_error
 
 async def defaulttime_command(update: Update, context: CTX) -> None:
     await handle_defaulttime_command(update, context, _build_alias_settings_command_deps())
