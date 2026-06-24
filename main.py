@@ -264,6 +264,7 @@ from list_command_flow import handle_list_command_flow
 from alias_settings_commands import handle_aliases_command, handle_defaulttime_command, handle_linkchat_command, handle_linkuser_command, handle_renamealias_command, handle_unalias_command
 from plain_text_remind_flow import handle_plain_text_remind_command
 from voice_remind_flow import handle_voice_remind_command
+from voice_transcription import transcribe_voice_message_impl
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2002,32 +2003,18 @@ async def _gemini_transcribe_audio_with_retries(
     )
 
 
-async def transcribe_voice_message(update: Update, context: CTX) -> str:
-    message = update.effective_message
-    user = update.effective_user
-    if user is None:
-        raise ValueError("Нет пользователя")
-
-    if message is None or message.voice is None:
-        raise ValueError("Нет голосового сообщения")
-
-    token = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not token:
-        raise RuntimeError("GEMINI_API_KEY не задан")
-
-    if genai is None or genai_types is None:
-        raise RuntimeError("Пакет google-genai не установлен")
-
-    tg_file = await context.bot.get_file(message.voice.file_id)
-    audio_bytes = await download_telegram_file_bytes(tg_file, suffix=".ogg")
-
-    client = genai.Client(api_key=token)
-
-    return await _gemini_transcribe_audio_with_retries(
-        client=client,
-        audio_bytes=audio_bytes,
-        aliases_prompt=_format_known_aliases_for_voice_prompt(update.effective_user.id),
+def _build_voice_transcription_deps():
+    return SimpleNamespace(
+        _format_known_aliases_for_voice_prompt=_format_known_aliases_for_voice_prompt,
+        _gemini_transcribe_audio_with_retries=_gemini_transcribe_audio_with_retries,
+        download_telegram_file_bytes=download_telegram_file_bytes,
+        genai=genai,
+        genai_types=genai_types,
+        os=os,
     )
+
+async def transcribe_voice_message(update: Update, context: CTX) -> Optional[str]:
+    return await transcribe_voice_message_impl(update, context, _build_voice_transcription_deps())
 
 async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) -> str:
     return await normalize_plain_text_reminder_with_gemini_impl(

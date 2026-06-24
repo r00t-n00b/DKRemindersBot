@@ -47,9 +47,11 @@ def test_download_telegram_file_bytes_rejects_empty_file_and_removes_temp_file()
 def test_main_uses_voice_file_io_helper_instead_of_tempfile_directly():
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    main_source = Path("main.py").read_text()
+    transcription_source = Path("voice_transcription.py").read_text()
 
     assert main.download_telegram_file_bytes is download_telegram_file_bytes
-    assert "download_telegram_file_bytes(tg_file, suffix=\".ogg\")" in source
-    assert "import tempfile" not in source
-    assert "tempfile." not in source
+    assert "download_telegram_file_bytes(tg_file, suffix=\".ogg\")" in transcription_source
+    assert "download_telegram_file_bytes(tg_file, suffix=\".ogg\")" not in main_source
+    assert "import tempfile" not in main_source
+    assert "tempfile." not in main_source
