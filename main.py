@@ -276,6 +276,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_write import add_reminder_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_sent_impl, update_reminder_time_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
 from alias_settings_deps import build_alias_settings_command_deps
 from voice_transcription_deps import build_voice_transcription_deps
@@ -700,33 +701,32 @@ def clear_user_default_time(user_id: int) -> None:
         conn.close()
 
 
-def add_reminder(
-    chat_id: int,
-    text: str,
-    remind_at: datetime,
-    created_by: Optional[int],
-    template_id: Optional[int] = None,
-) -> int:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        INSERT INTO reminders (chat_id, text, remind_at, created_by, created_at, delivered, template_id)
-        VALUES (?, ?, ?, ?, ?, 0, ?)
-        """,
-        (
-            chat_id,
-            text,
-            remind_at.isoformat(),
-            created_by,
-            datetime.now(TZ).isoformat(),
-            template_id,
-        ),
+def _build_storage_write_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        TZ=TZ,
+        get_now=get_now,
+        json=json,
+        sqlite3=sqlite3,
     )
-    reminder_id = c.lastrowid
-    conn.commit()
-    conn.close()
-    return reminder_id
+
+def add_reminder(chat_id: int, text: str, remind_at: datetime, created_by: Optional[int], template_id: Optional[int]=None) -> int:
+    return add_reminder_impl(chat_id, text, remind_at, created_by, template_id, deps=_build_storage_write_deps())
+
+def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
+    return update_reminder_time_impl(reminder_id, new_dt, deps=_build_storage_write_deps())
+
+def mark_reminder_sent(reminder_id: int, sent_at: Optional[datetime]=None) -> None:
+    return mark_reminder_sent_impl(reminder_id, sent_at, deps=_build_storage_write_deps())
+
+def mark_reminder_acked(reminder_id: int) -> None:
+    return mark_reminder_acked_impl(reminder_id, deps=_build_storage_write_deps())
+
+def mark_nudge_sent(reminder_id: int) -> None:
+    return mark_nudge_sent_impl(reminder_id, deps=_build_storage_write_deps())
+
+def create_recurring_template(chat_id: int, text: str, pattern_type: str, payload: Dict[str, Any], time_hour: int, time_minute: int, created_by: Optional[int]) -> int:
+    return create_recurring_template_impl(chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, deps=_build_storage_write_deps())
 
 
 def _build_storage_read_deps():
@@ -764,53 +764,9 @@ def get_recurring_template(template_id: int) -> Optional[Dict[str, Any]]:
     return get_recurring_template_impl(template_id, _build_storage_read_deps())
 
 
-def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        UPDATE reminders
-        SET remind_at = ?,
-            delivered = 0,
-            acked = 0,
-            sent_at = NULL,
-            nudge_count = 0
-        WHERE id = ?
-        """,
-        (new_dt.isoformat(), int(reminder_id)),
-    )
-    changed = c.rowcount > 0
-    conn.commit()
-    conn.close()
-    return changed
-
-
 from datetime import datetime
 from typing import Optional
 
-def mark_reminder_sent(reminder_id: int, sent_at: Optional[datetime] = None) -> None:
-    if sent_at is None:
-        sent_at = get_now()
-
-    # на всякий случай, если кто-то передал строку
-    if isinstance(sent_at, str):
-        sent_at = datetime.fromisoformat(sent_at)
-
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            """
-            UPDATE reminders
-            SET delivered = 1,
-                sent_at = ?,
-                acked = 0
-            WHERE id = ?
-            """,
-            (sent_at.isoformat(), reminder_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
 
 def delete_reminders(reminder_ids: List[int], chat_id: int) -> int:
     """
@@ -1131,22 +1087,6 @@ def make_undo_token() -> str:
     return secrets.token_urlsafe(8)
 
 
-def mark_reminder_acked(reminder_id: int) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE reminders SET acked = 1 WHERE id = ?", (reminder_id,))
-    conn.commit()
-    conn.close()
-
-
-def mark_nudge_sent(reminder_id: int) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE reminders SET nudge_sent = 1 WHERE id = ?", (reminder_id,))
-    conn.commit()
-    conn.close()
-
-
 def _find_existing_alias_casefold(
     c: sqlite3.Cursor,
     table: str,
@@ -1448,39 +1388,6 @@ def get_private_chat_id_by_username(username: str) -> Optional[int]:
         conn.close()
 
 # ===== Повторяющиеся шаблоны =====
-
-def create_recurring_template(
-    chat_id: int,
-    text: str,
-    pattern_type: str,
-    payload: Dict[str, Any],
-    time_hour: int,
-    time_minute: int,
-    created_by: Optional[int],
-) -> int:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        INSERT INTO recurring_templates
-            (chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-        """,
-        (
-            chat_id,
-            text,
-            pattern_type,
-            json.dumps(payload, ensure_ascii=False),
-            time_hour,
-            time_minute,
-            created_by,
-            datetime.now(TZ).isoformat(),
-        ),
-    )
-    tpl_id = c.lastrowid
-    conn.commit()
-    conn.close()
-    return tpl_id
 
 
 # ===== SNOOZE клавиатуры =====
