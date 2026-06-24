@@ -224,6 +224,7 @@ from reminder_callback_router import handle_reminder_callback
 from created_snooze_router import handle_created_snooze_callback
 from delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
 from created_delete_router import handle_created_delete_callback
+from reminders_workers import _safe_get_chat_type as _worker_safe_get_chat_type, run_reminders_nudge_worker, run_reminders_worker
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -2566,142 +2567,33 @@ async def snooze_callback(update: Update, context: CTX) -> None:
 # ===== Фоновый worker =====
 
 async def _safe_get_chat_type(app: Application, chat_id: int) -> Optional[str]:
-    try:
-        chat = await app.bot.get_chat(chat_id)
-        return getattr(chat, "type", None)
-    except Exception:
-        return None
+    return await _worker_safe_get_chat_type(app, chat_id)
 
+def _build_reminders_worker_deps():
+    return SimpleNamespace(
+        get_chat_type=_safe_get_chat_type,
+        Chat=Chat,
+        TZ=TZ,
+        add_reminder=add_reminder,
+        asyncio=asyncio,
+        build_group_reminder_keyboard=build_group_reminder_keyboard,
+        build_snooze_keyboard=build_snooze_keyboard,
+        compute_next_occurrence=compute_next_occurrence,
+        datetime=datetime,
+        get_due_nudges=get_due_nudges,
+        get_due_reminders=get_due_reminders,
+        get_now=get_now,
+        get_recurring_template=get_recurring_template,
+        increment_nudge_count=increment_nudge_count,
+        logger=logger,
+        mark_reminder_sent=mark_reminder_sent,
+        register_reminder_message=register_reminder_message,
+    )
 async def reminders_worker(app: Application) -> None:
-    logger.info("Запущен фоновой worker напоминаний")
-
-    while True:
-        try:
-            now = datetime.now(TZ)
-            due = get_due_reminders(now)
-
-            if due:
-                logger.info("Нашел %s напоминаний к отправке", len(due))
-
-            for r in due:
-                try:
-                    chat_type = await _safe_get_chat_type(app, r.chat_id)
-
-                    chat_type_value = getattr(chat_type, "value", chat_type)
-                    chat_type_value = str(chat_type_value).lower() if chat_type_value is not None else None
-
-                    reply_markup = (
-                        build_group_reminder_keyboard(r.id)
-                        if chat_type_value in {"group", "supergroup", "channel"}
-                        else build_snooze_keyboard(r.id)
-                    )
-
-                    sent_message = await app.bot.send_message(
-                        chat_id=r.chat_id,
-                        text=r.text,
-                        reply_markup=reply_markup,
-                    )
-
-                    sent_message_id = getattr(sent_message, "message_id", None)
-                    if sent_message_id is not None:
-                        register_reminder_message(
-                            reminder_id=r.id,
-                            chat_id=r.chat_id,
-                            message_id=sent_message_id,
-                            kind="delivery",
-                        )
-
-                    mark_reminder_sent(r.id, sent_at=now)
-
-                    logger.info(
-                        "Отправлено напоминание id=%s в чат %s: %s (время %s, template_id=%s)",
-                        r.id,
-                        r.chat_id,
-                        r.text,
-                        r.remind_at.isoformat(),
-                        r.template_id,
-                    )
-
-                    if r.template_id is not None:
-                        tpl = get_recurring_template(r.template_id)
-                        if tpl and tpl["active"]:
-                            next_dt = compute_next_occurrence(
-                                tpl["pattern_type"],
-                                tpl["payload"],
-                                tpl["time_hour"],
-                                tpl["time_minute"],
-                                r.remind_at,
-                            )
-                            if next_dt is not None:
-                                add_reminder(
-                                    chat_id=tpl["chat_id"],
-                                    text=tpl["text"],
-                                    remind_at=next_dt,
-                                    created_by=tpl["created_by"],
-                                    template_id=tpl["id"],
-                                )
-                                logger.info(
-                                    "Запланировано следующее повторяющееся напоминание для tpl_id=%s на %s",
-                                    tpl["id"],
-                                    next_dt.isoformat(),
-                                )
-
-                except Exception:
-                    logger.exception(
-                        "Ошибка при отправке напоминания id=%s",
-                        r.id,
-                    )
-
-        except Exception:
-            logger.exception("Ошибка в worker напоминаний")
-
-        await asyncio.sleep(10)
+    await run_reminders_worker(app, _build_reminders_worker_deps())
 
 async def reminders_nudge_worker(app: Application) -> None:
-    logger.info("Запущен фоновой nudge worker напоминаний")
-    while True:
-        try:
-            now = get_now()
-
-            rows = get_due_nudges(now)
-            for r in rows:
-                try:
-                    # строго: nudges только в личке
-                    chat_type = await _safe_get_chat_type(app, r["chat_id"])
-
-                    if chat_type != Chat.PRIVATE:
-                        continue
-
-                    text = (
-                        "Ты никак не отреагировал на напоминание.\n"
-                        "Посмотри и нажми кнопку:\n\n"
-                        f"{r['text']}"
-                    )
-
-                    reply_markup = build_snooze_keyboard(r["id"])
-
-                    sent_message = await app.bot.send_message(
-                        chat_id=r["chat_id"],
-                        text=text,
-                        reply_markup=reply_markup,
-                    )
-
-                    sent_message_id = getattr(sent_message, "message_id", None)
-                    if sent_message_id is not None:
-                        register_reminder_message(
-                            reminder_id=int(r["id"]),
-                            chat_id=int(r["chat_id"]),
-                            message_id=sent_message_id,
-                            kind="nudge",
-                        )
-
-                    increment_nudge_count(r["id"])
-                except Exception:
-                    logger.exception("Ошибка при отправке nudge reminder id=%s", r["id"])
-        except Exception:
-            logger.exception("Ошибка в nudge worker")
-
-        await asyncio.sleep(30)
+    await run_reminders_nudge_worker(app, _build_reminders_worker_deps())
 
 BACKGROUND_WORKER_TASK_KEYS = (
     "reminders_worker_task",
