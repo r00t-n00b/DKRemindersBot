@@ -184,13 +184,13 @@ def test_remind_command_uses_target_resolution_helper():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("remind_command_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "remind_command"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_remind_command"
     ]
     assert len(nodes) == 1
 

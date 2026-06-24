@@ -229,13 +229,13 @@ def test_remind_command_uses_dispatch_helper():
     import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
+    source = Path("remind_command_router.py").read_text()
     tree = ast.parse(source)
 
     node = [
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "remind_command"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_remind_command"
     ][0]
     remind_source = ast.get_source_segment(source, node)
 
