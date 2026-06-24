@@ -254,6 +254,7 @@ from remind_group_routing import reject_group_remind_target_prefix_if_needed
 from remind_target_resolution import resolve_remind_target_and_args
 from remind_dispatch import dispatch_remind_creation
 from remind_command_router import handle_remind_command
+from list_command_flow import handle_list_command_flow
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2533,134 +2534,49 @@ async def linkuser_command(update: Update, context: CTX) -> None:
     await safe_reply(message, f"Ок, alias '{alias}' теперь указывает на {username}.")
 
 
+def _build_list_command_deps():
+    return SimpleNamespace(
+        Chat=Chat,
+        DB_PATH=DB_PATH,
+        sqlite3=sqlite3,
+        build_active_reminders_list_response=build_active_reminders_list_response,
+        build_list_delete_keyboard=build_list_delete_keyboard,
+        build_target_user_presentation_rows=build_target_user_presentation_rows,
+        build_target_user_reminders_list_response=build_target_user_reminders_list_response,
+        format_empty_active_reminders_list_text=format_empty_active_reminders_list_text,
+        get_active_reminders_created_by_for_chat=get_active_reminders_created_by_for_chat,
+        get_all_aliases=get_all_aliases,
+        get_chat_id_by_alias_for_user=get_chat_id_by_alias_for_user,
+        get_now=get_now,
+        get_private_chat_id_by_username=get_private_chat_id_by_username,
+        get_recurring_template=get_recurring_template,
+        get_user_alias_chat_id_for_user=get_user_alias_chat_id_for_user,
+        safe_reply=safe_reply,
+    )
+
+
+def _build_list_command_deps():
+    return SimpleNamespace(
+        Chat=Chat,
+        DB_PATH=DB_PATH,
+        sqlite3=sqlite3,
+        build_active_reminders_list_response=build_active_reminders_list_response,
+        build_list_delete_keyboard=build_list_delete_keyboard,
+        build_target_user_presentation_rows=build_target_user_presentation_rows,
+        build_target_user_reminders_list_response=build_target_user_reminders_list_response,
+        format_empty_active_reminders_list_text=format_empty_active_reminders_list_text,
+        get_active_reminders_created_by_for_chat=get_active_reminders_created_by_for_chat,
+        get_all_aliases=get_all_aliases,
+        get_chat_id_by_alias_for_user=get_chat_id_by_alias_for_user,
+        get_now=get_now,
+        get_private_chat_id_by_username=get_private_chat_id_by_username,
+        get_recurring_template=get_recurring_template,
+        get_user_alias_chat_id_for_user=get_user_alias_chat_id_for_user,
+        safe_reply=safe_reply,
+    )
+
 async def list_command(update: Update, context: CTX) -> None:
-    chat = update.effective_chat
-    message = update.effective_message
-    user = update.effective_user
-
-    if chat is None or message is None or user is None:
-        return
-
-    # по умолчанию - показываем напоминания для текущего чата
-    target_chat_id = chat.id
-    used_alias: Optional[str] = None
-
-    # ===== НОВЫЙ РЕЖИМ: /list @username (только в личке) =====
-    if chat.type == Chat.PRIVATE and context.args:
-        first_arg = context.args[0].strip()
-
-        if first_arg.startswith("@"):
-            owner_chat_id = get_private_chat_id_by_username(first_arg)
-
-            if owner_chat_id is None:
-                await safe_reply(
-                    message,
-                    f"Пользователь {first_arg} еще не писал боту.\n"
-                    f"Он должен сначала нажать Start или поставить любой ремайндер."
-                )
-                return
-
-            rows = get_active_reminders_created_by_for_chat(
-                chat_id=owner_chat_id,
-                created_by=user.id,
-            )
-
-            presentation_rows = build_target_user_presentation_rows(
-                rows,
-                recurring_template_loader=get_recurring_template,
-            )
-
-            reply, ids, keyboard = build_target_user_reminders_list_response(
-                presentation_rows,
-                target_label=first_arg,
-                list_delete_keyboard_builder=build_list_delete_keyboard,
-            )
-
-            if not ids:
-                await safe_reply(message, reply)
-                return
-
-            context.user_data["list_ids"] = ids
-            context.user_data["list_chat_id"] = owner_chat_id
-
-            await safe_reply(
-                message,
-                reply,
-                reply_markup=keyboard,
-            )
-            return
-
-    # ===== /list alias: сначала user-alias, потом chat-alias =====
-    if chat.type == Chat.PRIVATE and context.args:
-        alias = context.args[0].strip()
-        if alias:
-            user_alias_chat_id = get_user_alias_chat_id_for_user(alias, user.id)
-            if user_alias_chat_id is not None:
-                target_chat_id = user_alias_chat_id
-                used_alias = alias
-            else:
-                alias_chat_id = get_chat_id_by_alias_for_user(alias, user.id)
-                if alias_chat_id is None:
-                    aliases = get_all_aliases(user.id)
-                    if not aliases:
-                        await safe_reply(
-                            message,
-                            f"Alias '{alias}' не найден.\n"
-                            f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
-                            f"Или создай user-alias: /linkuser {alias} @username"
-                        )
-                    else:
-                        known = ", ".join(a for a, _, _ in aliases)
-                        await safe_reply(
-                            message,
-                            f"Alias '{alias}' не найден.\n"
-                            f"Из известных chat-alias: {known}"
-                        )
-                    return
-
-                target_chat_id = alias_chat_id
-                used_alias = alias
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT
-            r.id,
-            r.text,
-            r.remind_at,
-            r.template_id,
-            rt.pattern_type,
-            rt.payload
-        FROM reminders r
-        LEFT JOIN recurring_templates rt ON rt.id = r.template_id
-        WHERE r.chat_id = ? AND r.delivered = 0
-        ORDER BY r.remind_at ASC
-        """,
-        (target_chat_id,),
-    )
-    rows = c.fetchall()
-    conn.close()
-
-    if not rows:
-        await safe_reply(
-            message,
-            format_empty_active_reminders_list_text(chat_alias=used_alias),
-        )
-        return
-
-    header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"
-    reply, ids, keyboard = build_active_reminders_list_response(
-        rows,
-        header=header,
-        now_local=get_now(),
-        list_delete_keyboard_builder=build_list_delete_keyboard,
-    )
-
-    context.user_data["list_ids"] = ids
-    context.user_data["list_chat_id"] = target_chat_id
-
-    await safe_reply(message, reply, reply_markup=keyboard)
+    await handle_list_command_flow(update, context, _build_list_command_deps())
 
 def compute_snooze_target_time(action: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> datetime:
     now = now.astimezone(TZ)
