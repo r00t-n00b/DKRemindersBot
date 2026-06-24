@@ -277,6 +277,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_user_chats import get_user_chat_id_by_user_id_impl, get_user_chat_id_by_username_impl, upsert_user_chat_impl
 from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
 from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
@@ -371,58 +372,21 @@ async def clear_reminder_message_keyboards(bot, reminder_id: int) -> None:
     await clear_reminder_message_keyboards_impl(bot, reminder_id, _build_reminder_message_store_deps())
 
 
-def upsert_user_chat(user_id: int, chat_id: int, username: Optional[str], first_name: Optional[str], last_name: Optional[str]) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        INSERT INTO user_chats(user_id, chat_id, username, first_name, last_name, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            chat_id = excluded.chat_id,
-            username = excluded.username,
-            first_name = excluded.first_name,
-            last_name = excluded.last_name,
-            updated_at = excluded.updated_at
-        """,
-        (
-            user_id,
-            chat_id,
-            (username or "").lower() if username else None,
-            first_name,
-            last_name,
-            datetime.now(TZ).isoformat(),
-        ),
+def _build_storage_user_chats_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        TZ=TZ,
+        sqlite3=sqlite3,
     )
-    conn.commit()
-    conn.close()
 
+def upsert_user_chat(user_id: int, chat_id: int, username: Optional[str], first_name: Optional[str], last_name: Optional[str]) -> None:
+    return upsert_user_chat_impl(user_id, chat_id, username, first_name, last_name, deps=_build_storage_user_chats_deps())
 
 def get_user_chat_id_by_username(username: str) -> Optional[int]:
-    uname = username.strip().lstrip("@").lower()
-    if not uname:
-        return None
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT chat_id FROM user_chats WHERE username = ? ORDER BY updated_at DESC LIMIT 1", (uname,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return int(row[0])
-    return None
+    return get_user_chat_id_by_username_impl(username, deps=_build_storage_user_chats_deps())
 
 def get_user_chat_id_by_user_id(user_id: int) -> Optional[int]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "SELECT chat_id FROM user_chats WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
-        (user_id,),
-    )
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return int(row[0])
-    return None
+    return get_user_chat_id_by_user_id_impl(user_id, deps=_build_storage_user_chats_deps())
 
 
 def _build_storage_user_settings_deps():
