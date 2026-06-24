@@ -276,6 +276,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
 from alias_settings_deps import build_alias_settings_command_deps
 from voice_transcription_deps import build_voice_transcription_deps
 from reminder_text_normalization_deps import build_reminder_text_normalization_deps
@@ -728,34 +729,39 @@ def add_reminder(
     return reminder_id
 
 
-def get_due_reminders(now: datetime) -> List[Reminder]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, chat_id, text, remind_at, created_by, template_id
-        FROM reminders
-        WHERE delivered = 0 AND remind_at <= ?
-        ORDER BY remind_at ASC
-        """,
-        (now.isoformat(),),
+def _build_storage_read_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        json=json,
+        sqlite3=sqlite3,
     )
-    rows = c.fetchall()
-    conn.close()
-    reminders: List[Reminder] = []
-    for row in rows:
-        rid, chat_id, text, remind_at_str, created_by, template_id = row
-        reminders.append(
-            Reminder(
-                id=rid,
-                chat_id=chat_id,
-                text=text,
-                remind_at=datetime.fromisoformat(remind_at_str),
-                created_by=created_by,
-                template_id=template_id,
-            )
-        )
-    return reminders
+
+def get_due_reminders(now: datetime) -> List[Reminder]:
+    return get_due_reminders_impl(now, _build_storage_read_deps())
+
+def get_reminder(reminder_id: int) -> Optional[Reminder]:
+    return get_reminder_impl(reminder_id, _build_storage_read_deps())
+
+def get_active_reminders_created_by_for_chat(chat_id: int, created_by: int) -> List[Dict[str, Any]]:
+    return get_active_reminders_created_by_for_chat_impl(chat_id, created_by, _build_storage_read_deps())
+
+def get_active_reminders_for_chat(chat_id: int) -> List[Dict[str, Any]]:
+    return get_active_reminders_for_chat_impl(chat_id, _build_storage_read_deps())
+
+def get_reminder_row(rid: int) -> Optional[Dict[str, Any]]:
+    return get_reminder_row_impl(rid, _build_storage_read_deps())
+
+def get_recurring_template_row(tpl_id: int) -> Optional[Dict[str, Any]]:
+    return get_recurring_template_row_impl(tpl_id, _build_storage_read_deps())
+
+def get_reminders_by_template_id(template_id: int, chat_id: int) -> List[Dict[str, Any]]:
+    return get_reminders_by_template_id_impl(template_id, chat_id, _build_storage_read_deps())
+
+def get_unacked_sent_before(dt: datetime) -> List[Dict[str, Any]]:
+    return get_unacked_sent_before_impl(dt, _build_storage_read_deps())
+
+def get_recurring_template(template_id: int) -> Optional[Dict[str, Any]]:
+    return get_recurring_template_impl(template_id, _build_storage_read_deps())
 
 
 def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
@@ -778,74 +784,6 @@ def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
     conn.close()
     return changed
 
-def get_reminder(reminder_id: int) -> Optional[Reminder]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, chat_id, text, remind_at, created_by, template_id, sent_at
-        FROM reminders
-        WHERE id = ?
-        """,
-        (reminder_id,),
-    )
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return None
-
-    rid, chat_id, text, remind_at_str, created_by, template_id, sent_at_str = row
-    sent_at = datetime.fromisoformat(sent_at_str) if sent_at_str else None
-
-    return Reminder(
-        id=rid,
-        chat_id=chat_id,
-        text=text,
-        remind_at=datetime.fromisoformat(remind_at_str),
-        created_by=created_by,
-        template_id=template_id,
-        sent_at=sent_at,
-    )
-
-def get_active_reminders_created_by_for_chat(chat_id: int, created_by: int) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id
-            FROM reminders
-            WHERE chat_id = ?
-              AND delivered = 0
-              AND created_by = ?
-            ORDER BY remind_at ASC
-            """,
-            (chat_id, created_by),
-        )
-        rows = c.fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
-
-def get_active_reminders_for_chat(chat_id: int) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id
-            FROM reminders
-            WHERE chat_id = ? AND delivered = 0
-            ORDER BY remind_at ASC
-            """,
-            (chat_id,),
-        )
-        rows = c.fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
 
 from datetime import datetime
 from typing import Optional
@@ -984,52 +922,6 @@ def delete_recurring_one_instance_and_reschedule(rid: int, chat_id: int) -> Opti
 
     return snapshot
 
-def get_reminder_row(rid: int) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id
-            FROM reminders
-            WHERE id = ?
-            """,
-            (rid,),
-        )
-        row = c.fetchone()
-        if not row:
-            return None
-        return dict(row)
-    finally:
-        conn.close()
-
-
-def get_recurring_template_row(tpl_id: int) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active
-            FROM recurring_templates
-            WHERE id = ?
-            """,
-            (tpl_id,),
-        )
-        row = c.fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        # payload в базе у нас JSON-строка
-        try:
-            d["payload"] = json.loads(d.get("payload") or "{}")
-        except Exception:
-            d["payload"] = {}
-        return d
-    finally:
-        conn.close()
 
 def delete_single_reminder_row(reminder_id: int, chat_id: int) -> int:
     """
@@ -1078,29 +970,6 @@ def activate_recurring_template(template_id: int) -> int:
     conn.commit()
     conn.close()
     return updated
-
-
-def get_reminders_by_template_id(template_id: int, chat_id: int) -> List[Dict[str, Any]]:
-    """
-    Возвращает reminders этой серии (для snapshot при удалении серии).
-    """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
-        c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id
-            FROM reminders
-            WHERE chat_id = ? AND template_id = ?
-            ORDER BY remind_at ASC
-            """,
-            (chat_id, template_id),
-        )
-        rows = c.fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
 
 
 def delete_recurring_series(template_id: int, chat_id: int) -> int:
@@ -1276,28 +1145,6 @@ def mark_nudge_sent(reminder_id: int) -> None:
     c.execute("UPDATE reminders SET nudge_sent = 1 WHERE id = ?", (reminder_id,))
     conn.commit()
     conn.close()
-
-
-def get_unacked_sent_before(dt: datetime) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, chat_id, text, sent_at
-        FROM reminders
-        WHERE delivered = 1
-          AND acked = 0
-          AND nudge_sent = 0
-          AND sent_at IS NOT NULL
-          AND sent_at <= ?
-        ORDER BY sent_at ASC
-        """,
-        (dt.isoformat(),),
-    )
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
 
 
 def _find_existing_alias_casefold(
@@ -1635,48 +1482,6 @@ def create_recurring_template(
     conn.close()
     return tpl_id
 
-
-def get_recurring_template(template_id: int) -> Optional[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, active
-        FROM recurring_templates
-        WHERE id = ?
-        """,
-        (template_id,),
-    )
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return None
-    (
-        tpl_id,
-        chat_id,
-        text,
-        pattern_type,
-        payload_json,
-        time_hour,
-        time_minute,
-        created_by,
-        active,
-    ) = row
-    try:
-        payload = json.loads(payload_json) if payload_json else {}
-    except Exception:
-        payload = {}
-    return {
-        "id": tpl_id,
-        "chat_id": chat_id,
-        "text": text,
-        "pattern_type": pattern_type,
-        "payload": payload,
-        "time_hour": time_hour,
-        "time_minute": time_minute,
-        "created_by": created_by,
-        "active": bool(active),
-    }
 
 # ===== SNOOZE клавиатуры =====
 
