@@ -300,7 +300,9 @@ def test_plain_text_relative_local_normalizer_does_not_call_gemini(main_module, 
 
 
 def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    alias_source = open("alias_settings_commands.py").read()
+    import messages
 
-    assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
-    assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source
+    message = messages.msg_linkchat_success("football")
+
+    assert "напомни football 28.11 12:00 завтра футбол" in message
+    assert "/remind football 28.11 12:00 - завтра футбол" in message

@@ -189,6 +189,111 @@ def msg_after_target_requires_date_and_text(target: str, example: str) -> str:
     return f"После {target} нужно указать дату и текст.\n" + example
 
 
+# ===== Alias/settings command messages =====
+
+MSG_LINKCHAT_GROUP_ONLY = (
+    "Команду /linkchat нужно вызывать в групповом чате, который хочешь привязать."
+)
+
+MSG_LINKCHAT_USAGE = (
+    "Формат: /linkchat alias\n"
+    "Например: /linkchat football"
+)
+
+MSG_ALIAS_EMPTY = "Alias не должен быть пустым."
+
+def msg_linkchat_success(alias: str) -> str:
+    return (
+        f"Ок, запомнил этот чат как '{alias}' для тебя.\n"
+        f"Теперь в личке можно писать:\n"
+        f"напомни {alias} 28.11 12:00 завтра футбол\n"
+        f"или командой:\n"
+        f"/remind {alias} 28.11 12:00 - завтра футбол"
+    )
+
+
+MSG_ALIASES_LOAD_USER_FAILED = "Не смог получить user-aliases."
+MSG_ALIASES_LOAD_CHAT_FAILED = "Не смог получить chat-aliases."
+
+MSG_ALIASES_EMPTY = (
+    "Алиасов пока нет.\n\n"
+    "Создать chat-alias: /linkchat football\n"
+    "Создать user-alias: /linkuser Наташа @username"
+)
+
+MSG_UNALIAS_USAGE = (
+    "Использование: /unalias <alias>\n"
+    "Пример: /unalias Наташа"
+)
+
+def msg_alias_not_found(alias: str) -> str:
+    return f"Alias '{alias}' не найден."
+
+
+def msg_unalias_deleted(alias: str, deleted_parts: list[str]) -> str:
+    return f"Удалил alias '{alias}' из: {', '.join(deleted_parts)}."
+
+
+MSG_RENAMEALIAS_USAGE = (
+    "Использование: /renamealias <old> -> <new>\n"
+    "Пример: /renamealias Наташа -> Натали"
+)
+
+def msg_renamealias_success(old_alias: str, new_alias: str, renamed_parts: list[str]) -> str:
+    return f"Переименовал '{old_alias}' -> '{new_alias}' в: {', '.join(renamed_parts)}."
+
+
+MSG_DEFAULT_TIME_NOT_SET = (
+    "Время по умолчанию не задано. Для напоминаний без явно указанного времени бот использует 10:00.\n\n"
+    "Поставить: /defaulttime 09:30\n"
+    "Сбросить: /defaulttime reset"
+)
+
+def msg_default_time_current(formatted_time: str) -> str:
+    return (
+        f"Текущее время по умолчанию: {formatted_time}\n\n"
+        "Изменить: /defaulttime 09:30\n"
+        "Сбросить: /defaulttime reset"
+    )
+
+
+MSG_DEFAULT_TIME_RESET = (
+    "Ок, сбросил время по умолчанию. Теперь для напоминаний без явно указанного времени бот снова использует 10:00."
+)
+
+MSG_DEFAULT_TIME_PARSE_FAILED = "Не понял время. Формат: /defaulttime 09:30"
+
+def msg_default_time_set(formatted_time: str) -> str:
+    return f"Ок, время по умолчанию: {formatted_time}."
+
+
+MSG_LINKUSER_USAGE = (
+    "Формат:\n"
+    "/linkuser alias @username\n\n"
+    "Пример:\n"
+    "/linkuser misha @friend"
+)
+
+MSG_USER_ALIAS_EMPTY = "Alias не может быть пустым."
+MSG_LINKUSER_ALIAS_STARTS_WITH_AT = (
+    "Alias не должен начинаться с @. Напиши, например: /linkuser misha @friend"
+)
+MSG_LINKUSER_USERNAME_REQUIRED = (
+    "Вторым аргументом нужен @username. Пример: /linkuser misha @friend"
+)
+
+def msg_linkuser_chat_alias_conflict(alias: str) -> str:
+    return f"Alias '{alias}' уже занят chat-alias. Выбери другое имя."
+
+
+def msg_linkuser_target_not_started(username: str) -> str:
+    return f"Я пока не могу написать {username}, потому что он/она не нажимал(а) Start у бота."
+
+
+def msg_linkuser_success(alias: str, username: str) -> str:
+    return f"Ок, alias '{alias}' теперь указывает на {username}."
+
+
 __all__ = tuple(
     name
     for name in globals()
