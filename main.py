@@ -235,6 +235,12 @@ from self_remind_calendar_flow import handle_self_remind_calendar_month, handle_
 from self_remind_picktime_flow import handle_self_remind_picktime
 from self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
 from self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
+from app_lifecycle import (
+    _cancel_background_worker_impl,
+    _start_background_worker_impl,
+    post_init_impl,
+    post_shutdown_impl,
+)
 from callback_simple_flows import handle_done_callback_data, handle_noop_callback, handle_pastdate_callback, handle_self_remind_cancel_callback, handle_self_remind_event_cancel_callback, handle_snooze_cancel_callback_data, handle_snooze_current_month_callback
 from reminder_callback_router import handle_reminder_callback
 from reminder_callback_deps import build_reminder_callback_deps
@@ -977,49 +983,28 @@ BACKGROUND_WORKER_TASK_KEYS = (
 )
 
 
+def _build_app_lifecycle_deps():
+    return SimpleNamespace(
+        BACKGROUND_WORKER_TASK_KEYS=BACKGROUND_WORKER_TASK_KEYS,
+        init_db=init_db,
+        logger=logger,
+        migrate_alias_tables_to_owner_scope=migrate_alias_tables_to_owner_scope,
+        reminders_nudge_worker=reminders_nudge_worker,
+        reminders_worker=reminders_worker,
+    )
+
 def _start_background_worker(application: Application, task_key: str, coro_factory) -> asyncio.Task:
-    existing_task = application.bot_data.get(task_key)
-    if existing_task is not None and not existing_task.done():
-        return existing_task
-
-    task = asyncio.create_task(coro_factory())
-    application.bot_data[task_key] = task
-    return task
-
+    return _start_background_worker_impl(application, task_key, coro_factory, deps=_build_app_lifecycle_deps())
 
 async def _cancel_background_worker(task: asyncio.Task) -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
+    return await _cancel_background_worker_impl(task, deps=_build_app_lifecycle_deps())
 
 async def post_init(application: Application) -> None:
-    init_db()
-    migrate_alias_tables_to_owner_scope()
-
-    _start_background_worker(
-        application,
-        "reminders_worker_task",
-        lambda: reminders_worker(application),
-    )
-    _start_background_worker(
-        application,
-        "reminders_nudge_worker_task",
-        lambda: reminders_nudge_worker(application),
-    )
-
-    logger.info("Фоновые worker напоминаний запущены из post_init")
-
+    return await post_init_impl(application, deps=_build_app_lifecycle_deps())
 
 async def post_shutdown(application: Application) -> None:
-    for task_key in BACKGROUND_WORKER_TASK_KEYS:
-        task = application.bot_data.pop(task_key, None)
-        if task is not None:
-            await _cancel_background_worker(task)
+    return await post_shutdown_impl(application, deps=_build_app_lifecycle_deps())
 
-    logger.info("Фоновые worker напоминаний остановлены из post_shutdown")
 
 def _build_storage_nudges_deps():
     return SimpleNamespace(
