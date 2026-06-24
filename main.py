@@ -224,6 +224,7 @@ from reminder_callback_router import handle_reminder_callback
 from reminder_callback_deps import build_reminder_callback_deps
 from created_snooze_router import handle_created_snooze_callback
 from delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
+from delete_undo_deps import build_delete_undo_callback_deps
 from created_delete_router import handle_created_delete_callback
 from reminders_workers import _safe_get_chat_type as _worker_safe_get_chat_type, run_reminders_nudge_worker, run_reminders_worker
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
@@ -2389,42 +2390,7 @@ async def created_back_callback(update: Update, context: CTX) -> None:
 
 
 def _build_delete_undo_callback_deps():
-    return SimpleNamespace(
-        CTX=CTX,
-        DB_PATH=DB_PATH,
-        InlineKeyboardButton=InlineKeyboardButton,
-        InlineKeyboardMarkup=InlineKeyboardMarkup,
-        MSG_DELETE_FAILED_SHORT=MSG_DELETE_FAILED_SHORT,
-        MSG_DELETE_SERIES_FAILED=MSG_DELETE_SERIES_FAILED,
-        MSG_REMINDER_ALREADY_DELETED_ALERT=MSG_REMINDER_ALREADY_DELETED_ALERT,
-        MSG_UNDO_EXPIRED=MSG_UNDO_EXPIRED,
-        MSG_UNDO_RESTORE_FAILED=MSG_UNDO_RESTORE_FAILED,
-        Update=Update,
-        build_active_reminders_list_response=build_active_reminders_list_response,
-        build_created_reminder_actions_keyboard=build_created_reminder_actions_keyboard,
-        build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
-        build_list_delete_keyboard=build_list_delete_keyboard,
-        build_recurring_delete_choice_keyboard=build_recurring_delete_choice_keyboard,
-        cb_undo=cb_undo,
-        datetime=datetime,
-        delete_recurring_one_instance_and_reschedule=delete_recurring_one_instance_and_reschedule,
-        delete_recurring_series_with_snapshot=delete_recurring_series_with_snapshot,
-        delete_single_reminder_with_snapshot=delete_single_reminder_with_snapshot,
-        dict=dict,
-        format_deleted_human=format_deleted_human,
-        format_deleted_snapshot_text=format_deleted_snapshot_text,
-        format_recurring_human=format_recurring_human,
-        format_restored_series_text=format_restored_series_text,
-        format_restored_single_text=format_restored_single_text,
-        get_now=get_now,
-        get_recurring_template_row=get_recurring_template_row,
-        get_reminder_row=get_reminder_row,
-        list=list,
-        logger=logger,
-        make_undo_token=make_undo_token,
-        restore_deleted_snapshot=restore_deleted_snapshot,
-        sqlite3=sqlite3,
-    )
+    return build_delete_undo_callback_deps(globals())
 
 async def delete_callback(update: Update, context: CTX) -> None:
     await handle_delete_callback(update, context, _build_delete_undo_callback_deps())
