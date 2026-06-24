@@ -304,7 +304,8 @@ def test_linkchat_and_alias_examples_include_natural_language(main_module):
     source = open("main.py").read()
 
     assert "напомни {alias} 28.11 12:00 завтра футбол" in source
-    assert "напомни {first_token} 28.11 12:00 завтра футбол" in source
+    resolver_source = open("remind_target_resolution.py").read()
+    assert "напомни {first_token} 28.11 12:00 завтра футбол" in resolver_source
     assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source
 
 
@@ -319,7 +320,8 @@ def test_linkchat_and_alias_examples_include_natural_language(main_module):
 
 def test_linkchat_and_alias_examples_include_natural_language(main_module):
     source = open("main.py").read()
+    resolver_source = open("remind_target_resolution.py").read()
 
     assert "напомни {alias} 28.11 12:00 завтра футбол" in source
-    assert "напомни {first_token} 28.11 12:00 завтра футбол" in source
-    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source
+    assert "напомни {first_token} 28.11 12:00 завтра футбол" in resolver_source
+    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in resolver_source

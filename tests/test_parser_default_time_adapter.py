@@ -78,7 +78,8 @@ def test_remind_command_uses_default_parser_adapter_without_nested_helpers():
     assert "parse_date_time_smart_with_default" not in nested_names
     assert "parse_recurring_with_default" not in nested_names
     assert "from parser_default_time_adapter import parse_with_optional_default_time" in source
-    assert "parse_with_optional_default_time(" in source
+    resolver_source = Path("remind_target_resolution.py").read_text()
+    assert "parse_with_optional_default_time(" in resolver_source
 
 
 def test_main_reexports_default_parser_adapter_helper():

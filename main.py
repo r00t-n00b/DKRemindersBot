@@ -249,6 +249,7 @@ from models import Reminder
 from default_time import _default_time_or, format_default_time_value, parse_default_time_value
 from remind_arg_utils import strip_first_token_from_first_line
 from remind_group_routing import reject_group_remind_target_prefix_if_needed
+from remind_target_resolution import resolve_remind_target_and_args
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2603,174 +2604,36 @@ async def remind_command(update: Update, context: CTX) -> None:
         await safe_reply(message, msg_recurring_missing_dash(is_private))
         return
 
-    target_chat_id = chat.id
-    used_alias: Optional[str] = None
-
-    # В личке допускаем slack-style "/remind me ..."
-    if is_private:
-        first_line = raw_args.splitlines()[0].lstrip()
-        if first_line and not first_line.startswith("-"):
-            first_token = first_line.split(maxsplit=1)[0].strip().lower()
-
-            if first_token == "me":
-                raw_args = strip_first_token_from_first_line(raw_args, first_token)
-
-                logger.info(
-                    "REMIND me-stripped chat_id=%s user_id=%s raw_args=%r",
-                    chat.id,
-                    user.id,
-                    raw_args,
-                )
-
-                if not raw_args:
-                    await safe_reply(
-                        message,
-                        msg_after_me_requires_date_and_text("Пример: /remind me on Tuesday - алкоголь под КС")
-                    )
-                    return
-
-    # В личке допускаем @username первым словом / первой строкой
-    if is_private:
-        first_line = raw_args.splitlines()[0].lstrip()
-        if first_line and not first_line.startswith("-"):
-            first_token = first_line.split(maxsplit=1)[0].strip()
-            if first_token.lower() == "me":
-                raw_args = strip_first_token_from_first_line(raw_args, first_token)
-
-                if not raw_args:
-                    await safe_reply(
-                        message,
-                        msg_after_me_requires_date_and_text("Пример: /remind me at 18:00 - купить молоко")
-                    )
-                    return
-            if first_token.startswith("@") and len(first_token) > 1:
-                target = get_user_chat_id_by_username(first_token)
-                if target is None:
-                    await safe_reply(
-                        message,
-                        msg_user_has_not_started_bot(first_token)
-                    )
-                    return
-
-                # убираем @username из raw_args
-                raw_args = strip_first_token_from_first_line(raw_args, first_token)
-
-                if not raw_args:
-                    await safe_reply(
-                        message,
-                        msg_after_target_requires_date_and_text(first_token, f"Пример: /remind {first_token} tomorrow 10:00 - привет")
-                    )
-                    return
-
-                target_chat_id = target
-                used_alias = first_token  # просто чтобы показать в ответе, кого выбрали
-
-    # Если пользователь пишет "/remind напомни ...", это не alias "напомни",
-    # а вложенный командный префикс. Убираем его до alias-routing.
-    if is_private:
-        first_line = raw_args.splitlines()[0].lstrip() if raw_args else ""
-        nested_tokens = first_line.split(maxsplit=1)
-        if nested_tokens:
-            nested_first = nested_tokens[0].strip(" ,.!?:;").lower()
-            if nested_first in {"напомни", "напомнить", "remind"} and len(nested_tokens) == 2:
-                rest_first_line = nested_tokens[1].strip()
-                rest_lines = "\n".join(raw_args.splitlines()[1:])
-
-                parts = []
-                if rest_first_line:
-                    parts.append(rest_first_line)
-                if rest_lines.strip():
-                    parts.append(rest_lines)
-
-                raw_args = "\n".join(parts).strip()
-                had_newline = "\n" in raw_args
-
-    # В личке допускаем alias первым словом / первой строкой
-    if is_private:
-        first_line = raw_args.splitlines()[0].lstrip()
-        if first_line and not first_line.startswith("-"):
-            first_token = first_line.split(maxsplit=1)[0].strip()
-
-            if first_token and first_token.lower() == "me":
-                raw_args = strip_first_token_from_first_line(raw_args, first_token)
-
-                if not raw_args:
-                    await safe_reply(
-                        message,
-                        msg_after_me_requires_date_and_text("Пример: /remind me at 18:00 - купить молоко")
-                    )
-                    return
-
-            # alias != @username и alias != me (эти кейсы обработаны выше)
-            elif first_token and not first_token.startswith("@"):
-                # Не трогаем обычные команды, которые уже начинаются с даты/времени/recurring.
-                # Важно: используем общий helper, чтобы maybe_split_alias_first_token()
-                # и remind_command() не расходились по списку smart-prefixes.
-                if not first_token_looks_like_reminder_start(first_token):
-                    raw_args_without_first_token = strip_first_token_from_first_line(raw_args, first_token)
-
-                    user_alias_chat_id = get_user_alias_chat_id_for_user(first_token, user.id)
-                    if user_alias_chat_id is not None:
-                        raw_args = raw_args_without_first_token
-                        target_chat_id = user_alias_chat_id
-                        used_alias = None
-
-                        if not raw_args:
-                            await safe_reply(
-                                message,
-                                "После alias нужно указать дату и текст.\n"
-                                f"Пример:\nнапомни {first_token} 28.11 12:00 завтра футбол\n"
-                                f"или командой:\n/remind {first_token} 28.11 12:00 - завтра футбол"
-                            )
-                            return
-                    else:
-                        alias_chat_id = get_chat_id_by_alias_for_user(first_token, user.id)
-                        if alias_chat_id is not None:
-                            raw_args = raw_args_without_first_token
-                            target_chat_id = alias_chat_id
-                            used_alias = first_token
-
-                            if not raw_args:
-                                await safe_reply(
-                                    message,
-                                    "После alias нужно указать дату и текст.\n"
-                                    "Пример:\n"
-                                    f"/remind {used_alias} 28.11 12:00 - завтра футбол"
-                                )
-                                return
-                        elif raw_args_without_first_token and "\n" not in raw_args:
-                            try:
-                                parse_with_optional_default_time(parse_date_time_smart, raw_args_without_first_token, now, default_time=default_time)
-                            except Exception:
-                                pass
-                            else:
-                                await safe_reply(
-                                    message,
-                                    f'Алиаса "{first_token}" не существует. '
-                                    "Используй команду без него, если хочешь поставить ремайндер себе, "
-                                    f'или присвой "{first_token}" тому, кому нужно, с помощью команд /linkuser или /linkchat. '
-                                    "Подробнее о них можешь прочитать в /help."
-                                )
-                                return
-
-    # если человек пишет боту в личке - запомним его chat_id
-    if is_private:
-        upsert_user_chat(
-            user_id=user.id,
-            chat_id=chat.id,
-            username=getattr(user, "username", None),
-            first_name=getattr(user, "first_name", None),
-            last_name=getattr(user, "last_name", None),
-        )
-
-    logger.info(
-        "REMIND normalized chat_id=%s target_chat_id=%s used_alias=%s raw_args=%r had_newline=%s",
-        chat.id,
-        target_chat_id,
-        used_alias,
-        raw_args,
-        had_newline,
+    target_resolution = await resolve_remind_target_and_args(
+        is_private=is_private,
+        raw_args=raw_args,
+        had_newline=had_newline,
+        chat=chat,
+        user=user,
+        message=message,
+        now=now,
+        default_time=default_time,
+        safe_reply=safe_reply,
+        logger=logger,
+        strip_first_token_from_first_line=strip_first_token_from_first_line,
+        first_token_looks_like_reminder_start=first_token_looks_like_reminder_start,
+        get_user_chat_id_by_username=get_user_chat_id_by_username,
+        get_user_alias_chat_id_for_user=get_user_alias_chat_id_for_user,
+        get_chat_id_by_alias_for_user=get_chat_id_by_alias_for_user,
+        parse_with_optional_default_time=parse_with_optional_default_time,
+        parse_date_time_smart=parse_date_time_smart,
+        upsert_user_chat=upsert_user_chat,
+        msg_after_me_requires_date_and_text=msg_after_me_requires_date_and_text,
+        msg_user_has_not_started_bot=msg_user_has_not_started_bot,
+        msg_after_target_requires_date_and_text=msg_after_target_requires_date_and_text,
     )
+    if target_resolution.aborted:
+        return
+
+    raw_args = target_resolution.raw_args
+    had_newline = target_resolution.had_newline
+    target_chat_id = target_resolution.target_chat_id
+    used_alias = target_resolution.used_alias
 
     # Bulk или одиночный?
     if had_newline:

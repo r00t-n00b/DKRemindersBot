@@ -29,7 +29,8 @@ def test_main_uses_extracted_first_token_helper():
     source = Path("main.py").read_text()
 
     assert "from remind_arg_utils import strip_first_token_from_first_line" in source
-    assert "strip_first_token_from_first_line(raw_args, first_token)" in source
+    resolver_source = Path("remind_target_resolution.py").read_text()
+    assert "strip_first_token_from_first_line(raw_args, first_token)" in resolver_source
     assert "rest_first_line = first_line[len(first_token):].lstrip()" not in source
 
 
