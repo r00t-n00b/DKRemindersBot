@@ -223,6 +223,7 @@ from callback_simple_flows import handle_done_callback_data, handle_noop_callbac
 from reminder_callback_router import handle_reminder_callback
 from reminder_callback_deps import build_reminder_callback_deps
 from created_snooze_router import handle_created_snooze_callback
+from created_snooze_deps import build_created_snooze_callback_deps
 from delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
 from delete_undo_deps import build_delete_undo_callback_deps
 from created_delete_router import handle_created_delete_callback
@@ -2210,27 +2211,7 @@ async def created_reschedule_callback(update: Update, context: CTX) -> None:
 
 
 def _build_created_snooze_callback_deps():
-    return SimpleNamespace(
-        MSG_INVALID_REMINDER_ID=MSG_INVALID_REMINDER_ID,
-        MSG_RESCHEDULE_BAD_DATETIME=MSG_RESCHEDULE_BAD_DATETIME,
-        MSG_RESCHEDULE_PAST_TIME=MSG_RESCHEDULE_PAST_TIME,
-        MSG_RESCHEDULE_UNKNOWN_ACTION=MSG_RESCHEDULE_UNKNOWN_ACTION,
-        MSG_UNEXPECTED_CALLBACK_ERROR=MSG_UNEXPECTED_CALLBACK_ERROR,
-        TZ=TZ,
-        _answer_created_action_reminder_missing=_answer_created_action_reminder_missing,
-        _ensure_created_action_reminder_exists=_ensure_created_action_reminder_exists,
-        build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
-        build_created_reschedule_keyboard=build_created_reschedule_keyboard,
-        build_custom_date_keyboard=build_custom_date_keyboard,
-        build_custom_time_keyboard=build_custom_time_keyboard,
-        compute_snooze_target_time=compute_snooze_target_time,
-        datetime=datetime,
-        get_now=get_now,
-        get_reminder=get_reminder,
-        get_user_default_time=get_user_default_time,
-        logger=logger,
-        update_reminder_time=update_reminder_time,
-    )
+    return build_created_snooze_callback_deps(globals())
 
 async def created_snooze_callback(update: Update, context: CTX) -> None:
     await handle_created_snooze_callback(update, context, _build_created_snooze_callback_deps())
