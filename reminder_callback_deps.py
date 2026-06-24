@@ -1,0 +1,91 @@
+"""Dependency list for reminder callback router."""
+
+from types import SimpleNamespace
+
+
+REMINDER_CALLBACK_DEP_NAMES = (
+    "MSG_EVENT_DATE_NOT_FOUND",
+    "MSG_INVALID_REMINDER_ID",
+    "MSG_REMINDER_NOT_FOUND",
+    "MSG_RESCHEDULE_BAD_DATETIME",
+    "MSG_RESCHEDULE_PAST_TIME",
+    "MSG_RESCHEDULE_UNKNOWN_ACTION",
+    "MSG_SOURCE_REMINDER_NOT_FOUND",
+    "MSG_UNEXPECTED_CALLBACK_ERROR",
+    "MSG_UNKNOWN_SELF_REMIND_MODE",
+    "MSG_UNKNOWN_TIME_OPTION",
+    "MSG_USER_CONTEXT_MISSING",
+    "TZ",
+    "add_reminder",
+    "apply_snooze_to_reminder",
+    "build_created_reminder_actions_keyboard_for_reminder",
+    "build_custom_date_keyboard",
+    "build_custom_time_keyboard",
+    "build_self_remind_choice_keyboard",
+    "build_self_remind_event_before_keyboard",
+    "build_self_remind_mode_keyboard",
+    "build_snooze_keyboard",
+    "clear_reminder_message_keyboards",
+    "compute_event_before_time",
+    "compute_self_remind_time",
+    "compute_snooze_target_time",
+    "datetime",
+    "enter_custom_snooze_flow",
+    "enter_custom_snooze_time_picker",
+    "extract_event_datetime_from_text",
+    "format_completed_reminder_text",
+    "format_created_reminder_text",
+    "format_self_remind_text",
+    "format_snoozed_answer_text",
+    "format_snoozed_reminder_text",
+    "get_now",
+    "get_reminder",
+    "get_self_remind_event_base",
+    "get_source_chat_title_for_self_remind",
+    "get_user_chat_id_by_user_id",
+    "get_user_default_time",
+    "handle_custom_snooze_cancel",
+    "handle_custom_snooze_picktime",
+    "handle_direct_snooze_action",
+    "handle_done_callback",
+    "handle_done_callback_data",
+    "handle_noop_callback",
+    "handle_pastdate_callback",
+    "handle_self_remind_ask",
+    "handle_self_remind_back",
+    "handle_self_remind_calendar_month",
+    "handle_self_remind_calendar_today",
+    "handle_self_remind_cancel",
+    "handle_self_remind_cancel_callback",
+    "handle_self_remind_cancel_personal",
+    "handle_self_remind_event_before",
+    "handle_self_remind_event_cancel",
+    "handle_self_remind_event_cancel_callback",
+    "handle_self_remind_event_custom",
+    "handle_self_remind_mode",
+    "handle_self_remind_pickdate",
+    "handle_self_remind_picktime",
+    "handle_self_remind_set",
+    "handle_snooze_cancel_callback_data",
+    "handle_snooze_current_month_callback",
+    "logger",
+    "mark_reminder_acked",
+    "normalize_relative_event_date_in_text",
+    "parse_optional_int_callback_id",
+    "parse_required_int_callback_id",
+    "parse_snooze_action_callback_data",
+    "parse_snooze_calendar_callback_data",
+    "parse_snooze_pickdate_callback_data",
+    "parse_snooze_picktime_callback_data",
+    "show_custom_snooze_calendar",
+)
+
+
+def build_reminder_callback_deps(namespace) -> SimpleNamespace:
+    missing = [name for name in REMINDER_CALLBACK_DEP_NAMES if name not in namespace]
+    if missing:
+        raise KeyError(f"Missing reminder callback deps: {', '.join(missing)}")
+
+    return SimpleNamespace(
+        **{name: namespace[name] for name in REMINDER_CALLBACK_DEP_NAMES}
+    )

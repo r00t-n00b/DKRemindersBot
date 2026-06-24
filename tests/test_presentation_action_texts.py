@@ -43,11 +43,11 @@ def test_format_restored_texts():
 def test_action_result_texts_are_used_from_presentation():
     main_source = Path("main.py").read_text()
 
-    assert "format_completed_reminder_text=format_completed_reminder_text" in main_source
+    assert '"format_completed_reminder_text"' in Path("reminder_callback_deps.py").read_text()
     assert "format_completed_reminder_text(" in Path("reminder_done_flow.py").read_text()
-    assert "format_snoozed_reminder_text=format_snoozed_reminder_text" in main_source
+    assert '"format_snoozed_reminder_text"' in Path("reminder_callback_deps.py").read_text()
     assert "format_snoozed_reminder_text(" in Path("snooze_apply.py").read_text()
-    assert "format_snoozed_answer_text=format_snoozed_answer_text" in main_source
+    assert '"format_snoozed_answer_text"' in Path("reminder_callback_deps.py").read_text()
     assert "format_snoozed_answer_text(" in Path("snooze_apply.py").read_text()
     assert "format_deleted_snapshot_text=format_deleted_snapshot_text" in main_source
     assert "format_deleted_snapshot_text(" in Path("delete_undo_router.py").read_text()

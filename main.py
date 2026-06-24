@@ -221,6 +221,7 @@ from self_remind_create_flow import handle_self_remind_event_custom, handle_self
 from self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
 from callback_simple_flows import handle_done_callback_data, handle_noop_callback, handle_pastdate_callback, handle_self_remind_cancel_callback, handle_self_remind_event_cancel_callback, handle_snooze_cancel_callback_data, handle_snooze_current_month_callback
 from reminder_callback_router import handle_reminder_callback
+from reminder_callback_deps import build_reminder_callback_deps
 from created_snooze_router import handle_created_snooze_callback
 from delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
 from created_delete_router import handle_created_delete_callback
@@ -2483,82 +2484,7 @@ async def undo_callback(update: Update, context: CTX) -> None:
 
 
 def _build_reminder_callback_deps():
-    return SimpleNamespace(
-        MSG_EVENT_DATE_NOT_FOUND=MSG_EVENT_DATE_NOT_FOUND,
-        MSG_INVALID_REMINDER_ID=MSG_INVALID_REMINDER_ID,
-        MSG_REMINDER_NOT_FOUND=MSG_REMINDER_NOT_FOUND,
-        MSG_RESCHEDULE_BAD_DATETIME=MSG_RESCHEDULE_BAD_DATETIME,
-        MSG_RESCHEDULE_PAST_TIME=MSG_RESCHEDULE_PAST_TIME,
-        MSG_RESCHEDULE_UNKNOWN_ACTION=MSG_RESCHEDULE_UNKNOWN_ACTION,
-        MSG_SOURCE_REMINDER_NOT_FOUND=MSG_SOURCE_REMINDER_NOT_FOUND,
-        MSG_UNEXPECTED_CALLBACK_ERROR=MSG_UNEXPECTED_CALLBACK_ERROR,
-        MSG_UNKNOWN_SELF_REMIND_MODE=MSG_UNKNOWN_SELF_REMIND_MODE,
-        MSG_UNKNOWN_TIME_OPTION=MSG_UNKNOWN_TIME_OPTION,
-        MSG_USER_CONTEXT_MISSING=MSG_USER_CONTEXT_MISSING,
-        TZ=TZ,
-        add_reminder=add_reminder,
-        apply_snooze_to_reminder=apply_snooze_to_reminder,
-        build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
-        build_custom_date_keyboard=build_custom_date_keyboard,
-        build_custom_time_keyboard=build_custom_time_keyboard,
-        build_self_remind_choice_keyboard=build_self_remind_choice_keyboard,
-        build_self_remind_event_before_keyboard=build_self_remind_event_before_keyboard,
-        build_self_remind_mode_keyboard=build_self_remind_mode_keyboard,
-        build_snooze_keyboard=build_snooze_keyboard,
-        clear_reminder_message_keyboards=clear_reminder_message_keyboards,
-        compute_event_before_time=compute_event_before_time,
-        compute_self_remind_time=compute_self_remind_time,
-        compute_snooze_target_time=compute_snooze_target_time,
-        datetime=datetime,
-        enter_custom_snooze_flow=enter_custom_snooze_flow,
-        enter_custom_snooze_time_picker=enter_custom_snooze_time_picker,
-        extract_event_datetime_from_text=extract_event_datetime_from_text,
-        format_completed_reminder_text=format_completed_reminder_text,
-        format_created_reminder_text=format_created_reminder_text,
-        format_self_remind_text=format_self_remind_text,
-        format_snoozed_answer_text=format_snoozed_answer_text,
-        format_snoozed_reminder_text=format_snoozed_reminder_text,
-        get_now=get_now,
-        get_reminder=get_reminder,
-        get_self_remind_event_base=get_self_remind_event_base,
-        get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
-        get_user_chat_id_by_user_id=get_user_chat_id_by_user_id,
-        get_user_default_time=get_user_default_time,
-        handle_custom_snooze_cancel=handle_custom_snooze_cancel,
-        handle_custom_snooze_picktime=handle_custom_snooze_picktime,
-        handle_direct_snooze_action=handle_direct_snooze_action,
-        handle_done_callback=handle_done_callback,
-        handle_done_callback_data=handle_done_callback_data,
-        handle_noop_callback=handle_noop_callback,
-        handle_pastdate_callback=handle_pastdate_callback,
-        handle_self_remind_ask=handle_self_remind_ask,
-        handle_self_remind_back=handle_self_remind_back,
-        handle_self_remind_calendar_month=handle_self_remind_calendar_month,
-        handle_self_remind_calendar_today=handle_self_remind_calendar_today,
-        handle_self_remind_cancel=handle_self_remind_cancel,
-        handle_self_remind_cancel_callback=handle_self_remind_cancel_callback,
-        handle_self_remind_cancel_personal=handle_self_remind_cancel_personal,
-        handle_self_remind_event_before=handle_self_remind_event_before,
-        handle_self_remind_event_cancel=handle_self_remind_event_cancel,
-        handle_self_remind_event_cancel_callback=handle_self_remind_event_cancel_callback,
-        handle_self_remind_event_custom=handle_self_remind_event_custom,
-        handle_self_remind_mode=handle_self_remind_mode,
-        handle_self_remind_pickdate=handle_self_remind_pickdate,
-        handle_self_remind_picktime=handle_self_remind_picktime,
-        handle_self_remind_set=handle_self_remind_set,
-        handle_snooze_cancel_callback_data=handle_snooze_cancel_callback_data,
-        handle_snooze_current_month_callback=handle_snooze_current_month_callback,
-        logger=logger,
-        mark_reminder_acked=mark_reminder_acked,
-        normalize_relative_event_date_in_text=normalize_relative_event_date_in_text,
-        parse_optional_int_callback_id=parse_optional_int_callback_id,
-        parse_required_int_callback_id=parse_required_int_callback_id,
-        parse_snooze_action_callback_data=parse_snooze_action_callback_data,
-        parse_snooze_calendar_callback_data=parse_snooze_calendar_callback_data,
-        parse_snooze_pickdate_callback_data=parse_snooze_pickdate_callback_data,
-        parse_snooze_picktime_callback_data=parse_snooze_picktime_callback_data,
-        show_custom_snooze_calendar=show_custom_snooze_calendar,
-    )
+    return build_reminder_callback_deps(globals())
 
 async def snooze_callback(update: Update, context: CTX) -> None:
     await handle_reminder_callback(update, context, _build_reminder_callback_deps())
