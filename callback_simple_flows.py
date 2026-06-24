@@ -1,7 +1,9 @@
 """Small callback flows used by the main callback router."""
 
+from messages import MSG_PAST_DATE_ALERT
+
 async def handle_pastdate_callback(*, query):
-    await query.answer("Эта дата уже прошла. Выбери другую.", show_alert=True)
+    await query.answer(MSG_PAST_DATE_ALERT, show_alert=True)
 
 
 async def handle_noop_callback(*, query):

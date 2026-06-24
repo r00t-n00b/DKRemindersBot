@@ -293,6 +293,8 @@ def msg_linkuser_target_not_started(username: str) -> str:
 def msg_linkuser_success(alias: str, username: str) -> str:
     return f"Ок, alias '{alias}' теперь указывает на {username}."
 
+MSG_PAST_DATE_ALERT = "Эта дата уже прошла. Выбери другую."
+
 
 __all__ = tuple(
     name
