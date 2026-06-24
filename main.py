@@ -277,6 +277,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
 from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
 from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
@@ -322,165 +323,22 @@ from parser_lexicon import (
 
 # ===== Работа с БД =====
 
+def _build_storage_schema_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        logger=logger,
+        sqlite3=sqlite3,
+    )
+
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
-    cur = conn.cursor()
-    cur.execute(f"PRAGMA table_info({table})")
-    cols = {row[1] for row in cur.fetchall()}
-    if column not in cols:
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
-        conn.commit()
+    return _ensure_column_impl(conn, table, column, ddl, deps=_build_storage_schema_deps())
 
 def init_db() -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+    return init_db_impl(deps=_build_storage_schema_deps())
 
-    # основная таблица напоминаний (новые БД сразу с template_id)
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS reminders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            remind_at TEXT NOT NULL,
-            created_by INTEGER,
-            created_at TEXT NOT NULL,
-            delivered INTEGER NOT NULL DEFAULT 0,
-            template_id INTEGER
-        )
-        """
-    )
+def migrate_alias_tables_to_owner_scope() -> None:
+    return migrate_alias_tables_to_owner_scope_impl(deps=_build_storage_schema_deps())
 
-    # миграция старых БД - добавляем template_id при необходимости
-    c.execute("PRAGMA table_info(reminders)")
-    cols = [row[1] for row in c.fetchall()]
-    if "template_id" not in cols:
-        c.execute("ALTER TABLE reminders ADD COLUMN template_id INTEGER")
-        logger.info("DB migration: added reminders.template_id column")
-
-    # миграция старых БД - добавляем отсутствующие колонки
-    c.execute("PRAGMA table_info(reminders)")
-    cols = [row[1] for row in c.fetchall()]
-
-    if "template_id" not in cols:
-        c.execute("ALTER TABLE reminders ADD COLUMN template_id INTEGER")
-        logger.info("DB migration: added reminders.template_id column")
-
-    if "acked" not in cols:
-        c.execute("ALTER TABLE reminders ADD COLUMN acked INTEGER NOT NULL DEFAULT 0")
-        logger.info("DB migration: added reminders.acked column")
-
-    if "sent_at" not in cols:
-        c.execute("ALTER TABLE reminders ADD COLUMN sent_at TEXT")
-        logger.info("DB migration: added reminders.sent_at column")
-
-    if "nudge_count" not in cols:
-        c.execute("ALTER TABLE reminders ADD COLUMN nudge_count INTEGER NOT NULL DEFAULT 0")
-        logger.info("DB migration: added reminders.nudge_count column")
-
-    # индексы под worker-ы (идемпотентно)
-    c.execute(
-        "CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(delivered, remind_at)"
-    )
-    c.execute(
-        "CREATE INDEX IF NOT EXISTS idx_reminders_nudge ON reminders(delivered, acked, nudge_count, sent_at)"
-    )
-
-    # Telegram messages that represent the same reminder.
-    # One reminder can have several messages: original delivery, nudges, etc.
-    # This lets done/snooze clear stale buttons from all visible copies.
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS reminder_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            reminder_id INTEGER NOT NULL,
-            chat_id INTEGER NOT NULL,
-            message_id INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            UNIQUE(reminder_id, chat_id, message_id)
-        )
-        """
-    )
-    c.execute(
-        "CREATE INDEX IF NOT EXISTS idx_reminder_messages_reminder_id ON reminder_messages(reminder_id)"
-    )
-
-    # алиасы чатов
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS chat_aliases (
-            alias TEXT NOT NULL,
-            chat_id INTEGER NOT NULL,
-            title TEXT,
-            created_by INTEGER NOT NULL,
-            PRIMARY KEY (created_by, alias)
-        )
-        """
-    )
-
-    # таблица шаблонов повторяющихся напоминаний
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS recurring_templates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            pattern_type TEXT NOT NULL,
-            payload TEXT NOT NULL,
-            time_hour INTEGER NOT NULL,
-            time_minute INTEGER NOT NULL,
-            created_by INTEGER,
-            created_at TEXT NOT NULL,
-            active INTEGER NOT NULL DEFAULT 1
-        )
-        """
-    )
-
-    # алиасы для пользователей
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_aliases (
-            alias TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            chat_id INTEGER NOT NULL,
-            username TEXT,
-            created_by INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            PRIMARY KEY (created_by, alias)
-        )
-        """
-    )
-
-    # привязка пользователей (кто нажал /start в личке)
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_chats (
-            user_id INTEGER PRIMARY KEY,
-            chat_id INTEGER NOT NULL,
-            username TEXT,
-            first_name TEXT,
-            last_name TEXT,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-    c.execute(
-        "CREATE INDEX IF NOT EXISTS idx_user_chats_username ON user_chats(username)"
-    )
-
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_settings (
-            user_id INTEGER PRIMARY KEY,
-            default_hour INTEGER,
-            default_minute INTEGER,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-
-    conn.commit()
-    conn.close()
 
 def _build_reminder_message_store_deps():
     return SimpleNamespace(
@@ -512,83 +370,6 @@ def get_reminder_messages(reminder_id: int) -> list[dict]:
 async def clear_reminder_message_keyboards(bot, reminder_id: int) -> None:
     await clear_reminder_message_keyboards_impl(bot, reminder_id, _build_reminder_message_store_deps())
 
-
-def migrate_alias_tables_to_owner_scope() -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    def table_info(table_name: str):
-        c.execute(f"PRAGMA table_info({table_name})")
-        return c.fetchall()
-
-    def primary_key_columns(table_name: str) -> List[str]:
-        rows = table_info(table_name)
-        pk_rows = [row for row in rows if int(row[5]) > 0]
-        pk_rows.sort(key=lambda row: int(row[5]))
-        return [str(row[1]) for row in pk_rows]
-
-    # user_aliases: старую таблицу можно безопасно мигрировать, потому created_by уже есть.
-    user_cols = [str(row[1]) for row in table_info("user_aliases")]
-    user_pk = primary_key_columns("user_aliases")
-
-    if user_cols and user_pk != ["created_by", "alias"]:
-        c.execute("ALTER TABLE user_aliases RENAME TO user_aliases_old_owner_scope")
-        c.execute(
-            """
-            CREATE TABLE user_aliases (
-                alias TEXT NOT NULL,
-                user_id INTEGER NOT NULL,
-                chat_id INTEGER NOT NULL,
-                username TEXT,
-                created_by INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                PRIMARY KEY (created_by, alias)
-            )
-            """
-        )
-        c.execute(
-            """
-            INSERT OR IGNORE INTO user_aliases(alias, user_id, chat_id, username, created_by, created_at)
-            SELECT alias, user_id, chat_id, username, created_by, created_at
-            FROM user_aliases_old_owner_scope
-            WHERE created_by IS NOT NULL
-            """
-        )
-        c.execute("DROP TABLE user_aliases_old_owner_scope")
-
-    # chat_aliases: старую таблицу безопасно восстановить нельзя, потому owner там не хранился.
-    # Поэтому старые global chat-aliases намеренно не мигрируем. Их надо пересоздать через /linkchat.
-    chat_cols = [str(row[1]) for row in table_info("chat_aliases")]
-    chat_pk = primary_key_columns("chat_aliases")
-
-    if chat_cols and chat_pk != ["created_by", "alias"]:
-        c.execute("ALTER TABLE chat_aliases RENAME TO chat_aliases_old_owner_scope")
-        c.execute(
-            """
-            CREATE TABLE chat_aliases (
-                alias TEXT NOT NULL,
-                chat_id INTEGER NOT NULL,
-                title TEXT,
-                created_by INTEGER NOT NULL,
-                PRIMARY KEY (created_by, alias)
-            )
-            """
-        )
-
-        if "created_by" in chat_cols:
-            c.execute(
-                """
-                INSERT OR IGNORE INTO chat_aliases(alias, chat_id, title, created_by)
-                SELECT alias, chat_id, title, created_by
-                FROM chat_aliases_old_owner_scope
-                WHERE created_by IS NOT NULL
-                """
-            )
-
-        c.execute("DROP TABLE chat_aliases_old_owner_scope")
-
-    conn.commit()
-    conn.close()
 
 def upsert_user_chat(user_id: int, chat_id: int, username: Optional[str], first_name: Optional[str], last_name: Optional[str]) -> None:
     conn = sqlite3.connect(DB_PATH)
