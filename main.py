@@ -268,6 +268,14 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from alias_settings_deps import build_alias_settings_command_deps
+from voice_transcription_deps import build_voice_transcription_deps
+from reminder_text_normalization_deps import build_reminder_text_normalization_deps
+from voice_remind_deps import build_voice_remind_command_deps
+from plain_text_remind_deps import build_plain_text_remind_command_deps
+from list_command_deps import build_list_command_deps
+from created_delete_deps import build_created_delete_callback_deps
+from reminders_worker_deps import build_reminders_worker_deps
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -1787,28 +1795,7 @@ async def help_command(update: Update, context: CTX) -> None:
 
 
 def _build_alias_settings_command_deps():
-    return SimpleNamespace(
-        Chat=Chat,
-        clear_user_default_time=clear_user_default_time,
-        delete_chat_alias=delete_chat_alias,
-        delete_user_alias=delete_user_alias,
-        format_default_time_value=format_default_time_value,
-        get_all_aliases=get_all_aliases,
-        get_all_user_aliases=get_all_user_aliases,
-        get_chat_id_by_alias=get_chat_id_by_alias,
-        get_user_alias=get_user_alias,
-        get_user_chat_id_by_username=get_user_chat_id_by_username,
-        get_user_default_time=get_user_default_time,
-        logger=logger,
-        parse_default_time_value=parse_default_time_value,
-        parse_renamealias_args=parse_renamealias_args,
-        rename_chat_alias=rename_chat_alias,
-        rename_user_alias=rename_user_alias,
-        safe_reply=safe_reply,
-        set_chat_alias_for_user=set_chat_alias_for_user,
-        set_user_alias=set_user_alias,
-        set_user_default_time=set_user_default_time,
-    )
+    return build_alias_settings_command_deps(globals())
 
 async def linkchat_command(update: Update, context: CTX) -> None:
     await handle_linkchat_command(update, context, _build_alias_settings_command_deps())
@@ -1977,14 +1964,7 @@ async def _gemini_transcribe_audio_with_retries(
 
 
 def _build_voice_transcription_deps():
-    return SimpleNamespace(
-        _format_known_aliases_for_voice_prompt=_format_known_aliases_for_voice_prompt,
-        _gemini_transcribe_audio_with_retries=_gemini_transcribe_audio_with_retries,
-        download_telegram_file_bytes=download_telegram_file_bytes,
-        genai=genai,
-        genai_types=genai_types,
-        os=os,
-    )
+    return build_voice_transcription_deps(globals())
 
 async def transcribe_voice_message(update: Update, context: CTX) -> Optional[str]:
     return await transcribe_voice_message_impl(update, context, _build_voice_transcription_deps())
@@ -2003,26 +1983,13 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
 
 
 def _build_reminder_text_normalization_deps():
-    return SimpleNamespace(
-        normalize_gemini_reminder_command_text=normalize_gemini_reminder_command_text,
-        normalize_voice_reminder_text=normalize_voice_reminder_text,
-    )
+    return build_reminder_text_normalization_deps(globals())
 
 def _normalize_reminder_text_fallback(text: str) -> str:
     return normalize_reminder_text_fallback_impl(text, _build_reminder_text_normalization_deps())
 
 def _build_voice_remind_command_deps():
-    return SimpleNamespace(
-        Chat=Chat,
-        NormalizedReminderMessageProxy=NormalizedReminderMessageProxy,
-        SimpleNamespace=SimpleNamespace,
-        _normalize_reminder_text_fallback=_normalize_reminder_text_fallback,
-        logger=logger,
-        remind_command=remind_command,
-        safe_reply=safe_reply,
-        transcribe_voice_message=transcribe_voice_message,
-        type=type,
-    )
+    return build_voice_remind_command_deps(globals())
 
 async def voice_remind_command(update: Update, context: CTX) -> None:
     await handle_voice_remind_command(update, context, _build_voice_remind_command_deps())
@@ -2038,21 +2005,7 @@ def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:
 
 
 def _build_plain_text_remind_command_deps():
-    return SimpleNamespace(
-        Chat=Chat,
-        MSG_NOT_UNDERSTOOD_PLAIN_TEXT=MSG_NOT_UNDERSTOOD_PLAIN_TEXT,
-        NormalizedReminderMessageProxy=NormalizedReminderMessageProxy,
-        SimpleNamespace=SimpleNamespace,
-        _normalize_plain_text_relative_reminder_locally=_normalize_plain_text_relative_reminder_locally,
-        _normalize_plain_text_reminder_locally=_normalize_plain_text_reminder_locally,
-        _normalize_reminder_text_fallback=_normalize_reminder_text_fallback,
-        logger=logger,
-        normalize_gemini_reminder_command_text=normalize_gemini_reminder_command_text,
-        normalize_plain_text_reminder_with_gemini=normalize_plain_text_reminder_with_gemini,
-        remind_command=remind_command,
-        safe_reply=safe_reply,
-        type=type,
-    )
+    return build_plain_text_remind_command_deps(globals())
 
 async def plain_text_remind_command(update: Update, context: CTX) -> None:
     await handle_plain_text_remind_command(update, context, _build_plain_text_remind_command_deps())
@@ -2111,24 +2064,7 @@ async def linkuser_command(update: Update, context: CTX) -> None:
 
 
 def _build_list_command_deps():
-    return SimpleNamespace(
-        Chat=Chat,
-        DB_PATH=DB_PATH,
-        sqlite3=sqlite3,
-        build_active_reminders_list_response=build_active_reminders_list_response,
-        build_list_delete_keyboard=build_list_delete_keyboard,
-        build_target_user_presentation_rows=build_target_user_presentation_rows,
-        build_target_user_reminders_list_response=build_target_user_reminders_list_response,
-        format_empty_active_reminders_list_text=format_empty_active_reminders_list_text,
-        get_active_reminders_created_by_for_chat=get_active_reminders_created_by_for_chat,
-        get_all_aliases=get_all_aliases,
-        get_chat_id_by_alias_for_user=get_chat_id_by_alias_for_user,
-        get_now=get_now,
-        get_private_chat_id_by_username=get_private_chat_id_by_username,
-        get_recurring_template=get_recurring_template,
-        get_user_alias_chat_id_for_user=get_user_alias_chat_id_for_user,
-        safe_reply=safe_reply,
-    )
+    return build_list_command_deps(globals())
 
 
 async def list_command(update: Update, context: CTX) -> None:
@@ -2158,21 +2094,7 @@ def compute_snooze_target_time(action: str, now: datetime, default_time: Optiona
     raise ValueError(f"Unknown snooze action: {action}")
 
 def _build_created_delete_callback_deps():
-    return SimpleNamespace(
-        InlineKeyboardButton=InlineKeyboardButton,
-        InlineKeyboardMarkup=InlineKeyboardMarkup,
-        MSG_DELETE_FAILED_SHORT=MSG_DELETE_FAILED_SHORT,
-        MSG_DELETE_FAILED_TEXT=MSG_DELETE_FAILED_TEXT,
-        MSG_REMINDER_ALREADY_DELETED_ALERT=MSG_REMINDER_ALREADY_DELETED_ALERT,
-        MSG_REMINDER_ALREADY_DELETED_TEXT=MSG_REMINDER_ALREADY_DELETED_TEXT,
-        build_recurring_delete_choice_keyboard=build_recurring_delete_choice_keyboard,
-        cb_undo=cb_undo,
-        delete_single_reminder_with_snapshot=delete_single_reminder_with_snapshot,
-        dict=dict,
-        format_deleted_human=format_deleted_human,
-        get_reminder_row=get_reminder_row,
-        make_undo_token=make_undo_token,
-    )
+    return build_created_delete_callback_deps(globals())
 
 async def created_delete_callback(update: Update, context: CTX) -> None:
     await handle_created_delete_callback(update, context, _build_created_delete_callback_deps())
@@ -2302,25 +2224,7 @@ async def _safe_get_chat_type(app: Application, chat_id: int) -> Optional[str]:
     return await _worker_safe_get_chat_type(app, chat_id)
 
 def _build_reminders_worker_deps():
-    return SimpleNamespace(
-        get_chat_type=_safe_get_chat_type,
-        Chat=Chat,
-        TZ=TZ,
-        add_reminder=add_reminder,
-        asyncio=asyncio,
-        build_group_reminder_keyboard=build_group_reminder_keyboard,
-        build_snooze_keyboard=build_snooze_keyboard,
-        compute_next_occurrence=compute_next_occurrence,
-        datetime=datetime,
-        get_due_nudges=get_due_nudges,
-        get_due_reminders=get_due_reminders,
-        get_now=get_now,
-        get_recurring_template=get_recurring_template,
-        increment_nudge_count=increment_nudge_count,
-        logger=logger,
-        mark_reminder_sent=mark_reminder_sent,
-        register_reminder_message=register_reminder_message,
-    )
+    return build_reminders_worker_deps(globals())
 async def reminders_worker(app: Application) -> None:
     await run_reminders_worker(app, _build_reminders_worker_deps())
 
