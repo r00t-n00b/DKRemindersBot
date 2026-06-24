@@ -304,17 +304,3 @@ def test_linkchat_and_alias_examples_include_natural_language(main_module):
 
     assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
     assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source
-
-
-def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    alias_source = open("alias_settings_commands.py").read()
-
-    assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
-    assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source
-
-
-def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    alias_source = open("alias_settings_commands.py").read()
-
-    assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
-    assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source

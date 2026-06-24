@@ -334,52 +334,6 @@ def test_date_parse_failure_uses_human_message(main_module, monkeypatch):
 
     monkeypatch.setattr(m, "normalize_plain_text_reminder_with_gemini", fail_gemini)
 
-    message = DummyMessage("/remind nonsense")
-    update = SimpleNamespace(
-        effective_message=message,
-        effective_chat=DummyChat(12345, "private"),
-        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
-    )
-    context = SimpleNamespace(args=["nonsense"], user_data={})
-
-    asyncio.run(m.remind_command(update, context))
-
-    assert message.replies
-    assert message.replies[0][0] == m.MSG_PARSE_DATE_TEXT_FAILED
-    assert "Не понял дату/время" not in message.replies[0][0]
-
-
-def test_date_parse_failure_uses_human_message(main_module, monkeypatch):
-    m = main_module
-
-    async def fail_gemini(*args, **kwargs):
-        return "NO_REMINDER"
-
-    monkeypatch.setattr(m, "normalize_plain_text_reminder_with_gemini", fail_gemini)
-
-    message = DummyMessage("/remind nonsense")
-    update = SimpleNamespace(
-        effective_message=message,
-        effective_chat=DummyChat(12345, "private"),
-        effective_user=SimpleNamespace(id=1000, username="tester", first_name="Tester"),
-    )
-    context = SimpleNamespace(args=["nonsense"], user_data={})
-
-    asyncio.run(m.remind_command(update, context))
-
-    assert message.replies
-    assert message.replies[0][0] == m.MSG_PARSE_DATE_TEXT_FAILED
-    assert "Не понял дату/время" not in message.replies[0][0]
-
-
-def test_date_parse_failure_uses_human_message(main_module, monkeypatch):
-    m = main_module
-
-    async def fail_gemini(*args, **kwargs):
-        return "NO_REMINDER"
-
-    monkeypatch.setattr(m, "normalize_plain_text_reminder_with_gemini", fail_gemini)
-
     update, context, message = _mk_private("/remind nonsense")
 
     asyncio.run(m.remind_command(update, context))
