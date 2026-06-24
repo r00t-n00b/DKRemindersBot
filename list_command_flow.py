@@ -4,6 +4,8 @@ The flow receives dependencies from main.py to keep this module independent
 from application wiring and easy to test.
 """
 
+from messages import msg_list_alias_not_found_known, msg_list_alias_not_found_no_aliases, msg_list_user_not_started
+
 
 async def handle_list_command_flow(update, context, deps) -> None:
     Chat = deps.Chat
@@ -44,8 +46,7 @@ async def handle_list_command_flow(update, context, deps) -> None:
             if owner_chat_id is None:
                 await safe_reply(
                     message,
-                    f"Пользователь {first_arg} еще не писал боту.\n"
-                    f"Он должен сначала нажать Start или поставить любой ремайндер."
+                    msg_list_user_not_started(first_arg)
                 )
                 return
 
@@ -94,16 +95,13 @@ async def handle_list_command_flow(update, context, deps) -> None:
                     if not aliases:
                         await safe_reply(
                             message,
-                            f"Alias '{alias}' не найден.\n"
-                            f"Сначала зайди в нужный чат и выполни /linkchat название.\n"
-                            f"Или создай user-alias: /linkuser {alias} @username"
+                            msg_list_alias_not_found_no_aliases(alias)
                         )
                     else:
                         known = ", ".join(a for a, _, _ in aliases)
                         await safe_reply(
                             message,
-                            f"Alias '{alias}' не найден.\n"
-                            f"Из известных chat-alias: {known}"
+                            msg_list_alias_not_found_known(alias, known)
                         )
                     return
 

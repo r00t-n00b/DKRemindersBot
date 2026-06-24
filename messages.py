@@ -367,6 +367,89 @@ def msg_self_remind_event_before_prompt(event_at: str) -> str:
     )
 
 
+# ===== Remaining user-facing flow messages =====
+
+MSG_DONE_COMPLETED = "Отмечено как завершенное"
+
+MSG_VOICE_TRANSCRIPTION_FAILED = (
+    "Не смог распознать голосовое: сервис распознавания сейчас перегружен. "
+    "Попробуй еще раз чуть позже или напиши текстом."
+)
+MSG_VOICE_EMPTY = "Не услышал текст в голосовом."
+
+MSG_THIS_CHAT_SOURCE_TITLE = "этого чата"
+
+def msg_normalized_reminder_prefix(normalized_text: str, created_text: str) -> str:
+    return (
+        "Я понял:\n"
+        f"{normalized_text}\n\n"
+        f"{created_text}"
+    )
+
+
+def msg_nudge_unacked(reminder_text: str) -> str:
+    return (
+        "Ты никак не отреагировал на напоминание.\n"
+        "Посмотри и нажми кнопку:\n\n"
+        f"{reminder_text}"
+    )
+
+
+def msg_created_for_alias_chat(alias: str, remind_at: str, text: str) -> str:
+    return f"Ок, напомню в чате '{alias}' {remind_at}: {text}"
+
+
+def msg_created_for_other_user(remind_at: str, text: str) -> str:
+    return f"Ок, напомню этому человеку {remind_at}: {text}"
+
+
+def msg_list_user_not_started(username: str) -> str:
+    return (
+        f"Пользователь {username} еще не писал боту.\n"
+        "Он должен сначала нажать Start или поставить любой ремайндер."
+    )
+
+
+def msg_list_alias_not_found_no_aliases(alias: str) -> str:
+    return (
+        f"Alias '{alias}' не найден.\n"
+        "Сначала зайди в нужный чат и выполни /linkchat название.\n"
+        f"Или создай user-alias: /linkuser {alias} @username"
+    )
+
+
+def msg_list_alias_not_found_known(alias: str, known_aliases: str) -> str:
+    return (
+        f"Alias '{alias}' не найден.\n"
+        f"Из известных chat-alias: {known_aliases}"
+    )
+
+
+def msg_after_alias_requires_date_and_text_natural(alias: str) -> str:
+    return (
+        "После alias нужно указать дату и текст.\n"
+        f"Пример:\nнапомни {alias} 28.11 12:00 завтра футбол\n"
+        f"или командой:\n/remind {alias} 28.11 12:00 - завтра футбол"
+    )
+
+
+def msg_after_alias_requires_date_and_text_command(alias: str) -> str:
+    return (
+        "После alias нужно указать дату и текст.\n"
+        "Пример:\n"
+        f"/remind {alias} 28.11 12:00 - завтра футбол"
+    )
+
+
+def msg_alias_does_not_exist(alias: str) -> str:
+    return (
+        f'Алиаса "{alias}" не существует. '
+        "Используй команду без него, если хочешь поставить ремайндер себе, "
+        f'или присвой "{alias}" тому, кому нужно, с помощью команд /linkuser или /linkchat. '
+        "Подробнее о них можешь прочитать в /help."
+    )
+
+
 __all__ = tuple(
     name
     for name in globals()

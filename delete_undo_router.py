@@ -17,6 +17,7 @@ from messages import (
     MSG_UNDO_BUTTON_SERIES,
     MSG_UNDO_RESTORING,
     msg_delete_recurring_prompt,
+    msg_created_deleted,
 )
 
 from typing import Any, Dict, List, Optional
@@ -217,7 +218,7 @@ async def handle_delete_callback(update, context, deps) -> None:
     )
 
     if query.message:
-        await query.message.reply_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+        await query.message.reply_text(msg_created_deleted(deleted_text), reply_markup=undo_kb)
 
 
 async def handle_delete_choose_callback(update, context, deps) -> None:

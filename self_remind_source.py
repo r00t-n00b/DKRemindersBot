@@ -1,5 +1,7 @@
 """Source chat helpers for self-remind flow."""
 
+from messages import MSG_THIS_CHAT_SOURCE_TITLE
+
 from typing import Any
 
 
@@ -8,14 +10,14 @@ def format_self_remind_text(source_chat_title: str, source_text: str) -> str:
 
 
 def get_query_source_chat_title(query) -> str:
-    source_chat_title = "этого чата"
+    source_chat_title = MSG_THIS_CHAT_SOURCE_TITLE
     if getattr(query, "message", None) is not None:
         chat_obj = getattr(query.message, "chat", None)
         if chat_obj is not None:
             source_chat_title = (
                 getattr(chat_obj, "title", None)
                 or getattr(chat_obj, "full_name", None)
-                or "этого чата"
+                or MSG_THIS_CHAT_SOURCE_TITLE
             )
     return source_chat_title
 

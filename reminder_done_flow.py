@@ -1,5 +1,7 @@
 """Handle marking reminder message as completed from callback."""
 
+from messages import MSG_DONE_COMPLETED
+
 
 async def handle_done_callback(
     *,
@@ -37,4 +39,4 @@ async def handle_done_callback(
         except Exception:
             pass
 
-    await query.answer("Отмечено как завершенное")
+    await query.answer(MSG_DONE_COMPLETED)

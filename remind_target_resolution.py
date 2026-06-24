@@ -1,5 +1,7 @@
 """Resolve /remind target chat, aliases, and normalized reminder text."""
 
+from messages import msg_after_alias_requires_date_and_text_command, msg_after_alias_requires_date_and_text_natural, msg_alias_does_not_exist
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -155,9 +157,7 @@ async def resolve_remind_target_and_args(
                         if not raw_args:
                             await safe_reply(
                                 message,
-                                "После alias нужно указать дату и текст.\n"
-                                f"Пример:\nнапомни {first_token} 28.11 12:00 завтра футбол\n"
-                                f"или командой:\n/remind {first_token} 28.11 12:00 - завтра футбол",
+                                msg_after_alias_requires_date_and_text_natural(first_token),
                             )
                             return RemindTargetResolution(True, raw_args, had_newline, target_chat_id, used_alias)
                     else:
@@ -170,9 +170,7 @@ async def resolve_remind_target_and_args(
                             if not raw_args:
                                 await safe_reply(
                                     message,
-                                    "После alias нужно указать дату и текст.\n"
-                                    "Пример:\n"
-                                    f"/remind {used_alias} 28.11 12:00 - завтра футбол",
+                                    msg_after_alias_requires_date_and_text_command(used_alias),
                                 )
                                 return RemindTargetResolution(True, raw_args, had_newline, target_chat_id, used_alias)
                         elif raw_args_without_first_token and "\n" not in raw_args:
@@ -188,10 +186,7 @@ async def resolve_remind_target_and_args(
                             else:
                                 await safe_reply(
                                     message,
-                                    f'Алиаса "{first_token}" не существует. '
-                                    "Используй команду без него, если хочешь поставить ремайндер себе, "
-                                    f'или присвой "{first_token}" тому, кому нужно, с помощью команд /linkuser или /linkchat. '
-                                    "Подробнее о них можешь прочитать в /help.",
+                                    msg_alias_does_not_exist(first_token),
                                 )
                                 return RemindTargetResolution(True, raw_args, had_newline, target_chat_id, used_alias)
 

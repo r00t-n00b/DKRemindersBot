@@ -1,5 +1,7 @@
 """Background reminder worker flows."""
 
+from messages import msg_nudge_unacked
+
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -140,11 +142,7 @@ async def run_reminders_nudge_worker(app, deps) -> None:
                     if chat_type != Chat.PRIVATE:
                         continue
 
-                    text = (
-                        "Ты никак не отреагировал на напоминание.\n"
-                        "Посмотри и нажми кнопку:\n\n"
-                        f"{r['text']}"
-                    )
+                    text = msg_nudge_unacked(r["text"])
 
                     reply_markup = build_snooze_keyboard(r["id"])
 

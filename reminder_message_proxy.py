@@ -1,5 +1,7 @@
 """Message proxy used to route normalized text through /remind flow."""
 
+from messages import msg_normalized_reminder_prefix
+
 
 class NormalizedReminderMessageProxy:
     def __init__(self, original_message, command_text: str, normalized_text: str):
@@ -13,8 +15,6 @@ class NormalizedReminderMessageProxy:
 
     async def reply_text(self, text, **kwargs):
         await self._original_message.reply_text(
-            "Я понял:\n"
-            f"{self.normalized_text}\n\n"
-            f"{text}",
+            msg_normalized_reminder_prefix(self.normalized_text, text),
             **kwargs,
         )

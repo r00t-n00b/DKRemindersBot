@@ -1,5 +1,7 @@
 """Voice reminder command flow."""
 
+from messages import MSG_VOICE_EMPTY, MSG_VOICE_TRANSCRIPTION_FAILED
+
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -46,14 +48,13 @@ async def handle_voice_remind_command(update, context, deps) -> None:
         )
         await safe_reply(
             message,
-            "Не смог распознать голосовое: сервис распознавания сейчас перегружен. "
-            "Попробуй еще раз чуть позже или напиши текстом."
+            MSG_VOICE_TRANSCRIPTION_FAILED
         )
         return
 
     normalized = _normalize_reminder_text_fallback(heard_text)
     if not normalized:
-        await safe_reply(message, "Не услышал текст в голосовом.")
+        await safe_reply(message, MSG_VOICE_EMPTY)
         return
 
     proxy_message = NormalizedReminderMessageProxy(

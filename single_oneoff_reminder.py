@@ -1,5 +1,7 @@
 """Handle one-line oneoff /remind flow."""
 
+from messages import msg_created_for_alias_chat, msg_created_for_other_user
+
 import asyncio
 import logging
 import os
@@ -110,14 +112,14 @@ async def handle_single_oneoff_reminder(
     if used_alias:
         await safe_reply(
             message,
-            f"Ок, напомню в чате '{used_alias}' {when_str}: {text}",
+            msg_created_for_alias_chat(used_alias, when_str, text),
             reply_markup=created_actions_keyboard,
         )
     else:
         if target_chat_id != chat.id and chat.type == private_chat_type:
             await safe_reply(
                 message,
-                f"Ок, напомню этому человеку {when_str}: {text}",
+                msg_created_for_other_user(when_str, text),
                 reply_markup=created_actions_keyboard,
             )
         else:
