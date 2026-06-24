@@ -300,28 +300,21 @@ def test_plain_text_relative_local_normalizer_does_not_call_gemini(main_module, 
 
 
 def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    # Static smoke: these exact fragments are user-facing examples.
-    source = open("main.py").read()
+    alias_source = open("alias_settings_commands.py").read()
 
-    assert "напомни {alias} 28.11 12:00 завтра футбол" in source
-    resolver_source = open("remind_target_resolution.py").read()
-    assert "напомни {first_token} 28.11 12:00 завтра футбол" in resolver_source
-    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source
+    assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
+    assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source
 
 
 def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    # Static smoke: these exact fragments are user-facing examples.
-    source = open("main.py").read()
+    alias_source = open("alias_settings_commands.py").read()
 
-    assert "напомни {alias} 28.11 12:00 завтра футбол" in source
-    assert "напомни {first_token} 28.11 12:00 завтра футбол" in source
-    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in source
+    assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
+    assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source
 
 
 def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    source = open("main.py").read()
-    resolver_source = open("remind_target_resolution.py").read()
+    alias_source = open("alias_settings_commands.py").read()
 
-    assert "напомни {alias} 28.11 12:00 завтра футбол" in source
-    assert "напомни {first_token} 28.11 12:00 завтра футбол" in resolver_source
-    assert "/remind {first_token} 28.11 12:00 - завтра футбол" in resolver_source
+    assert "напомни {alias} 28.11 12:00 завтра футбол" in alias_source
+    assert "/remind {alias} 28.11 12:00 - завтра футбол" in alias_source
