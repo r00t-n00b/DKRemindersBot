@@ -286,6 +286,12 @@ from remind_dispatch import dispatch_remind_creation
 from remind_command_router import handle_remind_command
 from remind_command_deps import build_remind_command_deps
 from list_command_flow import handle_list_command_flow
+from command_helper_utils import (
+    _format_bulk_result_impl,
+    _rest_starts_like_datetime_impl,
+    _strip_leading_token_in_group_impl,
+    parse_renamealias_args_impl,
+)
 from alias_settings_commands import handle_aliases_command, handle_defaulttime_command, handle_linkchat_command, handle_linkuser_command, handle_renamealias_command, handle_unalias_command
 from plain_text_remind_flow import handle_plain_text_remind_command
 from voice_remind_flow import handle_voice_remind_command
@@ -696,88 +702,21 @@ async def unalias_command(update: Update, context: CTX) -> None:
     await handle_unalias_command(update, context, _build_alias_settings_command_deps())
 
 def parse_renamealias_args(args: List[str]) -> Tuple[Optional[str], Optional[str]]:
-    if not args:
-        return None, None
+    return parse_renamealias_args_impl(args)
 
-    if "->" in args:
-        arrow_idx = args.index("->")
-        old_alias = " ".join(args[:arrow_idx]).strip()
-        new_alias = " ".join(args[arrow_idx + 1:]).strip()
-        if not old_alias or not new_alias:
-            return None, None
-        return old_alias, new_alias
+def _rest_starts_like_datetime(s: str) -> bool:
+    return _rest_starts_like_datetime_impl(s)
 
-    if len(args) < 2:
-        return None, None
+def _strip_leading_token_in_group(raw_args: str) -> Tuple[str, bool]:
+    return _strip_leading_token_in_group_impl(raw_args)
 
-    old_alias = args[0].strip()
-    new_alias = " ".join(args[1:]).strip()
+def _format_bulk_result(*, created: int, failed: int, error_lines):
+    return _format_bulk_result_impl(created=created, failed=failed, error_lines=error_lines)
 
-    if not old_alias or not new_alias:
-        return None, None
-
-    return old_alias, new_alias
 
 async def renamealias_command(update: Update, context: CTX) -> None:
     await handle_renamealias_command(update, context, _build_alias_settings_command_deps())
 
-def _rest_starts_like_datetime(s: str) -> bool:
-    """
-    True если строка начинается похоже на дату/время/относительное выражение.
-    Достаточно для кейсов типа: "02.02 - hi", "02.02 12:00 - hi", "23:40 - hi", "tomorrow 10:00 - hi".
-    """
-    s = s.strip().lower()
-    if not s:
-        return False
-
-    # DD.MM / DD/MM / DD-MM
-    if re.match(r"^\d{1,2}[./-]\d{1,2}(\s|$)", s):
-        return True
-
-    # HH:MM / HH.MM
-    if re.match(r"^\d{1,2}[:.]\d{2}(\s|$)", s):
-        return True
-
-    # дружественные фразы
-    if re.match(r"^(today|tomorrow|day\s+after\s+tomorrow|сегодня|завтра|послезавтра)\b", s):
-        return True
-
-    # in/через
-    if re.match(r"^(in|через)\b", s):
-        return True
-
-    return False
-
-
-def _strip_leading_token_in_group(raw_args: str) -> Tuple[str, bool]:
-    """
-    В group-чате игнорируем возможные 'роутинг-токены' в начале:
-    /remind TeamA 02.02 - hi
-    /remind @someone 02.02 - hi
-
-    Возвращает (новая_строка, изменилось_ли).
-    """
-    s = raw_args.strip()
-    if not s:
-        return raw_args, False
-
-    # bulk не трогаем
-    if "\n" in s:
-        return raw_args, False
-
-    parts = s.split(maxsplit=1)
-    if len(parts) != 2:
-        return raw_args, False
-
-    first = parts[0].strip()
-    rest = parts[1].strip()
-    if not first or not rest:
-        return raw_args, False
-
-    if _rest_starts_like_datetime(rest):
-        return rest, True
-
-    return raw_args, False
 
 def _create_single_reminder_from_line(
     *,
@@ -801,29 +740,6 @@ def _create_single_reminder_from_line(
         add_reminder=add_reminder,
         logger=logger,
     )
-
-
-def _format_bulk_result(
-    *,
-    created: int,
-    failed: int,
-    error_lines,
-):
-    parts = []
-
-    parts.append(f"Готово. Создано напоминаний: {created}.")
-
-    if failed:
-        parts.append(f"Не удалось разобрать строк: {failed}.")
-
-        preview = error_lines[:5]
-        lines = ["", "Проблемные строки (до 5):"]
-        for idx, original, error in preview:
-            lines.append(f"{idx}) '{original}': {error}")
-
-        parts.append("\n".join(lines))
-
-    return " ".join(parts)
 
 
 def _format_known_aliases_for_voice_prompt(created_by: int) -> str:
