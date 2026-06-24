@@ -266,6 +266,7 @@ from plain_text_remind_flow import handle_plain_text_remind_command
 from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
+from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -458,66 +459,36 @@ def init_db() -> None:
     conn.commit()
     conn.close()
 
+def _build_reminder_message_store_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        get_now=get_now,
+        logger=logger,
+        sqlite3=sqlite3,
+    )
+
 def register_reminder_message(
     reminder_id: int,
     chat_id: int,
     message_id: int,
     kind: str,
 ) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        """
-        INSERT OR IGNORE INTO reminder_messages
-            (reminder_id, chat_id, message_id, kind, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            int(reminder_id),
-            int(chat_id),
-            int(message_id),
-            kind,
-            get_now().isoformat(),
-        ),
+    return register_reminder_message_impl(
+        reminder_id,
+        chat_id,
+        message_id,
+        kind,
+        _build_reminder_message_store_deps(),
     )
-    conn.commit()
-    conn.close()
 
 
 def get_reminder_messages(reminder_id: int) -> list[dict]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute(
-        """
-        SELECT reminder_id, chat_id, message_id, kind, created_at
-        FROM reminder_messages
-        WHERE reminder_id = ?
-        ORDER BY id ASC
-        """,
-        (int(reminder_id),),
-    )
-    rows = [dict(row) for row in c.fetchall()]
-    conn.close()
-    return rows
+    return get_reminder_messages_impl(reminder_id, _build_reminder_message_store_deps())
+
 
 async def clear_reminder_message_keyboards(bot, reminder_id: int) -> None:
-    rows = get_reminder_messages(reminder_id)
+    await clear_reminder_message_keyboards_impl(bot, reminder_id, _build_reminder_message_store_deps())
 
-    for row in rows:
-        try:
-            await bot.edit_message_reply_markup(
-                chat_id=int(row["chat_id"]),
-                message_id=int(row["message_id"]),
-                reply_markup=None,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to clear reminder message keyboard reminder_id=%s chat_id=%s message_id=%s",
-                reminder_id,
-                row.get("chat_id"),
-                row.get("message_id"),
-            )
 
 def migrate_alias_tables_to_owner_scope() -> None:
     conn = sqlite3.connect(DB_PATH)
