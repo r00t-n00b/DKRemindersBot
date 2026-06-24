@@ -4,6 +4,21 @@ This module receives dependencies from main.py to avoid importing the
 application module back.
 """
 
+from messages import (
+    MSG_DELETE_CANCELLED,
+    MSG_DELETE_NOT_FOUND_ALERT,
+    MSG_DELETE_RECURRING_ONE_LABEL,
+    MSG_DELETE_RECURRING_SERIES_LABEL,
+    MSG_NO_MORE_REMINDERS,
+    MSG_RESTORED_NEXT_RECURRING_PREFIX,
+    MSG_RESTORED_SINGLE_PREFIX,
+    MSG_UNDO_BUTTON_NEXT_RECURRING,
+    MSG_UNDO_BUTTON_REMINDER,
+    MSG_UNDO_BUTTON_SERIES,
+    MSG_UNDO_RESTORING,
+    msg_delete_recurring_prompt,
+)
+
 from typing import Any, Dict, List, Optional
 
 
@@ -51,7 +66,7 @@ def _apply_deps(deps) -> None:
 def _build_active_list_response_for_ids(ids, deps):
     _apply_deps(deps)
     if not ids:
-        return "Напоминаний больше нет.", None, ids
+        return MSG_NO_MORE_REMINDERS, None, ids
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -123,7 +138,7 @@ async def handle_delete_callback(update, context, deps) -> None:
 
     ids: List[int] = context.user_data.get("list_ids") or []
     if idx < 1 or idx > len(ids):
-        await query.answer("Не нашел такое напоминание", show_alert=True)
+        await query.answer(MSG_DELETE_NOT_FOUND_ALERT, show_alert=True)
         return
 
     rid = int(ids[idx - 1])
@@ -163,7 +178,7 @@ async def handle_delete_callback(update, context, deps) -> None:
                 "message_id": query.message.message_id,
             }
             await query.message.reply_text(
-                "Это повторяющееся напоминание. Как удалить?\n\n" + preview,
+                msg_delete_recurring_prompt(preview),
                 reply_markup=kb,
             )
         return
@@ -198,7 +213,7 @@ async def handle_delete_callback(update, context, deps) -> None:
     context.user_data["undo_tokens"][token] = snapshot
 
     undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=cb_undo(token))]]
+        [[InlineKeyboardButton(MSG_UNDO_BUTTON_REMINDER, callback_data=cb_undo(token))]]
     )
 
     if query.message:
@@ -229,7 +244,7 @@ async def handle_delete_choose_callback(update, context, deps) -> None:
                 reply_markup=build_created_reminder_actions_keyboard(rid, is_recurring=True)
             )
         else:
-            await query.edit_message_text("Ок, ничего не удалил.", reply_markup=None)
+            await query.edit_message_text(MSG_DELETE_CANCELLED, reply_markup=None)
         return
 
     # Чат, для которого показывается список (может быть НЕ равен query.message.chat.id в личке)
@@ -261,7 +276,7 @@ async def handle_delete_choose_callback(update, context, deps) -> None:
         ids = [x for x in ids if int(x) != int(rid)]
         context.user_data["list_ids"] = ids
 
-        deleted_label = "Удалил ближайшее повторяющееся напоминание"
+        deleted_label = MSG_DELETE_RECURRING_ONE_LABEL
 
     elif data.startswith("del_series:"):
         try:
@@ -278,7 +293,7 @@ async def handle_delete_choose_callback(update, context, deps) -> None:
         ids = [x for x in ids if int(x) not in removed_ids]
         context.user_data["list_ids"] = ids
 
-        deleted_label = "Удалил всю серию"
+        deleted_label = MSG_DELETE_RECURRING_SERIES_LABEL
 
     source = context.user_data.pop("delete_choice_source", None)
     if source == "list":
@@ -306,7 +321,7 @@ async def handle_delete_choose_callback(update, context, deps) -> None:
             human = format_recurring_human(tpl_pattern_type, tpl_payload)
             if human:
                 deleted_text = f"{deleted_text}  🔁 {human}"
-        btn_text = "↩️ Вернуть серию"
+        btn_text = MSG_UNDO_BUTTON_SERIES
     else:
         deleted_text = format_deleted_human(
             snapshot["reminder"]["remind_at"],
@@ -314,7 +329,7 @@ async def handle_delete_choose_callback(update, context, deps) -> None:
             tpl_pattern_type,
             tpl_payload,
         )
-        btn_text = "↩️ Вернуть ближайший"
+        btn_text = MSG_UNDO_BUTTON_NEXT_RECURRING
 
     token = make_undo_token()
     context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
@@ -341,7 +356,7 @@ async def handle_undo_callback(update, context, deps) -> None:
         await query.answer()
         return
 
-    await query.answer("Ок, восстанавливаю...")
+    await query.answer(MSG_UNDO_RESTORING)
 
     token = data.split(":", 1)[1].strip()
     store = context.user_data.get("undo_tokens") or {}
@@ -406,8 +421,8 @@ async def handle_undo_callback(update, context, deps) -> None:
         reply_markup = build_created_reminder_actions_keyboard_for_reminder(restored_id)
 
     if tpl:
-        restored_prefix = "Вернул ближайшее повторяющееся напоминание"
+        restored_prefix = MSG_RESTORED_NEXT_RECURRING_PREFIX
     else:
-        restored_prefix = "Вернул"
+        restored_prefix = MSG_RESTORED_SINGLE_PREFIX
 
     await query.edit_message_text(format_restored_single_text(restored_prefix, restored_text), reply_markup=reply_markup)

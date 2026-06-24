@@ -1,5 +1,7 @@
 """Handle custom snooze cancellation and return to snooze options."""
 
+from messages import MSG_RETURNED_OPTIONS
+
 
 async def handle_custom_snooze_cancel(
     *,
@@ -15,7 +17,7 @@ async def handle_custom_snooze_cancel(
         await query.edit_message_reply_markup(
             reply_markup=build_snooze_keyboard(reminder_id),
         )
-        await query.answer("Вернул варианты")
+        await query.answer(MSG_RETURNED_OPTIONS)
         return
 
     await query.answer(msg_invalid_reminder_id, show_alert=True)

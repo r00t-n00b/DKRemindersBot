@@ -1,5 +1,12 @@
 """Handle returning from self-remind event-before flow back to event choice keyboard."""
 
+from messages import (
+    MSG_RETURNED_EVENT_OPTIONS,
+    MSG_RETURNED_OPTIONS,
+    MSG_SELF_REMIND_EVENT_DATE_NOT_FOUND_TEXT,
+    msg_self_remind_event_before_prompt,
+)
+
 
 async def handle_self_remind_event_cancel(
     *,
@@ -22,17 +29,15 @@ async def handle_self_remind_event_cancel(
 
     if event_at is None:
         await query.edit_message_text(
-            "Я не смог понять дату события из текста.\n"
-            "Ты можешь поставить себе обычный ремайндер:",
+            MSG_SELF_REMIND_EVENT_DATE_NOT_FOUND_TEXT,
             reply_markup=build_self_remind_choice_keyboard(reminder_id),
         )
-        await query.answer("Вернул варианты")
+        await query.answer(MSG_RETURNED_OPTIONS)
         return
 
     event_str = event_at.strftime("%d.%m %H:%M")
     await query.edit_message_text(
-        f"Я понял, что событие из напоминания состоится {event_str}.\n"
-        "За сколько до этого времени напомнить?",
+        msg_self_remind_event_before_prompt(event_str),
         reply_markup=build_self_remind_event_before_keyboard(reminder_id),
     )
-    await query.answer("Вернул варианты до события")
+    await query.answer(MSG_RETURNED_EVENT_OPTIONS)

@@ -296,6 +296,77 @@ def msg_linkuser_success(alias: str, username: str) -> str:
 MSG_PAST_DATE_ALERT = "Эта дата уже прошла. Выбери другую."
 
 
+# ===== Common callback/user-action messages =====
+
+MSG_PICK_DATE = "Выбери дату"
+MSG_PICK_TIME = "Выбери время"
+MSG_RETURNED_OPTIONS = "Вернул варианты"
+MSG_RETURNED_CHOICE = "Вернул выбор"
+MSG_RETURNED_EVENT_OPTIONS = "Вернул варианты до события"
+MSG_PERSONAL_REMINDER_CREATED = "Личное напоминание создано"
+
+MSG_SELF_REMIND_PRIVATE_START = (
+    "Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, "
+    "а потом снова нажми кнопку в этом чате"
+)
+
+MSG_SELF_REMIND_SENT_TO_PRIVATE = "Отправил варианты в личку"
+MSG_SELF_REMIND_CANCELLED = "Ок, личное напоминание не создаю."
+MSG_OK_SHORT = "Ок"
+
+MSG_SELF_REMIND_EVENT_DATE_NOT_FOUND_ANSWER = (
+    "Не смог понять дату события. Выбери обычное напоминание или время вручную."
+)
+
+MSG_SELF_REMIND_EVENT_DATE_NOT_FOUND_TEXT = (
+    "Я не смог понять дату события из текста.\n"
+    "Ты можешь поставить себе обычный ремайндер:"
+)
+
+MSG_DELETE_NOT_FOUND_ALERT = "Не нашел такое напоминание"
+MSG_NO_MORE_REMINDERS = "Напоминаний больше нет."
+MSG_DELETE_CANCELLED = "Ок, ничего не удалил."
+MSG_DELETE_RECURRING_ONE_LABEL = "Удалил ближайшее повторяющееся напоминание"
+MSG_DELETE_RECURRING_SERIES_LABEL = "Удалил всю серию"
+MSG_UNDO_RESTORING = "Ок, восстанавливаю..."
+MSG_UNDO_BUTTON_REMINDER = "↩️ Вернуть ремайндер"
+MSG_UNDO_BUTTON_SERIES = "↩️ Вернуть серию"
+MSG_UNDO_BUTTON_NEXT_RECURRING = "↩️ Вернуть ближайший"
+MSG_CREATED_DELETE_ANSWER = "Удалено"
+MSG_RESTORED_NEXT_RECURRING_PREFIX = "Вернул ближайшее повторяющееся напоминание"
+MSG_RESTORED_SINGLE_PREFIX = "Вернул"
+
+def msg_created_snoozed(remind_at: str, text: str) -> str:
+    return f"Перенёс напоминание на {remind_at}: {text}"
+
+
+def msg_created_snoozed_answer(remind_at: str) -> str:
+    return f"Перенесено на {remind_at}"
+
+
+def msg_created_deleted(deleted_text: str) -> str:
+    return f"Удалил: {deleted_text}"
+
+
+def msg_delete_recurring_prompt(preview: str) -> str:
+    return "Это повторяющееся напоминание. Как удалить?\n\n" + preview
+
+
+def msg_self_remind_mode_prompt(reminder_text: str, source_chat_title: str) -> str:
+    return f'Как тебе напомнить о "{reminder_text}" из чата "{source_chat_title}"?'
+
+
+def msg_self_remind_regular_prompt(reminder_text: str, source_chat_title: str) -> str:
+    return f'Когда напомнить тебе о "{reminder_text}" из чата "{source_chat_title}"?'
+
+
+def msg_self_remind_event_before_prompt(event_at: str) -> str:
+    return (
+        f"Я понял, что событие из напоминания состоится {event_at}.\n"
+        "За сколько до этого времени напомнить?"
+    )
+
+
 __all__ = tuple(
     name
     for name in globals()

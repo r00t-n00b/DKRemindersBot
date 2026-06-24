@@ -1,5 +1,7 @@
 """Handle self-remind create flows from callback buttons."""
 
+from messages import MSG_PERSONAL_REMINDER_CREATED, MSG_PICK_DATE, MSG_SELF_REMIND_PRIVATE_START
+
 
 async def handle_self_remind_event_custom(
     *,
@@ -28,7 +30,7 @@ async def handle_self_remind_event_custom(
         callback_prefix="selfremind_event",
     )
     await query.edit_message_reply_markup(reply_markup=keyboard)
-    await query.answer("Выбери дату")
+    await query.answer(MSG_PICK_DATE)
 
 
 async def handle_self_remind_event_before(
@@ -71,7 +73,7 @@ async def handle_self_remind_event_before(
     target_chat_id = get_user_chat_id_by_user_id(user_id)
     if target_chat_id is None:
         await query.answer(
-            "Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате",
+            MSG_SELF_REMIND_PRIVATE_START,
             show_alert=True,
         )
         return
@@ -119,7 +121,7 @@ async def handle_self_remind_event_before(
         format_created_reminder_text(when_str, personal_text),
         reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
     )
-    await query.answer("Личное напоминание создано")
+    await query.answer(MSG_PERSONAL_REMINDER_CREATED)
 
 
 async def handle_self_remind_set(
@@ -157,7 +159,7 @@ async def handle_self_remind_set(
     target_chat_id = get_user_chat_id_by_user_id(user_id)
     if target_chat_id is None:
         await query.answer(
-            "Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате",
+            MSG_SELF_REMIND_PRIVATE_START,
             show_alert=True,
         )
         return
@@ -173,7 +175,7 @@ async def handle_self_remind_set(
             callback_prefix="selfremind",
         )
         await query.edit_message_reply_markup(reply_markup=keyboard)
-        await query.answer("Выбери дату")
+        await query.answer(MSG_PICK_DATE)
         return
 
     remind_at = compute_self_remind_time(option, get_now())
@@ -198,4 +200,4 @@ async def handle_self_remind_set(
         format_created_reminder_text(when_str, personal_text),
         reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
     )
-    await query.answer("Личное напоминание создано")
+    await query.answer(MSG_PERSONAL_REMINDER_CREATED)

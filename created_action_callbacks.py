@@ -1,5 +1,7 @@
 """Created reminder action callbacks shared by reschedule/snooze flows."""
 
+from messages import MSG_PICK_DATE, MSG_RETURNED_OPTIONS
+
 
 def _apply_deps(deps) -> None:
     globals()["MSG_INVALID_REMINDER_ID"] = deps.MSG_INVALID_REMINDER_ID
@@ -67,7 +69,7 @@ async def handle_created_snooze_custom_callback(update, context, deps) -> None:
     keyboard = build_custom_date_keyboard(reminder_id, callback_prefix="created_snooze")
 
     await query.edit_message_reply_markup(reply_markup=keyboard)
-    await query.answer("Выбери дату")
+    await query.answer(MSG_PICK_DATE)
     return
 
 
@@ -86,7 +88,7 @@ async def handle_created_snooze_cancel_callback(update, context, deps) -> None:
         return
 
     await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(reminder_id))
-    await query.answer("Вернул варианты")
+    await query.answer(MSG_RETURNED_OPTIONS)
     return
 
 

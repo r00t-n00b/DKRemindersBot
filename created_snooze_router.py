@@ -4,6 +4,8 @@ This module receives dependencies from main.py to avoid importing the
 application module back.
 """
 
+from messages import MSG_PICK_TIME, MSG_RETURNED_OPTIONS, msg_created_snoozed, msg_created_snoozed_answer
+
 
 async def handle_created_snooze_callback(update, context, deps) -> None:
     MSG_INVALID_REMINDER_ID = deps.MSG_INVALID_REMINDER_ID
@@ -54,10 +56,10 @@ async def handle_created_snooze_callback(update, context, deps) -> None:
 
             when_str = new_dt.strftime("%d.%m %H:%M")
             await query.edit_message_text(
-                f"Перенёс напоминание на {when_str}: {r.text}",
+                msg_created_snoozed(when_str, r.text),
                 reply_markup=build_created_reminder_actions_keyboard_for_reminder(rid),
             )
-            await query.answer(f"Перенесено на {when_str}")
+            await query.answer(msg_created_snoozed_answer(when_str))
             return
 
         if data.startswith("created_snooze_cal:"):
@@ -106,7 +108,7 @@ async def handle_created_snooze_callback(update, context, deps) -> None:
                 callback_prefix="created_snooze",
             )
             await query.edit_message_reply_markup(reply_markup=keyboard)
-            await query.answer("Выбери время")
+            await query.answer(MSG_PICK_TIME)
             return
 
         if data.startswith("created_snooze_pastdate:"):
@@ -140,10 +142,10 @@ async def handle_created_snooze_callback(update, context, deps) -> None:
 
             when_str = new_dt.strftime("%d.%m %H:%M")
             await query.edit_message_text(
-                f"Перенёс напоминание на {when_str}: {r.text}",
+                msg_created_snoozed(when_str, r.text),
                 reply_markup=build_created_reminder_actions_keyboard_for_reminder(rid),
             )
-            await query.answer(f"Перенесено на {when_str}")
+            await query.answer(msg_created_snoozed_answer(when_str))
             return
 
         if data.startswith("created_snooze_cancel:"):
@@ -153,7 +155,7 @@ async def handle_created_snooze_callback(update, context, deps) -> None:
                 return
 
             await query.edit_message_reply_markup(reply_markup=build_created_reschedule_keyboard(rid))
-            await query.answer("Вернул варианты")
+            await query.answer(MSG_RETURNED_OPTIONS)
             return
 
     except ValueError:

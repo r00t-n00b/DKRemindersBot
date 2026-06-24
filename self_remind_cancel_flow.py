@@ -1,5 +1,7 @@
 """Handle returning from self-remind flow back to choice keyboard."""
 
+from messages import MSG_RETURNED_OPTIONS, msg_self_remind_regular_prompt
+
 
 async def handle_self_remind_cancel(
     *,
@@ -23,11 +25,11 @@ async def handle_self_remind_cancel(
     )
 
     await query.edit_message_text(
-        f'Когда напомнить тебе о "{source_reminder.text}" из чата "{source_chat_title}"?'
+        msg_self_remind_regular_prompt(source_reminder.text, source_chat_title)
     )
 
     await query.edit_message_reply_markup(
         reply_markup=build_self_remind_choice_keyboard(reminder_id)
     )
 
-    await query.answer("Вернул варианты")
+    await query.answer(MSG_RETURNED_OPTIONS)

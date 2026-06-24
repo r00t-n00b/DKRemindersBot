@@ -1,5 +1,7 @@
 """Created-reminder delete callback flow."""
 
+from messages import MSG_CREATED_DELETE_ANSWER, MSG_UNDO_BUTTON_REMINDER, msg_created_deleted
+
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -73,8 +75,8 @@ async def handle_created_delete_callback(update, context, deps) -> None:
     )
 
     undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=cb_undo(token))]]
+        [[InlineKeyboardButton(MSG_UNDO_BUTTON_REMINDER, callback_data=cb_undo(token))]]
     )
 
-    await query.answer("Удалено")
-    await query.edit_message_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+    await query.answer(MSG_CREATED_DELETE_ANSWER)
+    await query.edit_message_text(msg_created_deleted(deleted_text), reply_markup=undo_kb)

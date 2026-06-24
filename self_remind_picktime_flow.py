@@ -1,5 +1,7 @@
 """Handle self-remind custom time selection and create the personal reminder."""
 
+from messages import MSG_PERSONAL_REMINDER_CREATED, MSG_SELF_REMIND_PRIVATE_START
+
 from datetime import datetime
 
 from self_remind_calendar_flow import get_self_remind_callback_prefix
@@ -39,7 +41,7 @@ async def handle_self_remind_picktime(
     target_chat_id = get_user_chat_id_by_user_id(user_id)
     if target_chat_id is None:
         await query.answer(
-            "Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, а потом снова нажми кнопку в этом чате",
+            MSG_SELF_REMIND_PRIVATE_START,
             show_alert=True,
         )
         return
@@ -81,4 +83,4 @@ async def handle_self_remind_picktime(
         format_created_reminder_text(when_str, personal_text),
         reply_markup=build_created_reminder_actions_keyboard_for_reminder(new_reminder_id),
     )
-    await query.answer("Личное напоминание создано")
+    await query.answer(MSG_PERSONAL_REMINDER_CREATED)

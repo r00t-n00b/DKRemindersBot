@@ -1,5 +1,7 @@
 """Handle self-remind custom calendar navigation and date selection."""
 
+from messages import MSG_PICK_TIME
+
 
 def get_self_remind_callback_prefix(data: str) -> str:
     return "selfremind_event" if data.startswith("selfremind_event_") else "selfremind"
@@ -63,7 +65,7 @@ async def handle_self_remind_pickdate(
         callback_prefix=callback_prefix,
     )
     await query.edit_message_reply_markup(reply_markup=keyboard)
-    await query.answer("Выбери время")
+    await query.answer(MSG_PICK_TIME)
 
 
 async def handle_self_remind_calendar_month(

@@ -1,10 +1,20 @@
 """Handle initial self-remind callback flows."""
 
-
-SELF_REMIND_PRIVATE_START_MESSAGE = (
-    "Я еще с тобой не знаком. Открой бота в личке, отправь ему /start, "
-    "а потом снова нажми кнопку в этом чате"
+from messages import (
+    MSG_OK_SHORT,
+    MSG_PICK_TIME,
+    MSG_RETURNED_CHOICE,
+    MSG_SELF_REMIND_CANCELLED,
+    MSG_SELF_REMIND_EVENT_DATE_NOT_FOUND_ANSWER,
+    MSG_SELF_REMIND_PRIVATE_START,
+    MSG_SELF_REMIND_SENT_TO_PRIVATE,
+    msg_self_remind_event_before_prompt,
+    msg_self_remind_mode_prompt,
+    msg_self_remind_regular_prompt,
 )
+
+
+SELF_REMIND_PRIVATE_START_MESSAGE = MSG_SELF_REMIND_PRIVATE_START
 
 
 async def handle_self_remind_ask(
@@ -50,10 +60,10 @@ async def handle_self_remind_ask(
 
     await context.bot.send_message(
         chat_id=target_chat_id,
-        text=f'Как тебе напомнить о "{source_reminder.text}" из чата "{source_chat_title}"?',
+        text=msg_self_remind_mode_prompt(source_reminder.text, source_chat_title),
         reply_markup=build_self_remind_mode_keyboard(reminder_id),
     )
-    await query.answer("Отправил варианты в личку")
+    await query.answer(MSG_SELF_REMIND_SENT_TO_PRIVATE)
 
 
 async def handle_self_remind_cancel_personal(
@@ -70,9 +80,9 @@ async def handle_self_remind_cancel_personal(
         return
 
     if query.message:
-        await query.edit_message_text("Ок, личное напоминание не создаю.")
+        await query.edit_message_text(MSG_SELF_REMIND_CANCELLED)
 
-    await query.answer("Ок")
+    await query.answer(MSG_OK_SHORT)
 
 
 async def handle_self_remind_back(
@@ -105,10 +115,10 @@ async def handle_self_remind_back(
     )
 
     await query.edit_message_text(
-        f'Как тебе напомнить о "{source_reminder.text}" из чата "{source_chat_title}"?',
+        msg_self_remind_mode_prompt(source_reminder.text, source_chat_title),
         reply_markup=build_self_remind_mode_keyboard(reminder_id),
     )
-    await query.answer("Вернул выбор")
+    await query.answer(MSG_RETURNED_CHOICE)
 
 
 async def handle_self_remind_mode(
@@ -164,10 +174,10 @@ async def handle_self_remind_mode(
             query,
         )
         await query.edit_message_text(
-            f'Когда напомнить тебе о "{source_reminder.text}" из чата "{source_chat_title}"?',
+            msg_self_remind_regular_prompt(source_reminder.text, source_chat_title),
             reply_markup=build_self_remind_choice_keyboard(reminder_id),
         )
-        await query.answer("Выбери время")
+        await query.answer(MSG_PICK_TIME)
         return
 
     if mode == "event":
@@ -179,16 +189,15 @@ async def handle_self_remind_mode(
                 msg_event_date_not_found,
                 reply_markup=build_self_remind_choice_keyboard(reminder_id),
             )
-            await query.answer("Не смог понять дату события. Выбери обычное напоминание или время вручную.")
+            await query.answer(MSG_SELF_REMIND_EVENT_DATE_NOT_FOUND_ANSWER)
             return
 
         event_str = event_at.strftime("%d.%m %H:%M")
         await query.edit_message_text(
-            f"Я понял, что событие из напоминания состоится {event_str}.\n"
-            "За сколько до этого времени напомнить?",
+            msg_self_remind_event_before_prompt(event_str),
             reply_markup=build_self_remind_event_before_keyboard(reminder_id),
         )
-        await query.answer("Выбери время")
+        await query.answer(MSG_PICK_TIME)
         return
 
     await query.answer(msg_unknown_self_remind_mode, show_alert=True)
