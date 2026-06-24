@@ -265,6 +265,7 @@ from alias_settings_commands import handle_aliases_command, handle_defaulttime_c
 from plain_text_remind_flow import handle_plain_text_remind_command
 from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
+from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2029,19 +2030,14 @@ async def normalize_plain_text_reminder_with_gemini(text: str, created_by: int) 
     )
 
 
+def _build_reminder_text_normalization_deps():
+    return SimpleNamespace(
+        normalize_gemini_reminder_command_text=normalize_gemini_reminder_command_text,
+        normalize_voice_reminder_text=normalize_voice_reminder_text,
+    )
+
 def _normalize_reminder_text_fallback(text: str) -> str:
-    normalized = (text or "").strip()
-    if not normalized:
-        return ""
-
-    if " - " not in normalized:
-        fallback_normalized = normalize_voice_reminder_text(normalized)
-        if fallback_normalized:
-            normalized = fallback_normalized
-
-    normalized = normalize_gemini_reminder_command_text(normalized)
-
-    return normalized
+    return normalize_reminder_text_fallback_impl(text, _build_reminder_text_normalization_deps())
 
 def _build_voice_remind_command_deps():
     return SimpleNamespace(
