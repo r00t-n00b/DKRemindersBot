@@ -154,9 +154,11 @@ def test_main_uses_single_recurring_handler_in_remind_command():
     assert len(remind_nodes) == 1
 
     remind_source = ast.get_source_segment(source, remind_nodes[0])
+    router_source = Path("remind_command_router.py").read_text()
     dispatch_source = Path("remind_dispatch.py").read_text()
 
-    assert "dispatch_remind_creation(" in remind_source
+    assert "handle_remind_command(update, context, _build_remind_command_deps())" in remind_source
+    assert "dispatch_remind_creation(" in router_source
     assert "try_handle_single_recurring_reminder(" in dispatch_source
     assert "if looks_like_recurring(raw_single):" not in remind_source
     assert "Создан recurring reminder id=" not in remind_source

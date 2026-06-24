@@ -53,8 +53,11 @@ def test_remind_command_delegates_extracted_flows():
 
     dispatch_source = Path("remind_dispatch.py").read_text()
 
-    assert "reject_group_remind_target_prefix_if_needed(" in remind_source
-    assert "dispatch_remind_creation(" in remind_source
+    router_source = Path("remind_command_router.py").read_text()
+
+    assert "handle_remind_command(update, context, _build_remind_command_deps())" in remind_source
+    assert "reject_group_remind_target_prefix_if_needed(" in router_source
+    assert "dispatch_remind_creation(" in router_source
 
     assert "try_handle_single_recurring_reminder(" in dispatch_source
 
