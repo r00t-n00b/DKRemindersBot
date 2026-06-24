@@ -2130,26 +2130,6 @@ def _build_list_command_deps():
     )
 
 
-def _build_list_command_deps():
-    return SimpleNamespace(
-        Chat=Chat,
-        DB_PATH=DB_PATH,
-        sqlite3=sqlite3,
-        build_active_reminders_list_response=build_active_reminders_list_response,
-        build_list_delete_keyboard=build_list_delete_keyboard,
-        build_target_user_presentation_rows=build_target_user_presentation_rows,
-        build_target_user_reminders_list_response=build_target_user_reminders_list_response,
-        format_empty_active_reminders_list_text=format_empty_active_reminders_list_text,
-        get_active_reminders_created_by_for_chat=get_active_reminders_created_by_for_chat,
-        get_all_aliases=get_all_aliases,
-        get_chat_id_by_alias_for_user=get_chat_id_by_alias_for_user,
-        get_now=get_now,
-        get_private_chat_id_by_username=get_private_chat_id_by_username,
-        get_recurring_template=get_recurring_template,
-        get_user_alias_chat_id_for_user=get_user_alias_chat_id_for_user,
-        safe_reply=safe_reply,
-    )
-
 async def list_command(update: Update, context: CTX) -> None:
     await handle_list_command_flow(update, context, _build_list_command_deps())
 
