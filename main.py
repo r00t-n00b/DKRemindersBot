@@ -304,6 +304,7 @@ from storage_delete_restore import activate_recurring_template_impl, deactivate_
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
 from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
 from storage_write import add_reminder_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_sent_impl, update_reminder_time_impl
+from storage_nudges import _nudge_threshold_minutes_impl, exhaust_nudges_impl, get_due_nudges_impl, increment_nudge_count_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
 from alias_settings_deps import build_alias_settings_command_deps
 from voice_transcription_deps import build_voice_transcription_deps
@@ -1020,73 +1021,24 @@ async def post_shutdown(application: Application) -> None:
 
     logger.info("Фоновые worker напоминаний остановлены из post_shutdown")
 
-def _nudge_threshold_minutes(nudge_count: int) -> Optional[int]:
-    # кумулятивно от sent_at:
-    # 1) +20m
-    # 2) +20m +60m = 80m
-    # 3) +80m +240m = 320m
-    # 4) +320m +720m = 1040m
-    thresholds = [20, 80, 320, 1040]
-    if 0 <= nudge_count < len(thresholds):
-        return thresholds[nudge_count]
-    return None
+def _build_storage_nudges_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        sqlite3=sqlite3,
+    )
 
+
+def _nudge_threshold_minutes(nudge_count: int) -> Optional[int]:
+    return _nudge_threshold_minutes_impl(nudge_count)
 
 def get_due_nudges(now: datetime) -> List[Dict[str, Any]]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(
-            """
-            SELECT id, chat_id, text, sent_at, nudge_count
-            FROM reminders
-            WHERE delivered = 1
-              AND acked = 0
-              AND nudge_count < 4
-              AND sent_at IS NOT NULL
-            """,
-        ).fetchall()
-        out: List[Dict[str, Any]] = []
-        for r in rows:
-            try:
-                sent_at = datetime.fromisoformat(r["sent_at"])
-            except Exception:
-                continue
-
-            threshold = _nudge_threshold_minutes(int(r["nudge_count"]))
-            if threshold is None:
-                continue
-
-            if now >= sent_at + timedelta(minutes=threshold):
-                out.append(dict(r))
-        return out
-    finally:
-        conn.close()
-
+    return get_due_nudges_impl(now, deps=_build_storage_nudges_deps())
 
 def increment_nudge_count(reminder_id: int) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            "UPDATE reminders SET nudge_count = nudge_count + 1 WHERE id = ?",
-            (reminder_id,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
+    return increment_nudge_count_impl(reminder_id, deps=_build_storage_nudges_deps())
 
 def exhaust_nudges(reminder_id: int) -> None:
-    # чтобы никогда не пытаться нуджить в group/channel
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            "UPDATE reminders SET nudge_count = 4 WHERE id = ?",
-            (reminder_id,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    return exhaust_nudges_impl(reminder_id, deps=_build_storage_nudges_deps())
 
 
 # ===== main =====
