@@ -136,6 +136,21 @@ from callback_contracts import (
 )
 
 import keyboards as keyboard_builders
+from keyboard_builder_proxy import (
+    _sync_keyboard_builder_classes_impl,
+    build_created_reminder_actions_keyboard_for_reminder_impl,
+    build_created_reminder_actions_keyboard_impl,
+    build_created_reschedule_keyboard_impl,
+    build_custom_date_keyboard_impl,
+    build_custom_time_keyboard_impl,
+    build_group_reminder_keyboard_impl,
+    build_list_delete_keyboard_impl,
+    build_recurring_delete_choice_keyboard_impl,
+    build_self_remind_choice_keyboard_impl,
+    build_self_remind_event_before_keyboard_impl,
+    build_self_remind_mode_keyboard_impl,
+    build_snooze_keyboard_impl,
+)
 from presentation import (
     build_active_reminders_list_response,
     build_target_user_presentation_rows,
@@ -579,86 +594,53 @@ def set_chat_alias_for_user(alias: str, chat_id: int, title: Optional[str], crea
 
 # ===== SNOOZE клавиатуры =====
 
+def _build_keyboard_builder_proxy_deps():
+    return SimpleNamespace(
+        InlineKeyboardButton=InlineKeyboardButton,
+        InlineKeyboardMarkup=InlineKeyboardMarkup,
+        get_reminder=get_reminder,
+        keyboard_builders=keyboard_builders,
+    )
+
 def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
     reminder = get_reminder(reminder_id)
-    if reminder is None:
-        return None
-    is_recurring = bool(getattr(reminder, "template_id", None))
-    return build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
-
+    return None if reminder is None else build_created_reminder_actions_keyboard(reminder_id, is_recurring=bool(getattr(reminder, "template_id", None)))
 
 def _sync_keyboard_builder_classes() -> None:
-    keyboard_builders.InlineKeyboardButton = InlineKeyboardButton
-    keyboard_builders.InlineKeyboardMarkup = InlineKeyboardMarkup
-
+    return _sync_keyboard_builder_classes_impl(deps=_build_keyboard_builder_proxy_deps())
 
 def build_list_delete_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_list_delete_keyboard(reminder_id)
-
+    return build_list_delete_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
 def build_recurring_delete_choice_keyboard(reminder_id: int, template_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_recurring_delete_choice_keyboard(reminder_id, template_id)
+    return build_recurring_delete_choice_keyboard_impl(reminder_id, template_id, deps=_build_keyboard_builder_proxy_deps())
 
-
-def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool = False):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_created_reminder_actions_keyboard(reminder_id, is_recurring=is_recurring)
-
+def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool=False):
+    return build_created_reminder_actions_keyboard_impl(reminder_id, is_recurring, deps=_build_keyboard_builder_proxy_deps())
 
 def build_created_reschedule_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_created_reschedule_keyboard(reminder_id)
-
+    return build_created_reschedule_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
 def build_snooze_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_snooze_keyboard(reminder_id)
-
+    return build_snooze_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
 def build_group_reminder_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_group_reminder_keyboard(reminder_id)
-
+    return build_group_reminder_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
 def build_self_remind_mode_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_self_remind_mode_keyboard(reminder_id)
-
+    return build_self_remind_mode_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
 def build_self_remind_choice_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_self_remind_choice_keyboard(reminder_id)
-
+    return build_self_remind_choice_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
 def build_self_remind_event_before_keyboard(reminder_id: int):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_self_remind_event_before_keyboard(reminder_id)
+    return build_self_remind_event_before_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
 
+def build_custom_date_keyboard(reminder_id: int, year: Optional[int]=None, month: Optional[int]=None, callback_prefix: str='snooze'):
+    return build_custom_date_keyboard_impl(reminder_id, year, month, callback_prefix, deps=_build_keyboard_builder_proxy_deps())
 
-def build_custom_date_keyboard(
-    reminder_id: int,
-    year: Optional[int] = None,
-    month: Optional[int] = None,
-    callback_prefix: str = "snooze",
-):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_custom_date_keyboard(
-        reminder_id,
-        year=year,
-        month=month,
-        callback_prefix=callback_prefix,
-    )
-
-
-def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix: str = "snooze"):
-    _sync_keyboard_builder_classes()
-    return keyboard_builders.build_custom_time_keyboard(
-        reminder_id,
-        date_str,
-        callback_prefix=callback_prefix,
-    )
+def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix: str='snooze'):
+    return build_custom_time_keyboard_impl(reminder_id, date_str, callback_prefix, deps=_build_keyboard_builder_proxy_deps())
 
 
 # ===== Хендлеры команд =====
