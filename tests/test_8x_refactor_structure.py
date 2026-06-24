@@ -51,13 +51,16 @@ def test_remind_command_delegates_extracted_flows():
 
     remind_source = ast.get_source_segment(source, remind)
 
+    dispatch_source = Path("remind_dispatch.py").read_text()
+
     assert "reject_group_remind_target_prefix_if_needed(" in remind_source
+    assert "dispatch_remind_creation(" in remind_source
 
-    assert "try_handle_single_recurring_reminder(" in remind_source
+    assert "try_handle_single_recurring_reminder(" in dispatch_source
 
-    assert "handle_single_oneoff_reminder(" in remind_source
+    assert "handle_single_oneoff_reminder(" in dispatch_source
 
-    assert "drop_optional_bulk_header(" in remind_source
+    assert "drop_optional_bulk_header(" in dispatch_source
 
 def test_remind_command_no_longer_contains_extracted_business_logic():
 

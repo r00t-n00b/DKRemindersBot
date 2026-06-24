@@ -183,7 +183,10 @@ def test_main_uses_single_oneoff_handler_in_remind_command():
     assert len(remind_nodes) == 1
 
     remind_source = ast.get_source_segment(source, remind_nodes[0])
-    assert "handle_single_oneoff_reminder(" in remind_source
+    dispatch_source = Path("remind_dispatch.py").read_text()
+
+    assert "dispatch_remind_creation(" in remind_source
+    assert "handle_single_oneoff_reminder(" in dispatch_source
     assert "normalize_plain_text_reminder_with_gemini(raw_single, created_by)" not in remind_source
     assert "format_created_reminder_text(when_str, text)" not in remind_source
 
