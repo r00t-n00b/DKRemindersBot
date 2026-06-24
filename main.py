@@ -277,6 +277,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
 from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
 from storage_write import add_reminder_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_sent_impl, update_reminder_time_impl
@@ -727,318 +728,46 @@ from datetime import datetime
 from typing import Optional
 
 
+def _build_storage_delete_restore_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        add_reminder=add_reminder,
+        compute_next_occurrence=compute_next_occurrence,
+        get_recurring_template_row=get_recurring_template_row,
+        get_reminder_row=get_reminder_row,
+        get_reminders_by_template_id=get_reminders_by_template_id,
+        sqlite3=sqlite3,
+    )
+
 def delete_reminders(reminder_ids: List[int], chat_id: int) -> int:
-    """
-    Удаляем напоминания. Если у них был template_id - деактивируем соответствующие шаблоны
-    (то есть удаление повторяющегося напоминания останавливает всю серию).
-    """
-    if not reminder_ids:
-        return 0
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    qmarks = ",".join("?" for _ in reminder_ids)
-    params = reminder_ids + [chat_id]
-
-    # какие шаблоны затронуты
-    c.execute(
-        f"SELECT DISTINCT template_id FROM reminders WHERE id IN ({qmarks}) AND chat_id = ?",
-        params,
-    )
-    template_rows = c.fetchall()
-    template_ids = [row[0] for row in template_rows if row[0] is not None]
-
-    # удаляем сами напоминания
-    c.execute(
-        f"DELETE FROM reminders WHERE id IN ({qmarks}) AND chat_id = ?",
-        params,
-    )
-    deleted = c.rowcount
-
-    # деактивируем шаблоны
-    if template_ids:
-        q2 = ",".join("?" for _ in template_ids)
-        c.execute(
-            f"UPDATE recurring_templates SET active = 0 WHERE id IN ({q2})",
-            template_ids,
-        )
-
-    conn.commit()
-    conn.close()
-    return deleted
-
+    return delete_reminders_impl(reminder_ids, chat_id, deps=_build_storage_delete_restore_deps())
 
 def delete_recurring_one_instance_and_reschedule(rid: int, chat_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Удаляет ОДИН инстанс recurring-ремайндера и сразу создает следующий инстанс,
-    не выключая серию.
-
-    Возвращает snapshot для undo.
-    Backward-compatible поля:
-      - mode="one" (старые тесты)
-      - kind="single" (новый общий undo)
-    """
-    r = get_reminder_row(rid)
-    if not r:
-        return None
-    if int(r["chat_id"]) != int(chat_id):
-        return None
-
-    tpl_id = r.get("template_id")
-    if tpl_id is None:
-        return None
-
-    tpl = get_recurring_template_row(int(tpl_id))
-    if not tpl:
-        return None
-    if not tpl.get("active"):
-        return None
-
-    # 1) удаляем только этот инстанс (НЕ трогаем recurring_templates)
-    deleted = delete_single_reminder_row(int(rid), int(chat_id))
-    if not deleted:
-        return None
-
-    snapshot: Dict[str, Any] = {
-        "mode": "one",          # важно для старых тестов
-        "kind": "single",       # важно для текущего undo
-        "reminder": r,
-        "template": tpl,
-        "next_created_id": None,
-    }
-
-    # 2) создаем следующий инстанс
-    try:
-        last_dt = datetime.fromisoformat(str(r["remind_at"]))
-    except Exception:
-        return snapshot
-
-    pattern_type = str(tpl["pattern_type"])
-    payload = tpl.get("payload") or {}
-    time_hour = int(tpl["time_hour"])
-    time_minute = int(tpl["time_minute"])
-
-    next_dt = compute_next_occurrence(
-        pattern_type,
-        dict(payload),
-        time_hour,
-        time_minute,
-        last_dt,
-    )
-
-    if next_dt is not None:
-        next_id = add_reminder(
-            chat_id=int(r["chat_id"]),
-            text=str(r["text"]),
-            remind_at=next_dt,
-            created_by=r.get("created_by"),
-            template_id=int(tpl["id"]),
-        )
-        snapshot["next_created_id"] = int(next_id)
-
-    return snapshot
-
+    return delete_recurring_one_instance_and_reschedule_impl(rid, chat_id, deps=_build_storage_delete_restore_deps())
 
 def delete_single_reminder_row(reminder_id: int, chat_id: int) -> int:
-    """
-    Удаляет ОДИН reminder, не трогая recurring_templates.
-    Возвращает количество удаленных строк (0 или 1).
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "DELETE FROM reminders WHERE id = ? AND chat_id = ?",
-        (reminder_id, chat_id),
-    )
-    deleted = c.rowcount
-    conn.commit()
-    conn.close()
-    return deleted
-
+    return delete_single_reminder_row_impl(reminder_id, chat_id, deps=_build_storage_delete_restore_deps())
 
 def deactivate_recurring_template(template_id: int) -> int:
-    """
-    Ставит active=0 у recurring_templates. Возвращает количество обновленных строк (0 или 1).
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "UPDATE recurring_templates SET active = 0 WHERE id = ?",
-        (template_id,),
-    )
-    updated = c.rowcount
-    conn.commit()
-    conn.close()
-    return updated
-
+    return deactivate_recurring_template_impl(template_id, deps=_build_storage_delete_restore_deps())
 
 def activate_recurring_template(template_id: int) -> int:
-    """
-    Ставит active=1 у recurring_templates. Возвращает количество обновленных строк (0 или 1).
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "UPDATE recurring_templates SET active = 1 WHERE id = ?",
-        (template_id,),
-    )
-    updated = c.rowcount
-    conn.commit()
-    conn.close()
-    return updated
-
+    return activate_recurring_template_impl(template_id, deps=_build_storage_delete_restore_deps())
 
 def delete_recurring_series(template_id: int, chat_id: int) -> int:
-    """
-    Удаляет все reminders серии (template_id) и деактивирует recurring_templates.active=0.
-    Возвращает количество удаленных reminders.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    c.execute(
-        "DELETE FROM reminders WHERE chat_id = ? AND template_id = ?",
-        (chat_id, template_id),
-    )
-    deleted = c.rowcount
-
-    c.execute(
-        "UPDATE recurring_templates SET active = 0 WHERE id = ?",
-        (template_id,),
-    )
-
-    conn.commit()
-    conn.close()
-    return deleted
-
+    return delete_recurring_series_impl(template_id, chat_id, deps=_build_storage_delete_restore_deps())
 
 def delete_reminder_with_snapshot(rid: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Backward-compatible: удаляет один reminder и возвращает snapshot.
-    ВАЖНО: теперь это "single delete" и НЕ останавливает серию.
-    """
-    return delete_single_reminder_with_snapshot(rid, target_chat_id)
-
+    return delete_reminder_with_snapshot_impl(rid, target_chat_id, deps=_build_storage_delete_restore_deps())
 
 def delete_single_reminder_with_snapshot(rid: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Удаляет один reminder и возвращает snapshot для undo.
-    Если reminder был recurring (template_id != None), шаблон НЕ деактивируем.
-    """
-    r = get_reminder_row(rid)
-    if not r:
-        return None
-
-    if int(r["chat_id"]) != int(target_chat_id):
-        return None
-
-    tpl = None
-    tpl_id = r.get("template_id")
-    if tpl_id is not None:
-        tpl = get_recurring_template_row(int(tpl_id))
-
-    deleted = delete_single_reminder_row(rid, target_chat_id)
-    if not deleted:
-        return None
-
-    return {
-        "kind": "single",
-        "reminder": r,
-        "template": tpl,
-    }
-
+    return delete_single_reminder_with_snapshot_impl(rid, target_chat_id, deps=_build_storage_delete_restore_deps())
 
 def delete_recurring_series_with_snapshot(template_id: int, target_chat_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Удаляет всю серию и возвращает snapshot для undo:
-    - template (как есть, с этим же id)
-    - список reminders, которые были удалены
-    """
-    tpl = get_recurring_template_row(int(template_id))
-    if not tpl:
-        return None
-
-    if int(tpl["chat_id"]) != int(target_chat_id):
-        return None
-
-    reminders = get_reminders_by_template_id(int(template_id), int(target_chat_id))
-    if not reminders:
-        # если по какой-то причине инстансов нет, все равно деактивируем шаблон
-        deactivate_recurring_template(int(template_id))
-        return {
-            "kind": "series",
-            "template": tpl,
-            "reminders": [],
-        }
-
-    deleted = delete_recurring_series(int(template_id), int(target_chat_id))
-    if deleted <= 0:
-        return None
-
-    return {
-        "kind": "series",
-        "template": tpl,
-        "reminders": reminders,
-    }
-
+    return delete_recurring_series_with_snapshot_impl(template_id, target_chat_id, deps=_build_storage_delete_restore_deps())
 
 def restore_deleted_snapshot(snapshot: Dict[str, Any]) -> Optional[Any]:
-    """
-    Восстанавливает удаленный reminder или серию.
-    Возвращает:
-    - для single: новый reminder_id (int)
-    - для series: список новых reminder_id (List[int])
-    """
-    kind = snapshot.get("kind") or "single"
-
-    if kind == "single":
-        r = snapshot.get("reminder") or {}
-        if not r:
-            return None
-
-        next_id = snapshot.get("next_created_id")
-        if next_id:
-            delete_single_reminder_row(int(next_id), int(r["chat_id"]))
-
-        tpl = snapshot.get("template")
-        tpl_id = None
-        if tpl and tpl.get("id") is not None:
-            # Шаблон должен был остаться активным, но на всякий случай включим обратно.
-            activate_recurring_template(int(tpl["id"]))
-            tpl_id = int(tpl["id"])
-
-        remind_at = datetime.fromisoformat(str(r["remind_at"]))
-        new_rid = add_reminder(
-            chat_id=int(r["chat_id"]),
-            text=str(r["text"]),
-            remind_at=remind_at,
-            created_by=r.get("created_by"),
-            template_id=tpl_id,
-        )
-        return new_rid
-
-    if kind == "series":
-        tpl = snapshot.get("template") or {}
-        tpl_id = tpl.get("id")
-        if tpl_id is None:
-            return None
-
-        activate_recurring_template(int(tpl_id))
-
-        new_ids: List[int] = []
-        for r in (snapshot.get("reminders") or []):
-            remind_at = datetime.fromisoformat(str(r["remind_at"]))
-            new_id = add_reminder(
-                chat_id=int(r["chat_id"]),
-                text=str(r["text"]),
-                remind_at=remind_at,
-                created_by=r.get("created_by"),
-                template_id=int(tpl_id),
-            )
-            new_ids.append(int(new_id))
-
-        return new_ids
-
-    return None
+    return restore_deleted_snapshot_impl(snapshot, deps=_build_storage_delete_restore_deps())
 
 
 def make_undo_token() -> str:
