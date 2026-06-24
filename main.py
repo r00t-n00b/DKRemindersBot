@@ -223,6 +223,7 @@ from callback_simple_flows import handle_done_callback_data, handle_noop_callbac
 from reminder_callback_router import handle_reminder_callback
 from created_snooze_router import handle_created_snooze_callback
 from delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
+from created_delete_router import handle_created_delete_callback
 from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 from parser_recurring import parse_recurring
 from parser_default_time_adapter import parse_with_optional_default_time
@@ -2293,58 +2294,25 @@ def compute_snooze_target_time(action: str, now: datetime, default_time: Optiona
 
     raise ValueError(f"Unknown snooze action: {action}")
 
+def _build_created_delete_callback_deps():
+    return SimpleNamespace(
+        InlineKeyboardButton=InlineKeyboardButton,
+        InlineKeyboardMarkup=InlineKeyboardMarkup,
+        MSG_DELETE_FAILED_SHORT=MSG_DELETE_FAILED_SHORT,
+        MSG_DELETE_FAILED_TEXT=MSG_DELETE_FAILED_TEXT,
+        MSG_REMINDER_ALREADY_DELETED_ALERT=MSG_REMINDER_ALREADY_DELETED_ALERT,
+        MSG_REMINDER_ALREADY_DELETED_TEXT=MSG_REMINDER_ALREADY_DELETED_TEXT,
+        build_recurring_delete_choice_keyboard=build_recurring_delete_choice_keyboard,
+        cb_undo=cb_undo,
+        delete_single_reminder_with_snapshot=delete_single_reminder_with_snapshot,
+        dict=dict,
+        format_deleted_human=format_deleted_human,
+        get_reminder_row=get_reminder_row,
+        make_undo_token=make_undo_token,
+    )
+
 async def created_delete_callback(update: Update, context: CTX) -> None:
-    query = update.callback_query
-
-    try:
-        reminder_id = int(query.data.split(":", 1)[1])
-    except Exception:
-        await query.answer(MSG_DELETE_FAILED_SHORT, show_alert=True)
-        await query.edit_message_text(MSG_DELETE_FAILED_TEXT, reply_markup=None)
-        return
-
-    row = get_reminder_row(reminder_id)
-    if not row:
-        await query.answer(MSG_REMINDER_ALREADY_DELETED_ALERT, show_alert=True)
-        await query.edit_message_text(MSG_REMINDER_ALREADY_DELETED_TEXT, reply_markup=None)
-        return
-
-    template_id = row["template_id"] if "template_id" in row.keys() else None
-    if template_id is not None:
-        keyboard = build_recurring_delete_choice_keyboard(reminder_id, int(template_id))
-        context.user_data["delete_choice_source"] = "created"
-
-        await query.answer()
-        await query.edit_message_reply_markup(reply_markup=keyboard)
-        return
-
-    snapshot = delete_single_reminder_with_snapshot(reminder_id, int(row["chat_id"]))
-    if not snapshot:
-        await query.answer(MSG_REMINDER_ALREADY_DELETED_ALERT, show_alert=True)
-        await query.edit_message_text(MSG_REMINDER_ALREADY_DELETED_TEXT, reply_markup=None)
-        return
-
-    token = make_undo_token()
-    context.user_data["undo_tokens"] = context.user_data.get("undo_tokens") or {}
-    context.user_data["undo_tokens"][token] = snapshot
-
-    tpl = snapshot.get("template") or {}
-    tpl_pattern_type = tpl.get("pattern_type")
-    tpl_payload = tpl.get("payload") if isinstance(tpl.get("payload"), dict) else {}
-
-    deleted_text = format_deleted_human(
-        snapshot["reminder"]["remind_at"],
-        snapshot["reminder"]["text"],
-        tpl_pattern_type,
-        tpl_payload,
-    )
-
-    undo_kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("↩️ Вернуть ремайндер", callback_data=cb_undo(token))]]
-    )
-
-    await query.answer("Удалено")
-    await query.edit_message_text(f"Удалил: {deleted_text}", reply_markup=undo_kb)
+    await handle_created_delete_callback(update, context, _build_created_delete_callback_deps())
 
 
 async def _answer_created_action_reminder_missing(query) -> None:
