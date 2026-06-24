@@ -276,6 +276,7 @@ from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
 from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
 from storage_write import add_reminder_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_sent_impl, update_reminder_time_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
 from alias_settings_deps import build_alias_settings_command_deps
@@ -640,65 +641,21 @@ def get_user_chat_id_by_user_id(user_id: int) -> Optional[int]:
     return None
 
 
+def _build_storage_user_settings_deps():
+    return SimpleNamespace(
+        DB_PATH=DB_PATH,
+        get_now=get_now,
+        sqlite3=sqlite3,
+    )
+
 def get_user_default_time(user_id: Optional[int]) -> Optional[Tuple[int, int]]:
-    if user_id is None:
-        return None
-
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        row = conn.execute(
-            """
-            SELECT default_hour, default_minute
-            FROM user_settings
-            WHERE user_id = ?
-            """,
-            (int(user_id),),
-        ).fetchone()
-    finally:
-        conn.close()
-
-    if not row:
-        return None
-
-    hour, minute = row
-    if hour is None or minute is None:
-        return None
-
-    try:
-        return int(hour), int(minute)
-    except Exception:
-        return None
-
+    return get_user_default_time_impl(user_id, deps=_build_storage_user_settings_deps())
 
 def set_user_default_time(user_id: int, hour: int, minute: int) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            """
-            INSERT INTO user_settings(user_id, default_hour, default_minute, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                default_hour = excluded.default_hour,
-                default_minute = excluded.default_minute,
-                updated_at = excluded.updated_at
-            """,
-            (int(user_id), int(hour), int(minute), get_now().isoformat()),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
+    return set_user_default_time_impl(user_id, hour, minute, deps=_build_storage_user_settings_deps())
 
 def clear_user_default_time(user_id: int) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            "DELETE FROM user_settings WHERE user_id = ?",
-            (int(user_id),),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    return clear_user_default_time_impl(user_id, deps=_build_storage_user_settings_deps())
 
 
 def _build_storage_write_deps():
