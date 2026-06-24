@@ -263,6 +263,7 @@ from remind_command_deps import build_remind_command_deps
 from list_command_flow import handle_list_command_flow
 from alias_settings_commands import handle_aliases_command, handle_defaulttime_command, handle_linkchat_command, handle_linkuser_command, handle_renamealias_command, handle_unalias_command
 from plain_text_remind_flow import handle_plain_text_remind_command
+from voice_remind_flow import handle_voice_remind_command
 from command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
@@ -2055,54 +2056,21 @@ def _normalize_reminder_text_fallback(text: str) -> str:
 
     return normalized
 
+def _build_voice_remind_command_deps():
+    return SimpleNamespace(
+        Chat=Chat,
+        NormalizedReminderMessageProxy=NormalizedReminderMessageProxy,
+        SimpleNamespace=SimpleNamespace,
+        _normalize_reminder_text_fallback=_normalize_reminder_text_fallback,
+        logger=logger,
+        remind_command=remind_command,
+        safe_reply=safe_reply,
+        transcribe_voice_message=transcribe_voice_message,
+        type=type,
+    )
+
 async def voice_remind_command(update: Update, context: CTX) -> None:
-    chat = update.effective_chat
-    message = update.effective_message
-    user = update.effective_user
-
-    if chat is None or message is None or user is None:
-        return
-
-    # В группах голосовые игнорируем, чтобы бот не слушал всё подряд.
-    if chat.type != Chat.PRIVATE:
-        return
-
-    try:
-        heard_text = await transcribe_voice_message(update, context)
-    except Exception as e:
-        logger.exception(
-            "VOICE_REMIND_FAILED user_id=%s chat_id=%s error_type=%s error=%s",
-            user.id,
-            chat.id,
-            type(e).__name__,
-            e,
-        )
-        await safe_reply(
-            message,
-            "Не смог распознать голосовое: сервис распознавания сейчас перегружен. "
-            "Попробуй еще раз чуть позже или напиши текстом."
-        )
-        return
-
-    normalized = _normalize_reminder_text_fallback(heard_text)
-    if not normalized:
-        await safe_reply(message, "Не услышал текст в голосовом.")
-        return
-
-    proxy_message = NormalizedReminderMessageProxy(
-        message,
-        f"/remind {normalized}",
-        normalized,
-    )
-
-    proxy_update = SimpleNamespace(
-        effective_chat=chat,
-        effective_message=proxy_message,
-        effective_user=user,
-        message=proxy_message,
-    )
-
-    await remind_command(proxy_update, context)
+    await handle_voice_remind_command(update, context, _build_voice_remind_command_deps())
 
 
 def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:

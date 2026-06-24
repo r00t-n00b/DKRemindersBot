@@ -60,7 +60,8 @@ def test_old_inner_proxy_classes_are_removed_from_main_source():
 
     main_source = Path("main.py").read_text()
     plain_text_source = Path("plain_text_remind_flow.py").read_text()
-    combined_source = main_source + "\n" + plain_text_source
+    voice_source = Path("voice_remind_flow.py").read_text()
+    combined_source = main_source + "\n" + plain_text_source + "\n" + voice_source
 
     assert "class VoiceReminderMessageProxy" not in main_source
     assert "class PlainTextReminderMessageProxy" not in main_source
