@@ -52,12 +52,12 @@ def _reminder(rid=101, text="source reminder"):
     )
 
 
-def test_done_clears_all_related_message_keyboards(main_module, monkeypatch):
+def test_done_updates_all_related_reminder_messages(main_module, monkeypatch):
     cleared = []
     acked = []
 
-    async def fake_clear(bot, reminder_id):
-        cleared.append((bot, reminder_id))
+    async def fake_clear(bot, reminder_id, replacement_text=None):
+        cleared.append((bot, reminder_id, replacement_text))
 
     monkeypatch.setattr(main_module, "get_reminder", lambda rid: _reminder(rid))
     monkeypatch.setattr(main_module, "mark_reminder_acked", lambda rid: acked.append(rid))
@@ -70,19 +70,19 @@ def test_done_clears_all_related_message_keyboards(main_module, monkeypatch):
     asyncio.run(main_module.snooze_callback(update, context))
 
     assert acked == [101]
-    assert cleared == [(context.bot, 101)]
+    assert cleared == [(context.bot, 101, "source reminder (завершено ✅)")]
     assert query.answers == [("Отмечено как завершенное", False)]
     assert query.edited_text == ["source reminder (завершено ✅)"]
     assert query.edited_reply_markup == [None]
 
 
-def test_snooze_action_clears_all_related_message_keyboards(main_module, monkeypatch):
+def test_snooze_action_updates_all_related_reminder_messages(main_module, monkeypatch):
     cleared = []
     acked = []
     created = []
 
-    async def fake_clear(bot, reminder_id):
-        cleared.append((bot, reminder_id))
+    async def fake_clear(bot, reminder_id, replacement_text=None):
+        cleared.append((bot, reminder_id, replacement_text))
 
     monkeypatch.setattr(main_module, "datetime", SimpleNamespace(now=lambda tz=None: datetime(2026, 6, 12, 10, 0, tzinfo=TZ)))
     monkeypatch.setattr(main_module, "get_reminder", lambda rid: _reminder(rid))
@@ -108,8 +108,10 @@ def test_snooze_action_clears_all_related_message_keyboards(main_module, monkeyp
 
     asyncio.run(main_module.snooze_callback(update, context))
 
+    expected_text = "source reminder\n\n(Отложено до 12.06 11:00)"
+
     assert acked == [101]
-    assert cleared == [(context.bot, 101)]
+    assert cleared == [(context.bot, 101, expected_text)]
     assert created == [
         {
             "chat_id": 456,
@@ -120,16 +122,16 @@ def test_snooze_action_clears_all_related_message_keyboards(main_module, monkeyp
         }
     ]
     assert query.answers == [("Отложено до 12.06 11:00", False)]
-    assert query.edited_text == ["source reminder\n\n(Отложено до 12.06 11:00)"]
+    assert query.edited_text == [expected_text]
 
 
-def test_snooze_picktime_clears_all_related_message_keyboards(main_module, monkeypatch):
+def test_snooze_picktime_updates_all_related_reminder_messages(main_module, monkeypatch):
     cleared = []
     acked = []
     created = []
 
-    async def fake_clear(bot, reminder_id):
-        cleared.append((bot, reminder_id))
+    async def fake_clear(bot, reminder_id, replacement_text=None):
+        cleared.append((bot, reminder_id, replacement_text))
 
     monkeypatch.setattr(main_module, "get_now", lambda: datetime(2026, 6, 12, 10, 0, tzinfo=TZ))
     monkeypatch.setattr(main_module, "get_reminder", lambda rid: _reminder(rid))
@@ -147,19 +149,21 @@ def test_snooze_picktime_clears_all_related_message_keyboards(main_module, monke
 
     asyncio.run(main_module.snooze_callback(update, context))
 
+    expected_text = "source reminder\n\n(Отложено до 12.06 11:30)"
+
     assert acked == [101]
-    assert cleared == [(context.bot, 101)]
+    assert cleared == [(context.bot, 101, expected_text)]
     assert created == [datetime(2026, 6, 12, 11, 30, tzinfo=TZ)]
     assert query.answers == [("Отложено до 12.06 11:30", False)]
-    assert query.edited_text == ["source reminder\n\n(Отложено до 12.06 11:30)"]
+    assert query.edited_text == [expected_text]
 
 
 def test_snooze_pickdate_does_not_clear_related_messages_yet(main_module, monkeypatch):
     cleared = []
     acked = []
 
-    async def fake_clear(bot, reminder_id):
-        cleared.append((bot, reminder_id))
+    async def fake_clear(bot, reminder_id, replacement_text=None):
+        cleared.append((bot, reminder_id, replacement_text))
 
     monkeypatch.setattr(main_module, "mark_reminder_acked", lambda rid: acked.append(rid))
     monkeypatch.setattr(main_module, "clear_reminder_message_keyboards", fake_clear)

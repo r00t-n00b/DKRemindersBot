@@ -396,8 +396,17 @@ def get_reminder_messages(reminder_id: int) -> list[dict]:
     return get_reminder_messages_impl(reminder_id, _build_reminder_message_store_deps())
 
 
-async def clear_reminder_message_keyboards(bot, reminder_id: int) -> None:
-    await clear_reminder_message_keyboards_impl(bot, reminder_id, _build_reminder_message_store_deps())
+async def clear_reminder_message_keyboards(
+    bot,
+    reminder_id: int,
+    replacement_text: str | None = None,
+) -> None:
+    await clear_reminder_message_keyboards_impl(
+        bot,
+        reminder_id,
+        _build_reminder_message_store_deps(),
+        replacement_text=replacement_text,
+    )
 
 
 def _build_storage_user_chats_deps():

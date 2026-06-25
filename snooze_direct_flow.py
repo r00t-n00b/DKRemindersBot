@@ -33,6 +33,8 @@ async def handle_direct_snooze_action(
             query=query,
             mark_reminder_acked=mark_reminder_acked,
             build_custom_date_keyboard=build_custom_date_keyboard,
+            context=context,
+            clear_reminder_message_keyboards=clear_reminder_message_keyboards,
         )
         return
 

@@ -37,8 +37,8 @@ def run_handler(**overrides):
     query = overrides.pop("query", Query())
     reminder = overrides.pop("reminder", SimpleNamespace(text="db text"))
 
-    async def clear_reminder_message_keyboards(bot, rid):
-        calls.append(("clear", bot, rid))
+    async def clear_reminder_message_keyboards(bot, rid, replacement_text=None):
+        calls.append(("clear", bot, rid, replacement_text))
 
     async def run():
         await handle_done_callback(
@@ -56,10 +56,10 @@ def run_handler(**overrides):
     return calls, query
 
 
-def test_done_callback_marks_acked_clears_keyboard_and_uses_db_text():
+def test_done_callback_marks_acked_updates_related_messages_and_uses_db_text():
     calls, query = run_handler()
 
-    assert calls == [("acked", 123), ("clear", "bot", 123)]
+    assert calls == [("acked", 123), ("clear", "bot", 123, "done: db text")]
     assert query.edited_texts == ["done: db text"]
     assert query.edited_markups == [None]
     assert query.answers == [("Отмечено как завершенное", None)]
@@ -81,7 +81,7 @@ def test_done_callback_uses_default_text_when_no_db_and_no_message_text():
         query=Query(text=None),
     )
 
-    assert calls == [("acked", 123), ("clear", "bot", 123)]
+    assert calls == [("acked", 123), ("clear", "bot", 123, "done: Напоминание")]
     assert query.edited_texts == ["done: Напоминание"]
     assert query.edited_markups == [None]
     assert query.answers == [("Отмечено как завершенное", None)]
@@ -90,7 +90,7 @@ def test_done_callback_uses_default_text_when_no_db_and_no_message_text():
 def test_done_callback_ignores_edit_failures():
     calls, query = run_handler(query=Query(fail_text=True, fail_markup=True))
 
-    assert calls == [("acked", 123), ("clear", "bot", 123)]
+    assert calls == [("acked", 123), ("clear", "bot", 123, "done: db text")]
     assert query.edited_texts == []
     assert query.edited_markups == []
     assert query.answers == [("Отмечено как завершенное", None)]

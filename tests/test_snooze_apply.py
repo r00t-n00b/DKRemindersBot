@@ -40,8 +40,8 @@ def run_apply(*, fail_edit_text=False, fail_edit_markup=False):
     )
     new_dt = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
 
-    async def clear_reminder_message_keyboards(bot, rid):
-        calls.append(("clear", bot, rid))
+    async def clear_reminder_message_keyboards(bot, rid, replacement_text=None):
+        calls.append(("clear", bot, rid, replacement_text))
 
     async def run():
         await apply_snooze_to_reminder(
@@ -60,12 +60,12 @@ def run_apply(*, fail_edit_text=False, fail_edit_markup=False):
     return calls, query
 
 
-def test_apply_snooze_to_reminder_creates_new_reminder_and_updates_message():
+def test_apply_snooze_to_reminder_creates_new_reminder_and_updates_related_messages():
     calls, query = run_apply()
 
     assert calls == [
         ("acked", 123),
-        ("clear", "bot", 123),
+        ("clear", "bot", 123, "snoozed 02.01 10:00: milk"),
         (
             "add",
             {
@@ -86,7 +86,7 @@ def test_apply_snooze_to_reminder_clears_keyboard_when_text_edit_fails():
     calls, query = run_apply(fail_edit_text=True)
 
     assert calls[0] == ("acked", 123)
-    assert calls[1] == ("clear", "bot", 123)
+    assert calls[1] == ("clear", "bot", 123, "snoozed 02.01 10:00: milk")
     assert query.edited_texts == []
     assert query.edited_markups == [None]
     assert query.answers == ["answer 02.01 10:00"]
@@ -96,7 +96,7 @@ def test_apply_snooze_to_reminder_ignores_keyboard_clear_failure_after_text_edit
     calls, query = run_apply(fail_edit_text=True, fail_edit_markup=True)
 
     assert calls[0] == ("acked", 123)
-    assert calls[1] == ("clear", "bot", 123)
+    assert calls[1] == ("clear", "bot", 123, "snoozed 02.01 10:00: milk")
     assert query.edited_texts == []
     assert query.edited_markups == []
     assert query.answers == ["answer 02.01 10:00"]
@@ -120,7 +120,6 @@ def test_snooze_callback_uses_extracted_apply_helper():
     assert snooze_source.count("apply_snooze_to_reminder(") == 0
     assert "apply_snooze_to_reminder(" in Path("snooze_direct_flow.py").read_text()
     assert "apply_snooze_to_reminder(" in Path("snooze_picktime_flow.py").read_text()
-    # clear_reminder_message_keyboards(context.bot, rid) may still be used by done: branch.
     assert "format_snoozed_reminder_text(r.text, when_str)" not in snooze_source
     assert "format_snoozed_answer_text(when_str)" not in snooze_source
 

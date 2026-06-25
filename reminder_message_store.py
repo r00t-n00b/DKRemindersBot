@@ -57,21 +57,48 @@ def get_reminder_messages_impl(reminder_id: int, deps) -> list[dict]:
     return rows
 
 
-async def clear_reminder_message_keyboards_impl(bot, reminder_id: int, deps) -> None:
+async def clear_reminder_message_keyboards_impl(
+    bot,
+    reminder_id: int,
+    deps,
+    replacement_text: str | None = None,
+) -> None:
     _apply_deps(deps)
 
     rows = get_reminder_messages_impl(reminder_id, deps)
 
     for row in rows:
+        chat_id = int(row["chat_id"])
+        message_id = int(row["message_id"])
+
         try:
-            await bot.edit_message_reply_markup(
-                chat_id=int(row["chat_id"]),
-                message_id=int(row["message_id"]),
-                reply_markup=None,
-            )
+            if replacement_text is not None:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=replacement_text,
+                    reply_markup=None,
+                )
+            else:
+                await bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=None,
+                )
         except Exception:
+            if replacement_text is not None:
+                try:
+                    await bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        reply_markup=None,
+                    )
+                    continue
+                except Exception:
+                    pass
+
             logger.exception(
-                "Failed to clear reminder message keyboard reminder_id=%s chat_id=%s message_id=%s",
+                "Failed to update reminder message reminder_id=%s chat_id=%s message_id=%s",
                 reminder_id,
                 row.get("chat_id"),
                 row.get("message_id"),

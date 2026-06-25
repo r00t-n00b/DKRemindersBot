@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import main
 from snooze_custom_flow import enter_custom_snooze_flow
@@ -16,7 +17,30 @@ class Query:
         self.answers.append((text, show_alert))
 
 
-def test_enter_custom_snooze_flow_marks_acked_and_opens_date_picker():
+def test_enter_custom_snooze_flow_marks_acked_clears_related_messages_and_opens_date_picker():
+    calls = []
+    query = Query()
+
+    async def clear_reminder_message_keyboards(bot, rid):
+        calls.append(("clear", bot, rid))
+
+    asyncio.run(
+        enter_custom_snooze_flow(
+            reminder_id=123,
+            query=query,
+            mark_reminder_acked=lambda rid: calls.append(("acked", rid)),
+            build_custom_date_keyboard=lambda rid: f"date-kb:{rid}",
+            context=SimpleNamespace(bot="bot"),
+            clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+        )
+    )
+
+    assert calls == [("acked", 123), ("clear", "bot", 123)]
+    assert query.markups == ["date-kb:123"]
+    assert query.answers == [("Выбери дату", False)]
+
+
+def test_enter_custom_snooze_flow_without_context_keeps_backward_compatible_behavior():
     calls = []
     query = Query()
 
@@ -53,6 +77,8 @@ def test_snooze_callback_uses_custom_snooze_flow():
     direct_source = Path("snooze_direct_flow.py").read_text()
     assert "enter_custom_snooze_flow=enter_custom_snooze_flow" in snooze_source
     assert "enter_custom_snooze_flow(" in direct_source
+    assert "context=context" in direct_source
+    assert "clear_reminder_message_keyboards=clear_reminder_message_keyboards" in direct_source
     assert "kb = build_custom_date_keyboard(rid)" not in snooze_source
     assert 'await query.answer("Выбери дату", show_alert=False)' not in snooze_source
 
