@@ -17,6 +17,8 @@ from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+from time_utils import BOT_TZ
+
 # --- Telegram imports ---
 # Во время тестов telegram не установлен, поэтому:
 # - в runtime импортируем нормально
@@ -70,7 +72,7 @@ except Exception:
 
 # ===== Настройки =====
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 DB_PATH = os.environ.get("DB_PATH", "/data/reminders.db")
 
 SYSTEM_DEFAULT_REMINDER_HOUR = 10
