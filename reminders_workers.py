@@ -8,14 +8,12 @@ from typing import Any, Dict, List, Optional, Tuple
 _DEP_NAMES = [
     "get_chat_type",
     "Chat",
-    "TZ",
     "add_reminder",
     "asyncio",
     "build_group_reminder_keyboard",
     "build_snooze_keyboard",
     "claim_due_reminders",
     "compute_next_occurrence",
-    "datetime",
     "get_due_nudges",
     "get_due_reminders",
     "get_now",
@@ -48,7 +46,7 @@ async def run_reminders_worker(app, deps) -> None:
 
     while True:
         try:
-            now = datetime.now(TZ)
+            now = get_now()
             reset_count = reset_stale_processing_reminders(now)
             if reset_count:
                 logger.warning("Reset stale processing reminders: %s", reset_count)

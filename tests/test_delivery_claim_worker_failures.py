@@ -41,7 +41,7 @@ def test_worker_marks_claimed_reminder_failed_when_send_message_fails(main_modul
     async def fake_sleep(_seconds):
         return None
 
-    monkeypatch.setattr(main_module, "datetime", SimpleNamespace(now=lambda tz=None: now))
+    monkeypatch.setattr(main_module, "get_now", lambda: now)
     monkeypatch.setattr(main_module, "reset_stale_processing_reminders", lambda reset_now: 0)
     monkeypatch.setattr(main_module, "claim_due_reminders", fake_claim_due_reminders)
     monkeypatch.setattr(main_module, "_safe_get_chat_type", fake_safe_get_chat_type)
@@ -87,7 +87,7 @@ def test_worker_resets_stale_processing_before_claiming_due_reminders(main_modul
     async def fake_sleep(_seconds):
         return None
 
-    monkeypatch.setattr(main_module, "datetime", SimpleNamespace(now=lambda tz=None: now))
+    monkeypatch.setattr(main_module, "get_now", lambda: now)
     monkeypatch.setattr(main_module, "reset_stale_processing_reminders", fake_reset_stale_processing_reminders)
     monkeypatch.setattr(main_module, "claim_due_reminders", fake_claim_due_reminders)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)

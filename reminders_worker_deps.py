@@ -7,13 +7,11 @@ from types import SimpleNamespace
 REMINDERS_WORKER_DEP_SPECS = (
     ("get_chat_type", "_safe_get_chat_type"),
     ("Chat", "Chat"),
-    ("TZ", "TZ"),
     ("add_reminder", "add_reminder"),
     ("asyncio", "asyncio"),
     ("build_group_reminder_keyboard", "build_group_reminder_keyboard"),
     ("build_snooze_keyboard", "build_snooze_keyboard"),
     ("compute_next_occurrence", "compute_next_occurrence"),
-    ("datetime", "datetime"),
     ("get_due_nudges", "get_due_nudges"),
     ("claim_due_reminders", "claim_due_reminders"),
     ("get_due_reminders", "get_due_reminders"),

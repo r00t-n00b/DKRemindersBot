@@ -102,6 +102,7 @@ def test_reminders_workers_module_contains_expected_paths():
     assert "async def run_reminders_worker(" in source
     assert "async def run_reminders_nudge_worker(" in source
 
+    assert "now = get_now()" in source
     assert "reset_stale_processing_reminders(now)" in source
     assert "claim_due_reminders(now)" in source
     assert "mark_reminder_delivery_failed(" in source
