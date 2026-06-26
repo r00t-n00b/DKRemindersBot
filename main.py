@@ -309,7 +309,7 @@ from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tabl
 from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
 from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
-from storage_write import add_reminder_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_sent_impl, update_reminder_time_impl
+from storage_write import add_reminder_impl, claim_due_reminders_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_delivery_failed_impl, mark_reminder_sent_impl, reset_stale_processing_reminders_impl, update_reminder_time_impl
 from storage_nudges import _nudge_threshold_minutes_impl, exhaust_nudges_impl, get_due_nudges_impl, increment_nudge_count_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
 from alias_settings_deps import build_alias_settings_command_deps
@@ -458,8 +458,32 @@ def add_reminder(chat_id: int, text: str, remind_at: datetime, created_by: Optio
 def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
     return update_reminder_time_impl(reminder_id, new_dt, deps=_build_storage_write_deps())
 
+def claim_due_reminders(now: datetime, limit: int = 50) -> List[Reminder]:
+    return claim_due_reminders_impl(now, deps=_build_storage_write_deps(), limit=limit)
+
 def mark_reminder_sent(reminder_id: int, sent_at: Optional[datetime]=None) -> None:
     return mark_reminder_sent_impl(reminder_id, sent_at, deps=_build_storage_write_deps())
+
+def mark_reminder_delivery_failed(
+    reminder_id: int,
+    error: str,
+    failed_at: Optional[datetime] = None,
+    retry_after_seconds: int = 60,
+) -> None:
+    return mark_reminder_delivery_failed_impl(
+        reminder_id,
+        error,
+        deps=_build_storage_write_deps(),
+        failed_at=failed_at,
+        retry_after_seconds=retry_after_seconds,
+    )
+
+def reset_stale_processing_reminders(now: datetime, stale_after_seconds: int = 600) -> int:
+    return reset_stale_processing_reminders_impl(
+        now,
+        deps=_build_storage_write_deps(),
+        stale_after_seconds=stale_after_seconds,
+    )
 
 def mark_reminder_acked(reminder_id: int) -> None:
     return mark_reminder_acked_impl(reminder_id, deps=_build_storage_write_deps())

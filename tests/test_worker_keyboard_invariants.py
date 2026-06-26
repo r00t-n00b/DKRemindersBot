@@ -42,11 +42,11 @@ def _reminder(reminder_id=123, chat_id=456, text="test reminder", template_id=No
 
 
 def _install_one_iteration_worker(main_module, monkeypatch, reminder, chat_type):
-    calls = {"get_due": 0}
+    calls = {"claim_due": 0}
 
-    def fake_get_due_reminders(now):
-        calls["get_due"] += 1
-        if calls["get_due"] == 1:
+    def fake_claim_due_reminders(now):
+        calls["claim_due"] += 1
+        if calls["claim_due"] == 1:
             return [reminder]
         raise StopWorker()
 
@@ -56,7 +56,9 @@ def _install_one_iteration_worker(main_module, monkeypatch, reminder, chat_type)
     async def fake_sleep(_seconds):
         return None
 
-    monkeypatch.setattr(main_module, "get_due_reminders", fake_get_due_reminders)
+    monkeypatch.setattr(main_module, "claim_due_reminders", fake_claim_due_reminders)
+    monkeypatch.setattr(main_module, "reset_stale_processing_reminders", lambda now: 0)
+    monkeypatch.setattr(main_module, "mark_reminder_delivery_failed", lambda *args, **kwargs: None)
     monkeypatch.setattr(main_module, "_safe_get_chat_type", fake_safe_get_chat_type)
     monkeypatch.setattr(main_module, "mark_reminder_sent", lambda *args, **kwargs: None)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)

@@ -21,7 +21,9 @@ def test_main_reminders_worker_delegates_to_worker_module(monkeypatch):
     assert calls[0][0] is app
 
     deps = calls[0][1]
-    assert hasattr(deps, "get_due_reminders")
+    assert hasattr(deps, "claim_due_reminders")
+    assert hasattr(deps, "reset_stale_processing_reminders")
+    assert hasattr(deps, "mark_reminder_delivery_failed")
     assert hasattr(deps, "build_snooze_keyboard")
     assert hasattr(deps, "build_group_reminder_keyboard")
     assert hasattr(deps, "register_reminder_message")
@@ -100,7 +102,9 @@ def test_reminders_workers_module_contains_expected_paths():
     assert "async def run_reminders_worker(" in source
     assert "async def run_reminders_nudge_worker(" in source
 
-    assert "get_due_reminders(now)" in source
+    assert "reset_stale_processing_reminders(now)" in source
+    assert "claim_due_reminders(now)" in source
+    assert "mark_reminder_delivery_failed(" in source
     assert "build_group_reminder_keyboard(r.id)" in source
     assert "build_snooze_keyboard(r.id)" in source
     assert "register_reminder_message(" in source

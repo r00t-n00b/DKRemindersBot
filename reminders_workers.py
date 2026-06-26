@@ -13,6 +13,7 @@ _DEP_NAMES = [
     "asyncio",
     "build_group_reminder_keyboard",
     "build_snooze_keyboard",
+    "claim_due_reminders",
     "compute_next_occurrence",
     "datetime",
     "get_due_nudges",
@@ -21,8 +22,10 @@ _DEP_NAMES = [
     "get_recurring_template",
     "increment_nudge_count",
     "logger",
+    "mark_reminder_delivery_failed",
     "mark_reminder_sent",
     "register_reminder_message",
+    "reset_stale_processing_reminders",
 ]
 
 
@@ -46,10 +49,14 @@ async def run_reminders_worker(app, deps) -> None:
     while True:
         try:
             now = datetime.now(TZ)
-            due = get_due_reminders(now)
+            reset_count = reset_stale_processing_reminders(now)
+            if reset_count:
+                logger.warning("Reset stale processing reminders: %s", reset_count)
+
+            due = claim_due_reminders(now)
 
             if due:
-                logger.info("Нашел %s напоминаний к отправке", len(due))
+                logger.info("Claimed %s напоминаний к отправке", len(due))
 
             for r in due:
                 try:
@@ -114,7 +121,8 @@ async def run_reminders_worker(app, deps) -> None:
                                     next_dt.isoformat(),
                                 )
 
-                except Exception:
+                except Exception as exc:
+                    mark_reminder_delivery_failed(r.id, str(exc), failed_at=now)
                     logger.exception(
                         "Ошибка при отправке напоминания id=%s",
                         r.id,

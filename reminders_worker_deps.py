@@ -15,12 +15,15 @@ REMINDERS_WORKER_DEP_SPECS = (
     ("compute_next_occurrence", "compute_next_occurrence"),
     ("datetime", "datetime"),
     ("get_due_nudges", "get_due_nudges"),
+    ("claim_due_reminders", "claim_due_reminders"),
     ("get_due_reminders", "get_due_reminders"),
     ("get_now", "get_now"),
     ("get_recurring_template", "get_recurring_template"),
     ("increment_nudge_count", "increment_nudge_count"),
     ("logger", "logger"),
+    ("mark_reminder_delivery_failed", "mark_reminder_delivery_failed"),
     ("mark_reminder_sent", "mark_reminder_sent"),
+    ("reset_stale_processing_reminders", "reset_stale_processing_reminders"),
     ("register_reminder_message", "register_reminder_message"),
 )
 

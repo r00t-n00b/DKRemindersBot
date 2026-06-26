@@ -53,7 +53,34 @@ def init_db_impl(*, deps) -> None:
     if 'nudge_count' not in cols:
         c.execute('ALTER TABLE reminders ADD COLUMN nudge_count INTEGER NOT NULL DEFAULT 0')
         logger.info('DB migration: added reminders.nudge_count column')
+    if 'delivery_state' not in cols:
+        c.execute("ALTER TABLE reminders ADD COLUMN delivery_state TEXT NOT NULL DEFAULT 'pending'")
+        logger.info('DB migration: added reminders.delivery_state column')
+    if 'processing_started_at' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN processing_started_at TEXT')
+        logger.info('DB migration: added reminders.processing_started_at column')
+    if 'delivery_attempts' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN delivery_attempts INTEGER NOT NULL DEFAULT 0')
+        logger.info('DB migration: added reminders.delivery_attempts column')
+    if 'last_error' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN last_error TEXT')
+        logger.info('DB migration: added reminders.last_error column')
+    if 'next_retry_at' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN next_retry_at TEXT')
+        logger.info('DB migration: added reminders.next_retry_at column')
+
+    c.execute(
+        """
+        UPDATE reminders
+        SET delivery_state = CASE WHEN delivered = 1 THEN 'sent' ELSE 'pending' END
+        WHERE delivery_state IS NULL
+           OR delivery_state = ''
+        """
+    )
+
     c.execute('CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(delivered, remind_at)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_reminders_delivery_claim ON reminders(delivered, delivery_state, remind_at, next_retry_at)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_reminders_processing_started ON reminders(delivery_state, processing_started_at)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_reminders_nudge ON reminders(delivered, acked, nudge_count, sent_at)')
     c.execute('\n        CREATE TABLE IF NOT EXISTS reminder_messages (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            reminder_id INTEGER NOT NULL,\n            chat_id INTEGER NOT NULL,\n            message_id INTEGER NOT NULL,\n            kind TEXT NOT NULL,\n            created_at TEXT NOT NULL,\n            UNIQUE(reminder_id, chat_id, message_id)\n        )\n        ')
     c.execute('CREATE INDEX IF NOT EXISTS idx_reminder_messages_reminder_id ON reminder_messages(reminder_id)')

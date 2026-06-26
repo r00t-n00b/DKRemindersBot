@@ -31,7 +31,9 @@ def test_group_reminder_sent_with_self_remind_button(main_module, monkeypatch):
         template_id=None,
     )
 
-    monkeypatch.setattr(m, "get_due_reminders", lambda _now: [reminder])
+    monkeypatch.setattr(m, "claim_due_reminders", lambda _now: [reminder])
+    monkeypatch.setattr(m, "reset_stale_processing_reminders", lambda _now: 0)
+    monkeypatch.setattr(m, "mark_reminder_delivery_failed", lambda *args, **kwargs: None)
 
     async def fake_safe_get_chat_type(app, chat_id):
         assert chat_id == 999
