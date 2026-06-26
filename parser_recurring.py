@@ -1,9 +1,9 @@
 """High-level recurring reminder parser."""
+from time_utils import BOT_TZ, ensure_aware
 
 import re
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_lexicon import (
     INTERVAL_UNITS_EN,
@@ -24,7 +24,7 @@ from parser_split import _split_expr_and_text
 from parser_time_tokens import _extract_time_from_tokens
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def _default_time_or(value: Optional[Tuple[int, int]], fallback_hour: int, fallback_minute: int) -> Tuple[int, int]:
@@ -145,7 +145,7 @@ def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, i
     if pattern_type is None:
         if tokens_match_alias(tokens_no_time, RECURRING_WEEKLY_ALIASES):
             pattern_type = "weekly"
-            payload = {"weekday": now.astimezone(TZ).weekday()}
+            payload = {"weekday": ensure_aware(now).astimezone(TZ).weekday()}
         elif len(tokens_no_time) >= 2:
             second = tokens_no_time[1]
             if first == "every" and second in WEEKDAY_EN:
@@ -153,13 +153,13 @@ def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, i
                 payload = {"weekday": WEEKDAY_EN[second]}
             elif first == "every" and second in {"week", "weeks"}:
                 pattern_type = "weekly"
-                payload = {"weekday": now.astimezone(TZ).weekday()}
+                payload = {"weekday": ensure_aware(now).astimezone(TZ).weekday()}
             elif first.startswith("кажд") and second in WEEKDAY_RU:
                 pattern_type = "weekly"
                 payload = {"weekday": WEEKDAY_RU[second]}
             elif first.startswith("кажд") and second in {"неделю", "недели", "недель"}:
                 pattern_type = "weekly"
-                payload = {"weekday": now.astimezone(TZ).weekday()}
+                payload = {"weekday": ensure_aware(now).astimezone(TZ).weekday()}
 
     # weekly_multi: weekdays / weekends / по будням / по выходным
     if pattern_type is None:
@@ -231,17 +231,17 @@ def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, i
         day = None
 
         if tokens_match_alias(tokens_no_time, RECURRING_MONTHLY_ALIASES):
-            day = now.astimezone(TZ).day
+            day = ensure_aware(now).astimezone(TZ).day
 
         elif len(tokens_no_time) >= 2 and first == "every" and tokens_no_time[1] in {"month", "months"}:
-            day = now.astimezone(TZ).day
+            day = ensure_aware(now).astimezone(TZ).day
             if len(tokens_no_time) >= 3:
                 parsed = _parse_day_token(tokens_no_time[2])
                 if parsed is not None:
                     day = parsed
 
         elif len(tokens_no_time) >= 2 and first.startswith("кажд") and tokens_no_time[1].startswith("месяц"):
-            day = now.astimezone(TZ).day
+            day = ensure_aware(now).astimezone(TZ).day
             if len(tokens_no_time) >= 3:
                 parsed = _parse_day_token(tokens_no_time[2])
                 if parsed is not None:
@@ -292,7 +292,7 @@ def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, i
     # yearly: yearly / every year / каждый год / every year on december 25 [10:00] - text
     if pattern_type is None:
         if tokens_no_time == ["yearly"]:
-            now_local = now.astimezone(TZ)
+            now_local = ensure_aware(now).astimezone(TZ)
             pattern_type = "yearly"
             payload = {"month": now_local.month, "day": now_local.day}
 
@@ -314,12 +314,12 @@ def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, i
                     pattern_type = "yearly"
                     payload = {"month": month, "day": day}
             else:
-                now_local = now.astimezone(TZ)
+                now_local = ensure_aware(now).astimezone(TZ)
                 pattern_type = "yearly"
                 payload = {"month": now_local.month, "day": now_local.day}
 
         elif len(tokens_no_time) >= 2 and first.startswith("кажд") and tokens_no_time[1] in {"год", "года"}:
-            now_local = now.astimezone(TZ)
+            now_local = ensure_aware(now).astimezone(TZ)
             pattern_type = "yearly"
             payload = {"month": now_local.month, "day": now_local.day}
 

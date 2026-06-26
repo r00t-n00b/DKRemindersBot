@@ -1,8 +1,8 @@
 """High-level one-off reminder date/time parser."""
+from time_utils import BOT_TZ, ensure_aware
 
 from datetime import datetime
 from typing import Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_absolute import _parse_absolute
 from parser_in_expression import _parse_in_expression
@@ -15,7 +15,7 @@ from parser_time_tokens import VAGUE_TIME_WORDS
 from parser_weekend_weekday import _parse_weekend_weekday
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def parse_date_time_smart(s: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Tuple[datetime, str]:
@@ -42,7 +42,7 @@ def parse_date_time_smart(s: str, now: datetime, default_time: Optional[Tuple[in
             text = text_parts[1].strip() if len(text_parts) == 2 else ""
     expr_lower = expr.lower().strip()
     expr_lower = _normalize_on_at_phrase(expr_lower)
-    now = now.astimezone(TZ)
+    now = ensure_aware(now).astimezone(TZ)
 
     dt = _parse_standalone_vague_time(expr_lower, now)
     if dt is not None:

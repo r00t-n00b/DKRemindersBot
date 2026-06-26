@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from models import Reminder
-from time_utils import from_iso, to_iso
+from time_utils import aware_now, from_iso, to_iso
 
 
 _DEP_NAMES = (
@@ -54,7 +54,7 @@ def add_reminder_impl(
             text,
             to_iso(remind_at),
             created_by,
-            datetime.now(TZ).isoformat(),
+            aware_now(TZ).isoformat(),
             0,
             template_id,
         ]
@@ -379,7 +379,7 @@ def create_recurring_template_impl(
             time_hour,
             time_minute,
             created_by,
-            datetime.now(TZ).isoformat(),
+            aware_now(TZ).isoformat(),
         ),
     )
     tpl_id = c.lastrowid

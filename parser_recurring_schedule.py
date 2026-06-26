@@ -1,12 +1,12 @@
 """Recurring schedule calculation helpers."""
+from time_utils import BOT_TZ, ensure_aware
 
 import calendar
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
-from zoneinfo import ZoneInfo
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def _add_months_clamped(dt: datetime, months: int) -> datetime:
@@ -25,7 +25,7 @@ def compute_next_occurrence(
     time_minute: int,
     after_dt: datetime,
 ) -> Optional[datetime]:
-    local = after_dt.astimezone(TZ)
+    local = ensure_aware(after_dt).astimezone(TZ)
     if pattern_type == "daily":
         candidate = local.replace(
             hour=time_hour,
@@ -102,7 +102,7 @@ def compute_next_occurrence(
         month = int(payload["month"])
         day = int(payload["day"])
 
-        base = after_dt.astimezone(TZ)
+        base = ensure_aware(after_dt).astimezone(TZ)
         year = base.year
 
         # Если дата в этом году уже прошла - берем следующий год.
@@ -129,7 +129,7 @@ def compute_next_occurrence(
         if value <= 0:
             return None
 
-        base = after_dt.astimezone(TZ).replace(second=0, microsecond=0)
+        base = ensure_aware(after_dt).astimezone(TZ).replace(second=0, microsecond=0)
 
         if unit == "minutes":
             return base + timedelta(minutes=value)

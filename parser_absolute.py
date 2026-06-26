@@ -1,14 +1,14 @@
 """Absolute date/time parser helpers."""
+from time_utils import BOT_TZ, ensure_aware
 
 import re
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_lexicon import MONTH_EN
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def _default_time_or(value: Optional[Tuple[int, int]], fallback_hour: int, fallback_minute: int) -> Tuple[int, int]:
@@ -17,7 +17,7 @@ def _default_time_or(value: Optional[Tuple[int, int]], fallback_hour: int, fallb
 
 def _parse_absolute(expr: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> Optional[datetime]:
     s = expr.strip()
-    local = now.astimezone(TZ)
+    local = ensure_aware(now).astimezone(TZ)
 
     # DD.MM.YYYY HH:MM / DD.MM.YY HH:MM
     m = re.fullmatch(

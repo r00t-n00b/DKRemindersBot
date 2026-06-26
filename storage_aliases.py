@@ -1,4 +1,5 @@
 """Storage helpers for chat/user aliases."""
+from time_utils import aware_now
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -100,7 +101,7 @@ def get_user_alias_impl(alias: str, created_by: int, *, deps) -> Optional[Dict[s
 
 def set_user_alias_impl(alias: str, user_id: int, chat_id: int, username: Optional[str], created_by: int, *, deps) -> None:
     _apply_deps(deps)
-    now_iso = datetime.now(TZ).isoformat()
+    now_iso = aware_now(TZ).isoformat()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     existing_alias = _find_existing_alias_casefold(c, 'user_aliases', alias, created_by)

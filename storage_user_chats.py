@@ -1,4 +1,5 @@
 """Storage helpers for Telegram user chat bindings."""
+from time_utils import aware_now
 
 from datetime import datetime
 from typing import Optional
@@ -20,7 +21,7 @@ def upsert_user_chat_impl(user_id: int, chat_id: int, username: Optional[str], f
     _apply_deps(deps)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('\n        INSERT INTO user_chats(user_id, chat_id, username, first_name, last_name, updated_at)\n        VALUES (?, ?, ?, ?, ?, ?)\n        ON CONFLICT(user_id) DO UPDATE SET\n            chat_id = excluded.chat_id,\n            username = excluded.username,\n            first_name = excluded.first_name,\n            last_name = excluded.last_name,\n            updated_at = excluded.updated_at\n        ', (user_id, chat_id, (username or '').lower() if username else None, first_name, last_name, datetime.now(TZ).isoformat()))
+    c.execute('\n        INSERT INTO user_chats(user_id, chat_id, username, first_name, last_name, updated_at)\n        VALUES (?, ?, ?, ?, ?, ?)\n        ON CONFLICT(user_id) DO UPDATE SET\n            chat_id = excluded.chat_id,\n            username = excluded.username,\n            first_name = excluded.first_name,\n            last_name = excluded.last_name,\n            updated_at = excluded.updated_at\n        ', (user_id, chat_id, (username or '').lower() if username else None, first_name, last_name, aware_now(TZ).isoformat()))
     conn.commit()
     conn.close()
 

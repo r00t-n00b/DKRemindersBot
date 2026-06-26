@@ -1,14 +1,14 @@
 """Month-name date parser helpers."""
+from time_utils import BOT_TZ, ensure_aware
 
 import re
 from datetime import datetime
 from typing import Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_lexicon import MONTH_EN, MONTH_RU
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def _default_time_or(value: Optional[Tuple[int, int]], fallback_hour: int, fallback_minute: int) -> Tuple[int, int]:
@@ -26,7 +26,7 @@ def _parse_month_name_date(expr: str, now: datetime, default_time: Optional[Tupl
     - on 25 January at 20:30
     """
     s = expr.lower().strip()
-    local = now.astimezone(TZ)
+    local = ensure_aware(now).astimezone(TZ)
 
     # Нормализация: убираем лишний "on" в начале
     if s.startswith("on "):

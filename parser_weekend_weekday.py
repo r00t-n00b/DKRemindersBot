@@ -1,13 +1,13 @@
 """Weekend/weekday parser helpers."""
+from time_utils import BOT_TZ, ensure_aware
 
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_time_tokens import _extract_time_from_tokens
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 SYSTEM_DEFAULT_REMINDER_HOUR = 10
 SYSTEM_DEFAULT_REMINDER_MINUTE = 0
 
@@ -22,7 +22,7 @@ def _parse_weekend_weekday(expr: str, now: datetime, default_time: Optional[Tupl
     if not tokens:
         return None
 
-    local = now.astimezone(TZ)
+    local = ensure_aware(now).astimezone(TZ)
 
     tokens_no_time, hour, minute = _extract_time_from_tokens(tokens, *_default_time_or(default_time, SYSTEM_DEFAULT_REMINDER_HOUR, SYSTEM_DEFAULT_REMINDER_MINUTE))
     if not tokens_no_time:

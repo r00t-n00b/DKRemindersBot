@@ -1,14 +1,14 @@
 """Next/this weekday/month/week parser helpers."""
+from time_utils import BOT_TZ, ensure_aware
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_lexicon import NEXT_WORDS, THIS_WORDS, WEEKDAY_EN, WEEKDAY_RU
 from parser_time_tokens import _extract_time_from_tokens
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 SYSTEM_DEFAULT_REMINDER_HOUR = 10
 SYSTEM_DEFAULT_REMINDER_MINUTE = 0
 
@@ -23,7 +23,7 @@ def _parse_next_expression(expr: str, now: datetime, default_time: Optional[Tupl
     if not tokens:
         return None
 
-    local = now.astimezone(TZ)
+    local = ensure_aware(now).astimezone(TZ)
 
     next_words = NEXT_WORDS
     this_words = THIS_WORDS

@@ -1,12 +1,12 @@
 """Inline keyboard builders for Telegram reminder UI."""
+from time_utils import BOT_TZ, aware_now
 
 from calendar import monthrange
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
 from typing import List, Optional
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 try:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -223,7 +223,7 @@ def build_custom_date_keyboard(
     - Навигация prev/next месяц
     - Today и Cancel
     """
-    today = datetime.now(TZ).date()
+    today = aware_now(TZ).date()
 
     if year is None or month is None:
         year = today.year
@@ -322,7 +322,7 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix:
         y, m, d = map(int, date_str.split("-"))
         chosen = date(y, m, d)
     except Exception:
-        chosen = datetime.now(TZ).date()
+        chosen = aware_now(TZ).date()
 
     def _btn(text: str, cb: str):
         return InlineKeyboardButton(text=text, callback_data=cb)

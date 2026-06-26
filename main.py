@@ -17,7 +17,7 @@ from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from time_utils import BOT_TZ
+from time_utils import BOT_TZ, ensure_aware
 
 # --- Telegram imports ---
 # Во время тестов telegram не установлен, поэтому:
@@ -900,7 +900,7 @@ async def list_command(update: Update, context: CTX) -> None:
     await handle_list_command_flow(update, context, _build_list_command_deps())
 
 def compute_snooze_target_time(action: str, now: datetime, default_time: Optional[Tuple[int, int]] = None) -> datetime:
-    now = now.astimezone(TZ)
+    now = ensure_aware(now).astimezone(TZ)
 
     if action == "20m":
         return now + timedelta(minutes=20)
