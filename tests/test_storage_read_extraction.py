@@ -2,6 +2,8 @@ import sqlite3
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 import main
 import storage_read
 
@@ -76,13 +78,13 @@ def test_storage_read_get_due_reminders_returns_models(tmp_path):
     conn.execute(
         """
         INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id)
-        VALUES (10, 'due', '2026-01-01T10:00:00', 7, '2026-01-01T09:00:00', 0, NULL)
+        VALUES (10, 'due', '2026-01-01T10:00:00+00:00', 7, '2026-01-01T09:00:00+00:00', 0, NULL)
         """
     )
     conn.execute(
         """
         INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id)
-        VALUES (10, 'future', '2026-01-03T10:00:00', 7, '2026-01-01T09:00:00', 0, NULL)
+        VALUES (10, 'future', '2026-01-03T10:00:00+00:00', 7, '2026-01-01T09:00:00+00:00', 0, NULL)
         """
     )
     conn.commit()
@@ -90,12 +92,177 @@ def test_storage_read_get_due_reminders_returns_models(tmp_path):
 
     deps = SimpleNamespace(DB_PATH=str(db_path), json=__import__("json"), sqlite3=sqlite3)
 
-    rows = storage_read.get_due_reminders_impl(datetime.fromisoformat("2026-01-02T10:00:00"), deps)
+    rows = storage_read.get_due_reminders_impl(
+        datetime.fromisoformat("2026-01-02T10:00:00+00:00"),
+        deps,
+    )
 
     assert len(rows) == 1
     assert rows[0].text == "due"
     assert rows[0].chat_id == 10
     assert rows[0].created_by == 7
+    assert rows[0].remind_at.isoformat() == "2026-01-01T10:00:00+00:00"
+
+
+def test_storage_read_get_due_reminders_rejects_naive_now(tmp_path):
+    db_path = tmp_path / "reminders.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0,
+            template_id INTEGER,
+            acked INTEGER NOT NULL DEFAULT 0,
+            sent_at TEXT,
+            nudge_count INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    deps = SimpleNamespace(DB_PATH=str(db_path), json=__import__("json"), sqlite3=sqlite3)
+
+    with pytest.raises(ValueError, match="naive datetime"):
+        storage_read.get_due_reminders_impl(
+            datetime.fromisoformat("2026-01-02T10:00:00"),
+            deps,
+        )
+
+
+def test_storage_read_get_due_reminders_rejects_naive_remind_at_from_db(tmp_path):
+    db_path = tmp_path / "reminders.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0,
+            template_id INTEGER,
+            acked INTEGER NOT NULL DEFAULT 0,
+            sent_at TEXT,
+            nudge_count INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id)
+        VALUES (10, 'due', '2026-01-01T10:00:00', 7, '2026-01-01T09:00:00+00:00', 0, NULL)
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    deps = SimpleNamespace(DB_PATH=str(db_path), json=__import__("json"), sqlite3=sqlite3)
+
+    with pytest.raises(ValueError, match="naive datetime"):
+        storage_read.get_due_reminders_impl(
+            datetime.fromisoformat("2026-01-02T10:00:00+00:00"),
+            deps,
+        )
+
+
+def test_storage_read_get_reminder_uses_aware_timestamps(tmp_path):
+    db_path = tmp_path / "reminders.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0,
+            template_id INTEGER,
+            acked INTEGER NOT NULL DEFAULT 0,
+            sent_at TEXT,
+            nudge_count INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id, sent_at)
+        VALUES (
+            10,
+            'hello',
+            '2026-01-01T10:00:00+00:00',
+            7,
+            '2026-01-01T09:00:00+00:00',
+            1,
+            NULL,
+            '2026-01-01T10:01:00+00:00'
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    deps = SimpleNamespace(DB_PATH=str(db_path), json=__import__("json"), sqlite3=sqlite3)
+
+    reminder = storage_read.get_reminder_impl(1, deps)
+
+    assert reminder.text == "hello"
+    assert reminder.remind_at.isoformat() == "2026-01-01T10:00:00+00:00"
+    assert reminder.sent_at.isoformat() == "2026-01-01T10:01:00+00:00"
+
+
+def test_storage_read_get_reminder_rejects_naive_timestamps_from_db(tmp_path):
+    db_path = tmp_path / "reminders.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0,
+            template_id INTEGER,
+            acked INTEGER NOT NULL DEFAULT 0,
+            sent_at TEXT,
+            nudge_count INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id, sent_at)
+        VALUES (
+            10,
+            'hello',
+            '2026-01-01T10:00:00',
+            7,
+            '2026-01-01T09:00:00+00:00',
+            1,
+            NULL,
+            '2026-01-01T10:01:00+00:00'
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    deps = SimpleNamespace(DB_PATH=str(db_path), json=__import__("json"), sqlite3=sqlite3)
+
+    with pytest.raises(ValueError, match="naive datetime"):
+        storage_read.get_reminder_impl(1, deps)
 
 
 def test_storage_read_get_reminder_row_and_active_lists(tmp_path):
@@ -121,13 +288,13 @@ def test_storage_read_get_reminder_row_and_active_lists(tmp_path):
     conn.execute(
         """
         INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id)
-        VALUES (20, 'active', '2026-01-01T10:00:00', 77, '2026-01-01T09:00:00', 0, 5)
+        VALUES (20, 'active', '2026-01-01T10:00:00+00:00', 77, '2026-01-01T09:00:00+00:00', 0, 5)
         """
     )
     conn.execute(
         """
         INSERT INTO reminders(chat_id, text, remind_at, created_by, created_at, delivered, template_id)
-        VALUES (20, 'done', '2026-01-01T11:00:00', 77, '2026-01-01T09:00:00', 1, 5)
+        VALUES (20, 'done', '2026-01-01T11:00:00+00:00', 77, '2026-01-01T09:00:00+00:00', 1, 5)
         """
     )
     conn.commit()

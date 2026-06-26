@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 
 from models import Reminder
+from time_utils import from_iso, to_iso
 
 
 
@@ -47,7 +48,7 @@ def get_due_reminders_impl(now: datetime, deps) -> List[Reminder]:
         WHERE delivered = 0 AND remind_at <= ?
         ORDER BY remind_at ASC
         """,
-        (now.isoformat(),),
+        (to_iso(now),),
     )
     rows = c.fetchall()
     conn.close()
@@ -59,7 +60,7 @@ def get_due_reminders_impl(now: datetime, deps) -> List[Reminder]:
                 id=rid,
                 chat_id=chat_id,
                 text=text,
-                remind_at=datetime.fromisoformat(remind_at_str),
+                remind_at=from_iso(remind_at_str),
                 created_by=created_by,
                 template_id=template_id,
             )
@@ -86,13 +87,13 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
         return None
 
     rid, chat_id, text, remind_at_str, created_by, template_id, sent_at_str = row
-    sent_at = datetime.fromisoformat(sent_at_str) if sent_at_str else None
+    sent_at = from_iso(sent_at_str) if sent_at_str else None
 
     return Reminder(
         id=rid,
         chat_id=chat_id,
         text=text,
-        remind_at=datetime.fromisoformat(remind_at_str),
+        remind_at=from_iso(remind_at_str),
         created_by=created_by,
         template_id=template_id,
         sent_at=sent_at,

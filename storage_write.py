@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from models import Reminder
+from time_utils import from_iso, to_iso
 
 
 _DEP_NAMES = (
@@ -51,7 +52,7 @@ def add_reminder_impl(
         values = [
             chat_id,
             text,
-            remind_at.isoformat(),
+            to_iso(remind_at),
             created_by,
             datetime.now(TZ).isoformat(),
             0,
@@ -96,7 +97,7 @@ def update_reminder_time_impl(reminder_id: int, new_dt: datetime, *, deps) -> bo
             "sent_at = NULL",
             "nudge_count = 0",
         ]
-        values = [new_dt.isoformat()]
+        values = [to_iso(new_dt)]
 
         if "delivery_state" in cols:
             assignments.append("delivery_state = 'pending'")
@@ -135,7 +136,7 @@ def mark_reminder_sent_impl(
     if sent_at is None:
         sent_at = get_now()
     if isinstance(sent_at, str):
-        sent_at = datetime.fromisoformat(sent_at)
+        sent_at = from_iso(sent_at)
 
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -146,7 +147,7 @@ def mark_reminder_sent_impl(
             "sent_at = ?",
             "acked = 0",
         ]
-        values = [sent_at.isoformat()]
+        values = [to_iso(sent_at)]
 
         if "delivery_state" in cols:
             assignments.append("delivery_state = 'sent'")
@@ -179,7 +180,7 @@ def claim_due_reminders_impl(
     limit: int = 50,
 ) -> List[Reminder]:
     _apply_deps(deps)
-    now_iso = now.isoformat()
+    now_iso = to_iso(now)
 
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -250,7 +251,7 @@ def claim_due_reminders_impl(
                 id=rid,
                 chat_id=chat_id,
                 text=text,
-                remind_at=datetime.fromisoformat(remind_at_str),
+                remind_at=from_iso(remind_at_str),
                 created_by=created_by,
                 template_id=template_id,
             )
@@ -288,7 +289,7 @@ def mark_reminder_delivery_failed_impl(
             WHERE id = ?
               AND delivered = 0
             """,
-            (safe_error, retry_at.isoformat(), int(reminder_id)),
+            (safe_error, to_iso(retry_at), int(reminder_id)),
         )
         conn.commit()
     finally:
@@ -323,7 +324,7 @@ def reset_stale_processing_reminders_impl(
               AND processing_started_at IS NOT NULL
               AND processing_started_at <= ?
             """,
-            (now.isoformat(), cutoff.isoformat()),
+            (to_iso(now), to_iso(cutoff)),
         )
         changed = c.rowcount
         conn.commit()
