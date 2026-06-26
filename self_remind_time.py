@@ -1,14 +1,15 @@
 """Time calculation helper for self-remind quick options."""
 
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+
+from time_utils import BOT_TZ, ensure_aware
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def compute_self_remind_time(option: str, now: datetime) -> datetime:
-    now = now.astimezone(TZ)
+    now = ensure_aware(now).astimezone(TZ)
 
     if option == "20m":
         return now + timedelta(minutes=20)

@@ -3,16 +3,16 @@
 import re
 from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple
-from zoneinfo import ZoneInfo
 
 from parser_lexicon import MONTH_EN
+from time_utils import BOT_TZ, ensure_aware
 
 
-TZ = ZoneInfo("Europe/Madrid")
+TZ = BOT_TZ
 
 
 def _nearest_future_time_from_base(hour: int, minute: int, base_now: datetime) -> datetime:
-    local = base_now.astimezone(TZ)
+    local = ensure_aware(base_now).astimezone(TZ)
     candidate = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= local:
         candidate = candidate + timedelta(days=1)
@@ -28,7 +28,7 @@ def _parse_time_match(match: re.Match) -> Tuple[int, int]:
 
 
 def _build_event_datetime(year: int, month: int, day: int, hour: int, minute: int, base_now: datetime) -> datetime:
-    local = base_now.astimezone(TZ)
+    local = ensure_aware(base_now).astimezone(TZ)
     dt = datetime(year, month, day, hour, minute, tzinfo=TZ)
     if dt <= local:
         try:
@@ -51,7 +51,7 @@ def extract_event_datetime_from_text(text: str, base_now: datetime) -> Optional[
         return None
 
     s = raw.lower()
-    local = base_now.astimezone(TZ)
+    local = ensure_aware(base_now).astimezone(TZ)
 
     time_re = r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})"
 
@@ -172,7 +172,7 @@ def normalize_relative_event_date_in_text(text: str, event_at: datetime) -> str:
 
     Меняем только первое вхождение.
     """
-    event_date = event_at.astimezone(TZ).strftime("%d.%m")
+    event_date = ensure_aware(event_at).astimezone(TZ).strftime("%d.%m")
 
     replacements = [
         r"\bday after tomorrow\b",
@@ -199,18 +199,18 @@ def normalize_relative_event_date_in_text(text: str, event_at: datetime) -> str:
 
 
 def get_self_remind_event_base(src: Any) -> datetime:
-    return src.sent_at or src.remind_at
+    return ensure_aware(src.sent_at or src.remind_at)
 
 
 def compute_event_before_time(option: str, event_at: datetime) -> Optional[datetime]:
     if option == "20m":
-        return event_at - timedelta(minutes=20)
+        return ensure_aware(event_at) - timedelta(minutes=20)
     if option == "1h":
-        return event_at - timedelta(hours=1)
+        return ensure_aware(event_at) - timedelta(hours=1)
     if option == "3h":
-        return event_at - timedelta(hours=3)
+        return ensure_aware(event_at) - timedelta(hours=3)
     if option == "10h":
-        return event_at - timedelta(hours=10)
+        return ensure_aware(event_at) - timedelta(hours=10)
     if option == "1d":
-        return event_at - timedelta(days=1)
+        return ensure_aware(event_at) - timedelta(days=1)
     return None
