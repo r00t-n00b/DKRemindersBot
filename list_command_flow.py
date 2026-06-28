@@ -86,27 +86,54 @@ async def handle_list_command_flow(update, context, deps) -> None:
         if alias:
             user_alias_chat_id = get_user_alias_chat_id_for_user(alias, user.id)
             if user_alias_chat_id is not None:
-                target_chat_id = user_alias_chat_id
-                used_alias = alias
-            else:
-                alias_chat_id = get_chat_id_by_alias_for_user(alias, user.id)
-                if alias_chat_id is None:
-                    aliases = get_all_aliases(user.id)
-                    if not aliases:
-                        await safe_reply(
-                            message,
-                            msg_list_alias_not_found_no_aliases(alias)
-                        )
-                    else:
-                        known = ", ".join(a for a, _, _ in aliases)
-                        await safe_reply(
-                            message,
-                            msg_list_alias_not_found_known(alias, known)
-                        )
+                rows = get_active_reminders_created_by_for_chat(
+                    chat_id=user_alias_chat_id,
+                    created_by=user.id,
+                )
+
+                presentation_rows = build_target_user_presentation_rows(
+                    rows,
+                    recurring_template_loader=get_recurring_template,
+                )
+
+                reply, ids, keyboard = build_target_user_reminders_list_response(
+                    presentation_rows,
+                    target_label=alias,
+                    list_delete_keyboard_builder=build_list_delete_keyboard,
+                )
+
+                if not ids:
+                    await safe_reply(message, reply)
                     return
 
-                target_chat_id = alias_chat_id
-                used_alias = alias
+                context.user_data["list_ids"] = ids
+                context.user_data["list_chat_id"] = user_alias_chat_id
+
+                await safe_reply(
+                    message,
+                    reply,
+                    reply_markup=keyboard,
+                )
+                return
+
+            alias_chat_id = get_chat_id_by_alias_for_user(alias, user.id)
+            if alias_chat_id is None:
+                aliases = get_all_aliases(user.id)
+                if not aliases:
+                    await safe_reply(
+                        message,
+                        msg_list_alias_not_found_no_aliases(alias)
+                    )
+                else:
+                    known = ", ".join(a for a, _, _ in aliases)
+                    await safe_reply(
+                        message,
+                        msg_list_alias_not_found_known(alias, known)
+                    )
+                return
+
+            target_chat_id = alias_chat_id
+            used_alias = alias
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()

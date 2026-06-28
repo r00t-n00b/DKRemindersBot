@@ -169,14 +169,47 @@ def test_list_unknown_alias_with_known_aliases_replies_known_aliases():
     )]
 
 
-def test_list_user_alias_uses_alias_chat_id_and_empty_alias_text():
-    deps = make_deps(get_user_alias_chat_id_for_user=lambda alias, user_id: 777)
+def test_list_user_alias_uses_created_by_filter_like_username():
+    calls = []
+
+    def get_created_by_rows(chat_id, created_by):
+        calls.append((chat_id, created_by))
+        return [
+            (1, "mine"),
+            (2, "also mine"),
+        ]
+
+    deps = make_deps(
+        get_user_alias_chat_id_for_user=lambda alias, user_id: 777,
+        get_active_reminders_created_by_for_chat=get_created_by_rows,
+    )
     update, context, message = make_update_and_context(args=["natasha"])
 
     run_flow(deps, update, context)
 
-    assert message.replies == [("empty:natasha", None)]
+    assert calls == [(777, 42)]
+    assert message.replies == [("target natasha: 2", "target-keyboard")]
+    assert context.user_data["list_ids"] == [1, 2]
+    assert context.user_data["list_chat_id"] == 777
+
+
+def test_list_user_alias_does_not_read_all_reminders_for_target_chat():
+    fake_sqlite = FakeSqlite3([
+        (999, " чужой reminder", "2026-01-01T10:00:00+00:00", None, None, None),
+    ])
+
+    deps = make_deps(
+        sqlite3=fake_sqlite,
+        get_user_alias_chat_id_for_user=lambda alias, user_id: 777,
+        get_active_reminders_created_by_for_chat=lambda chat_id, created_by: [],
+    )
+    update, context, message = make_update_and_context(args=["natasha"])
+
+    run_flow(deps, update, context)
+
+    assert message.replies == [("target natasha: 0", None)]
     assert context.user_data == {}
+    assert fake_sqlite.connections == []
 
 
 def test_list_chat_alias_reads_active_reminders_and_sets_ids():
