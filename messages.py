@@ -371,9 +371,16 @@ def msg_self_remind_event_before_prompt(event_at: str) -> str:
 
 MSG_DONE_COMPLETED = "Отмечено как завершенное"
 
+MSG_VOICE_TELEGRAM_FILE_FAILED = (
+    "Не смог скачать голосовое из Telegram: Telegram сейчас отвечает слишком долго. "
+    "Попробуй еще раз чуть позже или напиши текстом."
+)
 MSG_VOICE_TRANSCRIPTION_FAILED = (
     "Не смог распознать голосовое: сервис распознавания сейчас перегружен. "
     "Попробуй еще раз чуть позже или напиши текстом."
+)
+MSG_VOICE_FAILED_GENERIC = (
+    "Не смог обработать голосовое. Попробуй еще раз чуть позже или напиши текстом."
 )
 MSG_VOICE_EMPTY = "Не услышал текст в голосовом."
 

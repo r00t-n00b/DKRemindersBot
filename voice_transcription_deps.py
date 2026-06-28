@@ -10,6 +10,7 @@ VOICE_TRANSCRIPTION_DEP_SPECS = (
     ("download_telegram_file_bytes", "download_telegram_file_bytes"),
     ("genai", "genai"),
     ("genai_types", "genai_types"),
+    ("logger", "logger"),
     ("os", "os"),
 )
 
