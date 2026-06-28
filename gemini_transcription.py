@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from typing import Optional
 
 from gemini_errors import (
@@ -38,12 +39,28 @@ async def gemini_transcribe_audio_with_retries(
 
     attempts_per_model = max(1, min(5, attempts_per_model))
 
+    try:
+        attempt_timeout_sec = float(os.environ.get("GEMINI_TRANSCRIBE_ATTEMPT_TIMEOUT_SEC", "15"))
+    except ValueError:
+        attempt_timeout_sec = 15.0
+    attempt_timeout_sec = max(3.0, min(60.0, attempt_timeout_sec))
+
     for model in models:
         for attempt in range(1, attempts_per_model + 1):
             try:
-                result = client.models.generate_content(
-                    model=model,
-                    contents=[
+                attempt_start = time.monotonic()
+                logger.info(
+                    "GEMINI_TRANSCRIPTION_ATTEMPT_START model=%s attempt=%s timeout_sec=%s",
+                    model,
+                    attempt,
+                    attempt_timeout_sec,
+                )
+
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        client.models.generate_content,
+                        model=model,
+                        contents=[
                         genai_types.Part.from_bytes(
                             data=audio_bytes,
                             mime_type="audio/ogg",
@@ -95,14 +112,18 @@ async def gemini_transcribe_audio_with_retries(
                             f"{aliases_prompt}\n"
                         ),
                     ],
+                    ),
+                    timeout=attempt_timeout_sec,
                 )
 
+                duration_ms = int((time.monotonic() - attempt_start) * 1000)
                 text = (getattr(result, "text", "") or "").strip()
                 if text:
                     logger.info(
-                        "GEMINI_TRANSCRIPTION_SUCCESS model=%s attempt=%s",
+                        "GEMINI_TRANSCRIPTION_SUCCESS model=%s attempt=%s duration_ms=%s",
                         model,
                         attempt,
+                        duration_ms,
                     )
                     return text
 
@@ -111,17 +132,21 @@ async def gemini_transcribe_audio_with_retries(
             except Exception as e:
                 last_error = e
 
+                duration_ms = int((time.monotonic() - attempt_start) * 1000)
                 unsupported_model = _is_unsupported_gemini_model_error(e)
                 quota_error = _is_gemini_quota_error(e)
-                transient = _is_transient_gemini_error(e) and not quota_error
+                timed_out = isinstance(e, asyncio.TimeoutError)
+                transient = (timed_out or _is_transient_gemini_error(e)) and not quota_error
 
                 logger.warning(
-                    "GEMINI_TRANSCRIPTION_FAILED model=%s attempt=%s transient=%s unsupported_model=%s quota_error=%s error_type=%s error=%s",
+                    "GEMINI_TRANSCRIPTION_FAILED model=%s attempt=%s duration_ms=%s transient=%s unsupported_model=%s quota_error=%s timed_out=%s error_type=%s error=%s",
                     model,
                     attempt,
+                    duration_ms,
                     transient,
                     unsupported_model,
                     quota_error,
+                    timed_out,
                     type(e).__name__,
                     e,
                 )

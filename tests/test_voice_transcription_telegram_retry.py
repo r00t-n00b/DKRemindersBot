@@ -1,3 +1,4 @@
+import asyncio
 import os
 from types import SimpleNamespace
 
@@ -48,7 +49,7 @@ def build_update():
     )
 
 
-def build_deps(*, bot, download, gemini=None, logger=None):
+def build_deps(*, download, gemini=None, logger=None):
     async def default_gemini(**kwargs):
         return "завтра 10:00 тест"
 
@@ -63,10 +64,13 @@ def build_deps(*, bot, download, gemini=None, logger=None):
     )
 
 
-@pytest.mark.asyncio
-async def test_transcribe_voice_retries_telegram_get_file_timeout(monkeypatch):
+async def _no_sleep(delay):
+    return None
+
+
+def test_transcribe_voice_retries_telegram_get_file_timeout(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-token")
-    monkeypatch.setattr(voice_transcription.asyncio, "sleep", lambda delay: _no_sleep())
+    monkeypatch.setattr(voice_transcription.asyncio, "sleep", _no_sleep)
 
     bot = FakeBot([
         TimeoutError("first timeout"),
@@ -76,19 +80,18 @@ async def test_transcribe_voice_retries_telegram_get_file_timeout(monkeypatch):
     async def download(tg_file, suffix):
         return b"audio"
 
-    deps = build_deps(bot=bot, download=download)
+    deps = build_deps(download=download)
     context = SimpleNamespace(bot=bot)
 
-    result = await transcribe_voice_message_impl(build_update(), context, deps)
+    result = asyncio.run(transcribe_voice_message_impl(build_update(), context, deps))
 
     assert result == "завтра 10:00 тест"
     assert bot.calls == 2
 
 
-@pytest.mark.asyncio
-async def test_transcribe_voice_wraps_telegram_get_file_failure(monkeypatch):
+def test_transcribe_voice_wraps_telegram_get_file_failure(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-token")
-    monkeypatch.setattr(voice_transcription.asyncio, "sleep", lambda delay: _no_sleep())
+    monkeypatch.setattr(voice_transcription.asyncio, "sleep", _no_sleep)
 
     bot = FakeBot([
         TimeoutError("first timeout"),
@@ -99,14 +102,10 @@ async def test_transcribe_voice_wraps_telegram_get_file_failure(monkeypatch):
     async def download(tg_file, suffix):
         raise AssertionError("download must not be called when get_file fails")
 
-    deps = build_deps(bot=bot, download=download)
+    deps = build_deps(download=download)
     context = SimpleNamespace(bot=bot)
 
     with pytest.raises(VoiceTelegramFileError):
-        await transcribe_voice_message_impl(build_update(), context, deps)
+        asyncio.run(transcribe_voice_message_impl(build_update(), context, deps))
 
     assert bot.calls == 3
-
-
-async def _no_sleep():
-    return None

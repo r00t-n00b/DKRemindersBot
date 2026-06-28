@@ -1,4 +1,4 @@
-import pytest
+import asyncio
 from types import SimpleNamespace
 
 from messages import (
@@ -62,31 +62,28 @@ def build_deps(transcribe_error):
     )
 
 
-@pytest.mark.asyncio
-async def test_voice_telegram_file_error_gets_telegram_message():
+def test_voice_telegram_file_error_gets_telegram_message():
     update = build_update()
     deps = build_deps(VoiceTelegramFileError("telegram get_file failed"))
 
-    await handle_voice_remind_command(update, SimpleNamespace(), deps)
+    asyncio.run(handle_voice_remind_command(update, SimpleNamespace(), deps))
 
     assert update.effective_message.replies == [MSG_VOICE_TELEGRAM_FILE_FAILED]
 
 
-@pytest.mark.asyncio
-async def test_voice_transcription_service_error_gets_transcription_message():
+def test_voice_transcription_service_error_gets_transcription_message():
     update = build_update()
     deps = build_deps(VoiceTranscriptionServiceError("gemini overloaded"))
 
-    await handle_voice_remind_command(update, SimpleNamespace(), deps)
+    asyncio.run(handle_voice_remind_command(update, SimpleNamespace(), deps))
 
     assert update.effective_message.replies == [MSG_VOICE_TRANSCRIPTION_FAILED]
 
 
-@pytest.mark.asyncio
-async def test_voice_unknown_error_gets_generic_message():
+def test_voice_unknown_error_gets_generic_message():
     update = build_update()
     deps = build_deps(RuntimeError("unexpected"))
 
-    await handle_voice_remind_command(update, SimpleNamespace(), deps)
+    asyncio.run(handle_voice_remind_command(update, SimpleNamespace(), deps))
 
     assert update.effective_message.replies == [MSG_VOICE_FAILED_GENERIC]
