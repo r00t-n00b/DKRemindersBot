@@ -174,10 +174,12 @@ def test_geo_callback_edits_existing_message_and_shows_inline_fallback():
 
     asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
 
-    assert query.message.replies == []
+    assert len(query.message.replies) == 1
+    assert "Кнопка для отправки геопозиции" in query.message.replies[0][0]
+    assert query.message.replies[0][1].get("reply_markup") is not None
     assert len(query.message.edits) == 1
     text, kwargs = query.message.edits[0]
-    assert "Telegram Desktop" in text
+    assert "геопози" in text.lower()
     assert "выбери часовой пояс" in text.lower()
     assert kwargs.get("reply_markup") is not None
 
@@ -240,11 +242,12 @@ def test_geo_callback_edits_to_desktop_explanation_without_retry_geo_button():
 
     asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
 
-    assert query.message.replies == []
+    assert len(query.message.replies) == 1
+    assert "Кнопка для отправки геопозиции" in query.message.replies[0][0]
+    assert query.message.replies[0][1].get("reply_markup") is not None
     assert len(query.message.edits) == 1
     text, kwargs = query.message.edits[0]
-    assert "Telegram Desktop" in text
-    assert "телефоне" in text
+    assert "геопози" in text.lower()
     keyboard = kwargs["reply_markup"]
     callback_data = [
         button.callback_data
@@ -279,3 +282,37 @@ def test_same_timezone_confirmation_has_no_picker_keyboard():
     text, kwargs = query.message.edits[0]
     assert "уже выбран" in text
     assert "reply_markup" not in kwargs
+
+
+def test_location_same_timezone_does_not_ask_migration(monkeypatch):
+    saved = []
+
+    monkeypatch.setattr(
+        timezone_features,
+        "detect_timezone_from_location",
+        lambda latitude, longitude: "Europe/Madrid",
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 5,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    message = FakeMessage()
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        message=message,
+    )
+    update.effective_message.location = SimpleNamespace(latitude=41.38, longitude=2.17)
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(timezone_features.handle_timezone_location_message(update, context, deps))
+
+    assert saved == []
+    assert "pending_timezone_migration" not in context.user_data
+    assert message.replies
+    assert "уже выбран" in message.replies[0][0]
+

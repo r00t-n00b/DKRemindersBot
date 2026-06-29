@@ -238,11 +238,18 @@ async def handle_timezone_callback(update, context, deps) -> None:
         await _edit_or_reply(
             query,
             (
-                "Telegram Desktop не умеет отправлять геопозицию боту.\n\n"
-                "Чтобы определить часовой пояс автоматически, открой /settings в Telegram на телефоне.\n\n"
-                "На этом устройстве выбери часовой пояс кнопкой ниже:"
+                "Отправь геопозицию кнопкой внизу. "
+                "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
+                "Если кнопка геопозиции недоступна или не работает — выбери часовой пояс кнопкой ниже."
             ),
             reply_markup=build_timezone_other_keyboard(),
+        )
+
+        message = getattr(query, "message", None)
+        await _reply(
+            message,
+            "Кнопка для отправки геопозиции:",
+            reply_markup=build_location_request_keyboard(),
         )
         return
 
@@ -360,6 +367,18 @@ async def handle_timezone_location_message(update, context, deps) -> None:
         return
 
     old_tz = deps.get_user_timezone_name(user.id) or DEFAULT_TIMEZONE_NAME
+
+    if old_tz == tz_name:
+        await _reply(
+            message,
+            (
+                f"Этот часовой пояс уже выбран: {timezone_label(tz_name)}\n"
+                f"Сейчас в нём: {format_timezone_now(tz_name)}"
+            ),
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
     deps.set_user_timezone_name(user.id, tz_name)
 
     await _reply(
