@@ -67,6 +67,6 @@ def test_target_user_list_response_formats_rows_with_keyboard():
 
     assert ids == [101, 202]
     assert "Напоминания, которые ты поставил пользователю @friend:" in reply
-    assert "1. 22.06 19:30 - купить молоко" in reply
-    assert "2. 23.06 10:00 - пить воду  🔁 daily" in reply
+    assert "1. 22.06 19:30 CET - купить молоко" in reply
+    assert "2. 23.06 10:00 CET - пить воду  🔁 daily" in reply
     assert set(_callback_data(keyboard)) == {"del:1", "del:2"}

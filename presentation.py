@@ -10,7 +10,11 @@ from keyboards import build_list_delete_keyboard
 
 
 def _format_timezone_name(tz_name: Optional[str]) -> str:
-    return str(tz_name or "Europe/Madrid")
+    if not tz_name or tz_name == "Europe/Madrid":
+        return "CET"
+    if tz_name == "Europe/Moscow":
+        return "Россия / Москва"
+    return str(tz_name)
 
 
 def _datetime_in_row_timezone(dt: datetime, tz_name: Optional[str]) -> datetime:
@@ -165,7 +169,7 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
             human = format_recurring_human(tpl_pattern_type, tpl_payload)
             suffix = f"  🔁 {human}" if human else "  🔁"
 
-        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}  🕒 {tz_label}")
+        lines.append(f"{idx}. {ts} {tz_label} - {reminder_text}{suffix}")
         ids.append(rid)
 
     reply = header + "\n\n" + "\n".join(lines)
@@ -292,7 +296,7 @@ def build_target_user_reminders_list_response(
             human = format_recurring_human(tpl_pattern_type, tpl_payload)
             suffix = f"  🔁 {human}" if human else "  🔁"
 
-        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}  🕒 {tz_label}")
+        lines.append(f"{idx}. {ts} {tz_label} - {reminder_text}{suffix}")
         ids.append(rid)
 
     if not ids:

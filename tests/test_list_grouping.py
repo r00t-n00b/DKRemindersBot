@@ -74,8 +74,8 @@ def test_list_groups_reminders_by_today_tomorrow_later(main_module, fixed_now, m
 
     assert reply.startswith("Активные напоминания:")
 
-    assert "Сегодня\n1. 18:00 - today task" in reply
-    assert "Завтра\n2. 10:30 - tomorrow task" in reply
+    assert "Сегодня\n1. 18:00 CET - today task" in reply
+    assert "Завтра\n2. 10:30 CET - tomorrow task" in reply
     assert "Позже\n3. " in reply
     assert " - later task" in reply
 
@@ -121,7 +121,7 @@ def test_list_preserves_recurring_suffix_inside_group(main_module, fixed_now, mo
 
     reply, _ = update.effective_message.replies[0]
 
-    assert "Сегодня\n1. 10:00 - daily task  🔁" in reply
+    assert "Сегодня\n1. 10:00 CET - daily task  🔁" in reply
     assert context.user_data["list_ids"] == [reminder_id]
 
 

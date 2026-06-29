@@ -57,12 +57,12 @@ TZ_CALLBACK_PREFIX = "tz:"
 
 def timezone_label(tz_name: str | None) -> str:
     if not tz_name:
-        return DEFAULT_TIMEZONE_NAME
+        return "CET"
 
     if tz_name == "Europe/Madrid":
-        return "🇪🇺 CET / Europe-Madrid"
+        return "CET"
     if tz_name == "Europe/Moscow":
-        return "🇷🇺 Россия / Москва"
+        return "Россия / Москва"
     return str(tz_name)
 
 
@@ -82,6 +82,17 @@ def build_timezone_picker_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
             [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
             [InlineKeyboardButton("🌍 Выбрать другой", callback_data="tz:other")],
+        ]
+    )
+
+
+def build_timezone_other_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
+            [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
+            [InlineKeyboardButton("📍 Попробовать геопозицию", callback_data="tz:geo")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="tz:back")],
         ]
     )
 
@@ -205,7 +216,7 @@ async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz:
             f"У тебя есть активные напоминания: {active_count}.\n\n"
             "Перенести их в новый часовой пояс?\n\n"
             "Перенести = оставить то же локальное время, но использовать новый часовой пояс.\n"
-            "Например, 09:00 Europe/Madrid станет 09:00 Europe/Moscow."
+            "Например, 09:00 CET станет 09:00 Россия / Москва."
         ),
         reply_markup=build_timezone_migration_keyboard(),
     )
@@ -223,8 +234,18 @@ async def handle_timezone_callback(update, context, deps) -> None:
         await query.answer()
         await _reply(
             query.message,
-            "Нажми кнопку ниже и отправь геопозицию. Я сохраню только часовой пояс, координаты хранить не буду.",
+            (
+                "Нажми кнопку ниже и отправь геопозицию. "
+                "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
+                "В Telegram Desktop отправка геопозиции может быть недоступна. "
+                "Тогда выбери CET или Москву кнопками ниже."
+            ),
             reply_markup=build_location_request_keyboard(),
+        )
+        await _reply(
+            query.message,
+            "Или выбери часовой пояс вручную:",
+            reply_markup=build_timezone_other_keyboard(),
         )
         return
 
@@ -233,10 +254,21 @@ async def handle_timezone_callback(update, context, deps) -> None:
         await _edit_or_reply(
             query,
             (
-                "Пока самый надёжный способ выбрать другой часовой пояс — отправить геопозицию.\n\n"
-                "Нажми /settings → “📍 Определить по геопозиции”.\n\n"
-                "Ручной ввод IANA timezone оставим как advanced/debug путь следующим слайсом."
+                "Выбери часовой пояс.\n\n"
+                "Если нужного варианта нет, попробуй определить по геопозиции. "
+                "На телефоне Telegram обычно умеет отправлять геопозицию, "
+                "а в Telegram Desktop эта функция может быть недоступна."
             ),
+            reply_markup=build_timezone_other_keyboard(),
+        )
+        return
+
+    if data == "tz:back":
+        await query.answer()
+        await _edit_or_reply(
+            query,
+            build_first_timezone_prompt(),
+            reply_markup=build_timezone_picker_keyboard(),
         )
         return
 

@@ -125,3 +125,56 @@ def test_timezone_location_handler_saves_detected_timezone(monkeypatch):
 
     assert saved == [(42, "Asia/Tbilisi")]
     assert "Ок, поставил часовой пояс" in message.replies[0][0]
+
+
+def test_timezone_labels_are_user_facing_not_iana_names():
+    assert timezone_features.timezone_label("Europe/Madrid") == "CET"
+    assert timezone_features.timezone_label("Europe/Moscow") == "Россия / Москва"
+
+
+def test_other_timezone_callback_keeps_user_in_choose_flow():
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    query = FakeQuery("tz:other")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert query.message.edits
+    text, kwargs = query.message.edits[0]
+    assert "Выбери часовой пояс" in text
+    assert "IANA" not in text
+    assert "debug" not in text
+    assert kwargs.get("reply_markup") is not None
+
+
+def test_geo_callback_mentions_desktop_fallback_and_shows_inline_choices():
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    query = FakeQuery("tz:geo")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert len(query.message.replies) == 2
+    assert "Telegram Desktop" in query.message.replies[0][0]
+    assert "выбери часовой пояс вручную" in query.message.replies[1][0].lower()
+    assert query.message.replies[1][1].get("reply_markup") is not None
