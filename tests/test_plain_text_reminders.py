@@ -1,6 +1,18 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def plain_text_tests_have_timezone(main_module, monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_user_timezone_name_raw",
+        lambda user_id: "Europe/Madrid",
+        raising=False,
+    )
+
 
 class DummyMessage:
     def __init__(self, text):

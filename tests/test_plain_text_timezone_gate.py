@@ -1,49 +1,60 @@
 import asyncio
 from types import SimpleNamespace
 
-from plain_text_remind_flow import handle_plain_text_remind_command
+import plain_text_remind_deps
+import plain_text_remind_flow
+
+
+class FakeChat:
+    PRIVATE = "private"
 
 
 class FakeMessage:
     def __init__(self, text):
         self.text = text
-        self.replies = []
-
-    async def reply_text(self, text, **kwargs):
-        self.replies.append((text, kwargs))
 
 
-def test_plain_text_reminder_asks_timezone_before_first_reminder():
-    class Chat:
-        PRIVATE = "private"
+async def fake_safe_reply(message, text, **kwargs):
+    fake_safe_reply.calls.append((text, kwargs))
 
-    message = FakeMessage("напомни завтра в 10 купить молоко")
+
+async def fake_remind_command(update, context):
+    fake_remind_command.calls.append(update.effective_message.text)
+
+
+def test_plain_text_without_timezone_shows_picker_and_does_not_create_reminder():
+    fake_safe_reply.calls = []
+    fake_remind_command.calls = []
+
+    namespace = {
+        "Chat": FakeChat,
+        "MSG_NOT_UNDERSTOOD_PLAIN_TEXT": "not understood",
+        "NormalizedReminderMessageProxy": lambda message, text, normalized: SimpleNamespace(text=text, normalized=normalized),
+        "SimpleNamespace": SimpleNamespace,
+        "_normalize_plain_text_relative_reminder_locally": lambda raw: None,
+        "_normalize_plain_text_reminder_locally": lambda raw: "30.06 10:00 - тест",
+        "_normalize_reminder_text_fallback": lambda raw: raw,
+        "logger": SimpleNamespace(info=lambda *a, **k: None, exception=lambda *a, **k: None),
+        "normalize_gemini_reminder_command_text": lambda text: text,
+        "normalize_plain_text_reminder_with_gemini": lambda raw, user_id: "30.06 10:00 - тест",
+        "remind_command": fake_remind_command,
+        "safe_reply": fake_safe_reply,
+        "type": type,
+        "get_user_timezone_name_raw": lambda user_id: None,
+        "build_first_timezone_prompt": lambda: "Telegram не передаёт мне твой часовой пояс автоматически",
+        "build_timezone_picker_keyboard": lambda: "timezone-picker",
+    }
+    deps = plain_text_remind_deps.build_plain_text_remind_command_deps(namespace)
+
+    message = FakeMessage("напомни завтра тест")
     update = SimpleNamespace(
-        effective_chat=SimpleNamespace(id=100, type=Chat.PRIVATE),
+        effective_chat=SimpleNamespace(type="private", id=100),
         effective_message=message,
-        effective_user=SimpleNamespace(id=42),
-    )
-    context = SimpleNamespace()
-
-    deps = SimpleNamespace(
-        Chat=Chat,
-        MSG_NOT_UNDERSTOOD_PLAIN_TEXT="not understood",
-        NormalizedReminderMessageProxy=lambda *args, **kwargs: None,
-        SimpleNamespace=SimpleNamespace,
-        _normalize_plain_text_relative_reminder_locally=lambda text: (_ for _ in ()).throw(AssertionError("must not normalize")),
-        _normalize_plain_text_reminder_locally=lambda text: (_ for _ in ()).throw(AssertionError("must not normalize")),
-        _normalize_reminder_text_fallback=lambda text: text,
-        logger=SimpleNamespace(info=lambda *args, **kwargs: None, exception=lambda *args, **kwargs: None),
-        normalize_gemini_reminder_command_text=lambda text: text,
-        normalize_plain_text_reminder_with_gemini=lambda text, user_id: text,
-        remind_command=lambda update, context: (_ for _ in ()).throw(AssertionError("must not create reminder")),
-        safe_reply=lambda message, text, **kwargs: message.reply_text(text, **kwargs),
-        type=type,
-        get_user_timezone_name_raw=lambda user_id: None,
-        build_first_timezone_prompt=lambda: "timezone prompt",
-        build_timezone_picker_keyboard=lambda: "timezone keyboard",
+        effective_user=SimpleNamespace(id=555),
+        message=message,
     )
 
-    asyncio.run(handle_plain_text_remind_command(update, context, deps))
+    asyncio.run(plain_text_remind_flow.handle_plain_text_remind_command(update, SimpleNamespace(), deps))
 
-    assert message.replies == [("timezone prompt", {"reply_markup": "timezone keyboard"})]
+    assert fake_remind_command.calls == []
+    assert fake_safe_reply.calls == [("Telegram не передаёт мне твой часовой пояс автоматически", {"reply_markup": "timezone-picker"})]

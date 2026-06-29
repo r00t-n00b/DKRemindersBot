@@ -18,6 +18,9 @@ PLAIN_TEXT_REMIND_COMMAND_DEP_SPECS = (
     ("remind_command", "remind_command"),
     ("safe_reply", "safe_reply"),
     ("type", "type"),
+    ("get_user_timezone_name_raw", "get_user_timezone_name_raw"),
+    ("build_first_timezone_prompt", "build_first_timezone_prompt"),
+    ("build_timezone_picker_keyboard", "build_timezone_picker_keyboard"),
 )
 
 
