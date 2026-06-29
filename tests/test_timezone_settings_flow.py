@@ -11,7 +11,6 @@ class FakeMessage:
 
     async def reply_text(self, text, **kwargs):
         self.replies.append((text, kwargs))
-        return SimpleNamespace(message_id=len(self.replies), chat_id=100)
 
     async def edit_text(self, text, **kwargs):
         self.edits.append((text, kwargs))
@@ -183,6 +182,20 @@ def test_timezone_preset_same_timezone_does_not_ask_migration():
     assert "уже выбран" in text
     assert "Перенести их" not in text
 
+
+def test_geo_fallback_keyboard_does_not_loop_to_geo_again():
+    keyboard = timezone_features.build_timezone_other_keyboard()
+    callback_data = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert "tz:geo" not in callback_data
+    assert "tz:preset:cet" in callback_data
+    assert "tz:preset:moscow" in callback_data
+    assert "tz:back" in callback_data
+
 def test_same_timezone_confirmation_has_no_picker_keyboard():
     saved = []
 
@@ -243,6 +256,21 @@ def test_location_same_timezone_does_not_ask_migration(monkeypatch):
     assert "уже выбран" in message.replies[0][0]
 
 
+
+def test_main_timezone_picker_does_not_show_dead_end_other_button():
+    keyboard = timezone_features.build_timezone_picker_keyboard()
+    callback_data = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert "tz:geo" in callback_data
+    assert "tz:preset:cet" in callback_data
+    assert "tz:preset:moscow" in callback_data
+    assert "tz:other" not in callback_data
+
+
 def test_main_timezone_picker_has_mobile_geo_and_fast_desktop_choices():
     keyboard = timezone_features.build_timezone_picker_keyboard()
     buttons = [
@@ -252,21 +280,19 @@ def test_main_timezone_picker_has_mobile_geo_and_fast_desktop_choices():
     ]
 
     assert buttons == [
-        ("📍 For mobile only: определить по геопозиции", "tz:geo"),
+        ("For mobile only: определить по геопозиции", "tz:geo"),
         ("🇪🇺 CET", "tz:preset:cet"),
         ("🇷🇺 Россия / Москва", "tz:preset:moscow"),
     ]
 
 
-def test_first_timezone_prompt_explains_mobile_desktop_and_travel_paths():
+def test_first_timezone_prompt_explains_mobile_and_desktop_paths():
     text = timezone_features.build_first_timezone_prompt()
 
-    assert "📱 Если ты на мобильном устройстве" in text
+    assert "Если ты на мобиле" in text
     assert "появится внизу под строкой ввода" in text
-    assert "🖥️ Если ты на десктопе" in text
+    assert "Если ты на десктопе" in text
     assert "быстрыми кнопками" in text
-    assert "✈️ Если потом поедешь" in text
-    assert "/settings" in text
 
 
 def test_geo_callback_removes_inline_geo_and_shows_mobile_reply_keyboard():
@@ -286,26 +312,20 @@ def test_geo_callback_removes_inline_geo_and_shows_mobile_reply_keyboard():
 
     asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
 
-    assert context.user_data["timezone_location_prompt_message_id"] == 1
-
     assert len(query.message.edits) == 1
     edited_text, edited_kwargs = query.message.edits[0]
-    assert "📱 Если ты на мобильном устройстве" in edited_text
-    assert "🖥️ Если ты на десктопе" in edited_text
-    assert "✈️ Если потом поедешь" in edited_text
-
+    assert "Если ты на мобиле" in edited_text
     edited_keyboard = edited_kwargs["reply_markup"]
     edited_callbacks = [
         button.callback_data
         for row in edited_keyboard.inline_keyboard
         for button in row
     ]
+    assert "tz:geo" not in edited_callbacks
     assert edited_callbacks == ["tz:preset:cet", "tz:preset:moscow"]
 
     assert len(query.message.replies) == 1
     reply_text, reply_kwargs = query.message.replies[0]
-    assert "мобиле" not in reply_text
-    assert "мобильном устройстве" in reply_text
+    assert "Кнопка для отправки геопозиции" not in reply_text
     assert "под строкой ввода" in reply_text
     assert reply_kwargs.get("reply_markup") is not None
-
