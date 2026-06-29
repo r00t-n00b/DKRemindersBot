@@ -342,7 +342,8 @@ async def handle_timezone_callback(update, context, deps) -> None:
                 query,
                 (
                     f"Этот часовой пояс уже выбран: {timezone_label(new_tz)}\n"
-                    f"Сейчас в нём: {format_timezone_now(new_tz)}"
+                    f"Сейчас в нём: {format_timezone_now(new_tz)}\n\n"
+                    "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
                 ),
             )
             return
@@ -354,7 +355,8 @@ async def handle_timezone_callback(update, context, deps) -> None:
             query,
             (
                 f"Ок, поставил часовой пояс: {timezone_label(new_tz)}\n"
-                f"Сейчас в нём: {format_timezone_now(new_tz)}"
+                f"Сейчас в нём: {format_timezone_now(new_tz)}\n\n"
+                "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
             ),
         )
         await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=new_tz)
@@ -427,7 +429,8 @@ async def handle_timezone_location_message(update, context, deps) -> None:
             message,
             (
                 f"Этот часовой пояс уже выбран: {timezone_label(tz_name)}\n"
-                f"Сейчас в нём: {format_timezone_now(tz_name)}"
+                f"Сейчас в нём: {format_timezone_now(tz_name)}\n\n"
+                "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
             ),
             reply_markup=ReplyKeyboardRemove(),
         )
@@ -439,7 +442,8 @@ async def handle_timezone_location_message(update, context, deps) -> None:
         message,
         (
             f"Ок, поставил часовой пояс: {timezone_label(tz_name)}\n"
-            f"Сейчас в нём: {format_timezone_now(tz_name)}"
+            f"Сейчас в нём: {format_timezone_now(tz_name)}\n\n"
+            "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
         ),
         reply_markup=ReplyKeyboardRemove(),
     )

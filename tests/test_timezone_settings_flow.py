@@ -126,6 +126,8 @@ def test_timezone_location_handler_saves_detected_timezone(monkeypatch):
 
     assert saved == [(42, "Asia/Tbilisi")]
     assert "Ок, поставил часовой пояс" in message.replies[0][0]
+    assert "Не забудь вернуться в /settings" in message.replies[0][0]
+    assert "если полетишь в отпуск" in message.replies[0][0]
 
 
 def test_timezone_labels_are_user_facing_not_iana_names():
@@ -181,6 +183,8 @@ def test_timezone_preset_same_timezone_does_not_ask_migration():
     assert query.message.edits
     text, kwargs = query.message.edits[0]
     assert "уже выбран" in text
+    assert "Не забудь вернуться в /settings" in text
+    assert "если полетишь в отпуск" in text
     assert "Перенести их" not in text
 
 
@@ -255,6 +259,8 @@ def test_location_same_timezone_does_not_ask_migration(monkeypatch):
     assert "pending_timezone_migration" not in context.user_data
     assert message.replies
     assert "уже выбран" in message.replies[0][0]
+    assert "Не забудь вернуться в /settings" in message.replies[0][0]
+    assert "если полетишь в отпуск" in message.replies[0][0]
 
 
 
