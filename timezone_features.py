@@ -78,7 +78,16 @@ def format_timezone_now(tz_name: str | None) -> str:
 def build_timezone_picker_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("📍 Определить по геопозиции", callback_data="tz:geo")],
+            [InlineKeyboardButton("For mobile only: определить по геопозиции", callback_data="tz:geo")],
+            [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
+            [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
+        ]
+    )
+
+
+def build_timezone_after_geo_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
             [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
             [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
         ]
@@ -126,7 +135,11 @@ def build_first_timezone_prompt() -> str:
     return (
         "Telegram не передаёт мне твой часовой пояс автоматически, а он нужен, "
         "чтобы правильно понимать фразы вроде “завтра в 10” или “каждый день в 9”.\n\n"
-        "Выбери часовой пояс:\n\n"
+        "Если ты на мобиле, нажми “For mobile only: определить по геопозиции” — "
+        "после этого кнопка отправки геопозиции появится внизу под строкой ввода. "
+        "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
+        "Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
+        "В этом случае выбери часовой пояс быстрыми кнопками под сообщением.\n\n"
         "Если потом поедешь в другую страну или захочешь изменить время, "
         "зайди в /settings и поменяй часовой пояс."
     )
@@ -141,7 +154,10 @@ def build_settings_text(tz_name: str | None, default_time_text: str | None = Non
         f"Часовой пояс: {timezone_label(tz_name)}\n"
         f"Сейчас в нём: {format_timezone_now(tz_name)}\n"
         f"Время по умолчанию: {default_line}\n\n"
-        "Если поедешь в другую страну или время изменится — поменяй часовой пояс здесь."
+        "Если ты на мобиле, нажми “For mobile only: определить по геопозиции” — "
+        "после этого кнопка отправки геопозиции появится внизу под строкой ввода.\n\n"
+        "Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
+        "В этом случае выбери часовой пояс быстрыми кнопками под сообщением."
     )
 
 
@@ -233,21 +249,17 @@ async def handle_timezone_callback(update, context, deps) -> None:
     data = query.data or ""
 
     if data == "tz:geo":
-        await query.answer()
+        await query.answer("На мобиле кнопка появится под строкой ввода")
         await _edit_or_reply(
             query,
-            (
-                "Отправь геопозицию кнопкой внизу. "
-                "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
-                "Если кнопка геопозиции недоступна или не работает — выбери часовой пояс кнопкой ниже."
-            ),
-            reply_markup=build_timezone_other_keyboard(),
+            build_settings_text(deps.get_user_timezone_name(user.id)),
+            reply_markup=build_timezone_after_geo_keyboard(),
         )
 
         message = getattr(query, "message", None)
         await _reply(
             message,
-            "Кнопка для отправки геопозиции:",
+            "На мобиле нажми кнопку под строкой ввода.",
             reply_markup=build_location_request_keyboard(),
         )
         return
