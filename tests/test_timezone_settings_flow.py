@@ -11,6 +11,7 @@ class FakeMessage:
 
     async def reply_text(self, text, **kwargs):
         self.replies.append((text, kwargs))
+        return SimpleNamespace(message_id=len(self.replies), chat_id=100)
 
     async def edit_text(self, text, **kwargs):
         self.edits.append((text, kwargs))
@@ -280,19 +281,23 @@ def test_main_timezone_picker_has_mobile_geo_and_fast_desktop_choices():
     ]
 
     assert buttons == [
-        ("For mobile only: определить по геопозиции", "tz:geo"),
+        ("📍 For mobile only: определить по геопозиции", "tz:geo"),
         ("🇪🇺 CET", "tz:preset:cet"),
         ("🇷🇺 Россия / Москва", "tz:preset:moscow"),
     ]
 
 
-def test_first_timezone_prompt_explains_mobile_and_desktop_paths():
+def test_first_timezone_prompt_explains_mobile_desktop_and_travel_paths():
     text = timezone_features.build_first_timezone_prompt()
 
-    assert "Если ты на мобиле" in text
+    assert "📱 Если ты на мобильном устройстве" in text
+    assert "📍 For mobile only: определить по геопозиции" in text
     assert "появится внизу под строкой ввода" in text
-    assert "Если ты на десктопе" in text
+    assert "🖥️ Если ты на десктопе" in text
     assert "быстрыми кнопками" in text
+    assert "✈️ Если потом поедешь" in text
+    assert "/settings" in text
+    assert "мобиле" not in text
 
 
 def test_geo_callback_removes_inline_geo_and_shows_mobile_reply_keyboard():
@@ -312,20 +317,109 @@ def test_geo_callback_removes_inline_geo_and_shows_mobile_reply_keyboard():
 
     asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
 
+    assert context.user_data["timezone_location_prompt_message_id"] == 1
+
     assert len(query.message.edits) == 1
     edited_text, edited_kwargs = query.message.edits[0]
-    assert "Если ты на мобиле" in edited_text
+    assert "📱 Если ты на мобильном устройстве" in edited_text
+    assert "🖥️ Если ты на десктопе" in edited_text
+    assert "выбери один из часовых поясов кнопками ниже" in edited_text
+    assert "✈️ Если потом поедешь" in edited_text
+    assert "мобиле" not in edited_text
+
     edited_keyboard = edited_kwargs["reply_markup"]
     edited_callbacks = [
         button.callback_data
         for row in edited_keyboard.inline_keyboard
         for button in row
     ]
-    assert "tz:geo" not in edited_callbacks
     assert edited_callbacks == ["tz:preset:cet", "tz:preset:moscow"]
 
     assert len(query.message.replies) == 1
     reply_text, reply_kwargs = query.message.replies[0]
-    assert "Кнопка для отправки геопозиции" not in reply_text
+    assert "мобиле" not in reply_text
+    assert "мобильном устройстве" in reply_text
     assert "под строкой ввода" in reply_text
     assert reply_kwargs.get("reply_markup") is not None
+
+
+def test_settings_text_explains_mobile_desktop_and_travel_paths():
+    text = timezone_features.build_settings_text("Europe/Madrid", "10:00")
+
+    assert "📱 Если ты на мобильном устройстве" in text
+    assert "📍 For mobile only: определить по геопозиции" in text
+    assert "🖥️ Если ты на десктопе" in text
+    assert "✈️ Если потом поедешь" in text
+    assert "/settings" in text
+    assert "мобиле" not in text
+
+
+def test_timezone_preset_deletes_saved_location_prompt():
+    deleted = []
+
+    class FakeBot:
+        async def delete_message(self, chat_id, message_id):
+            deleted.append((chat_id, message_id))
+
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Moscow",
+        set_user_timezone_name=lambda user_id, tz: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    query = FakeQuery("tz:preset:cet")
+    query.message.chat_id = 100
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(
+        user_data={"timezone_location_prompt_message_id": 7},
+        bot=FakeBot(),
+    )
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert deleted == [(100, 7)]
+    assert "timezone_location_prompt_message_id" not in context.user_data
+
+
+def test_location_message_deletes_saved_location_prompt(monkeypatch):
+    deleted = []
+
+    class FakeBot:
+        async def delete_message(self, chat_id, message_id):
+            deleted.append((chat_id, message_id))
+
+    monkeypatch.setattr(
+        timezone_features,
+        "detect_timezone_from_location",
+        lambda latitude, longitude: "Asia/Tbilisi",
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    message = FakeMessage()
+    message.chat_id = 100
+    message.location = SimpleNamespace(latitude=41.38, longitude=2.17)
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        message=message,
+    )
+    context = SimpleNamespace(
+        user_data={"timezone_location_prompt_message_id": 7},
+        bot=FakeBot(),
+    )
+
+    asyncio.run(timezone_features.handle_timezone_location_message(update, context, deps))
+
+    assert deleted == [(100, 7)]
+    assert "timezone_location_prompt_message_id" not in context.user_data
+

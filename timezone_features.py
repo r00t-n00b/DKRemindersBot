@@ -78,7 +78,7 @@ def format_timezone_now(tz_name: str | None) -> str:
 def build_timezone_picker_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("For mobile only: определить по геопозиции", callback_data="tz:geo")],
+            [InlineKeyboardButton("📍 For mobile only: определить по геопозиции", callback_data="tz:geo")],
             [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
             [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
         ]
@@ -135,12 +135,12 @@ def build_first_timezone_prompt() -> str:
     return (
         "Telegram не передаёт мне твой часовой пояс автоматически, а он нужен, "
         "чтобы правильно понимать фразы вроде “завтра в 10” или “каждый день в 9”.\n\n"
-        "Если ты на мобиле, нажми “For mobile only: определить по геопозиции” — "
+        "📱 Если ты на мобильном устройстве, нажми “📍 For mobile only: определить по геопозиции” — "
         "после этого кнопка отправки геопозиции появится внизу под строкой ввода. "
         "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
-        "Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
+        "🖥️ Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
         "В этом случае выбери часовой пояс быстрыми кнопками под сообщением.\n\n"
-        "Если потом поедешь в другую страну или захочешь изменить время, "
+        "✈️ Если потом поедешь в другую страну или захочешь изменить время, "
         "зайди в /settings и поменяй часовой пояс."
     )
 
@@ -154,19 +154,23 @@ def build_settings_text(tz_name: str | None, default_time_text: str | None = Non
         f"Часовой пояс: {timezone_label(tz_name)}\n"
         f"Сейчас в нём: {format_timezone_now(tz_name)}\n"
         f"Время по умолчанию: {default_line}\n\n"
-        "Если ты на мобиле, нажми “For mobile only: определить по геопозиции” — "
-        "после этого кнопка отправки геопозиции появится внизу под строкой ввода.\n\n"
-        "Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
-        "В этом случае выбери часовой пояс быстрыми кнопками под сообщением."
+        "📱 Если ты на мобильном устройстве, нажми “📍 For mobile only: определить по геопозиции” — "
+        "после этого кнопка отправки геопозиции появится внизу под строкой ввода. "
+        "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
+        "🖥️ Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
+        "В этом случае выбери часовой пояс быстрыми кнопками под сообщением.\n\n"
+        "✈️ Если потом поедешь в другую страну или захочешь изменить время, "
+        "зайди в /settings и поменяй часовой пояс."
     )
 
 
-async def _reply(message, text: str, **kwargs) -> None:
+async def _reply(message, text: str, **kwargs):
     if not message or not hasattr(message, "reply_text"):
-        return
+        return None
     result = message.reply_text(text, **kwargs)
     if hasattr(result, "__await__"):
-        await result
+        return await result
+    return result
 
 
 async def _edit_or_reply(query, text: str, **kwargs) -> None:
@@ -184,6 +188,33 @@ async def _edit_or_reply(query, text: str, **kwargs) -> None:
 
     message = getattr(query, "message", None)
     await _reply(message, text, **kwargs)
+
+
+async def _delete_saved_location_prompt(update, context) -> None:
+    prompt_id = context.user_data.pop("timezone_location_prompt_message_id", None)
+    if not prompt_id:
+        return
+
+    query = getattr(update, "callback_query", None)
+    message = getattr(query, "message", None) if query is not None else None
+    if message is None:
+        message = getattr(update, "effective_message", None)
+
+    chat_id = getattr(message, "chat_id", None)
+    if chat_id is None:
+        chat = getattr(message, "chat", None)
+        chat_id = getattr(chat, "id", None)
+
+    bot = getattr(context, "bot", None)
+    if bot is None or chat_id is None:
+        return
+
+    try:
+        result = bot.delete_message(chat_id=chat_id, message_id=prompt_id)
+        if hasattr(result, "__await__"):
+            await result
+    except Exception:
+        pass
 
 
 async def handle_settings_command(update, context, deps) -> None:
@@ -249,19 +280,28 @@ async def handle_timezone_callback(update, context, deps) -> None:
     data = query.data or ""
 
     if data == "tz:geo":
-        await query.answer("На мобиле кнопка появится под строкой ввода")
+        await query.answer("На мобильном устройстве кнопка появится под строкой ввода")
         await _edit_or_reply(
             query,
-            build_settings_text(deps.get_user_timezone_name(user.id)),
+            (
+                "📱 Если ты на мобильном устройстве, нажми кнопку под строкой ввода.\n\n"
+                "🖥️ Если ты на десктопе и Telegram не дал отправить геопозицию, "
+                "выбери один из часовых поясов кнопками ниже или перейди на мобильное устройство.\n\n"
+                "✈️ Если потом поедешь в другую страну или захочешь изменить время, "
+                "зайди в /settings и поменяй часовой пояс."
+            ),
             reply_markup=build_timezone_after_geo_keyboard(),
         )
 
         message = getattr(query, "message", None)
-        await _reply(
+        sent = await _reply(
             message,
-            "На мобиле нажми кнопку под строкой ввода.",
+            "📱 На мобильном устройстве нажми кнопку под строкой ввода.",
             reply_markup=build_location_request_keyboard(),
         )
+        message_id = getattr(sent, "message_id", None)
+        if message_id is not None:
+            context.user_data["timezone_location_prompt_message_id"] = message_id
         return
 
     if data == "tz:other":
@@ -293,6 +333,7 @@ async def handle_timezone_callback(update, context, deps) -> None:
             return
 
         _label, new_tz = TIMEZONE_PRESETS[preset_key]
+        await _delete_saved_location_prompt(update, context)
         old_tz = deps.get_user_timezone_name(user.id) or DEFAULT_TIMEZONE_NAME
 
         if old_tz == new_tz:
@@ -364,6 +405,8 @@ async def handle_timezone_location_message(update, context, deps) -> None:
     location = getattr(message, "location", None)
     if location is None:
         return
+
+    await _delete_saved_location_prompt(update, context)
 
     tz_name = detect_timezone_from_location(location.latitude, location.longitude)
     if not tz_name:
