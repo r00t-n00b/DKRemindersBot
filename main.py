@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from time_utils import BOT_TZ, ensure_aware
+from timezone_features import build_first_timezone_prompt, build_timezone_picker_keyboard, handle_settings_command, handle_timezone_callback, handle_timezone_location_message
 
 # --- Telegram imports ---
 # Во время тестов telegram не установлен, поэтому:
@@ -60,6 +61,7 @@ else:
             VOICE = _DummyFilter()
             TEXT = _DummyFilter()
             COMMAND = _DummyFilter()
+            LOCATION = _DummyFilter()
 
         filters = _DummyFilters()
 
@@ -310,7 +312,7 @@ from storage_user_chats import get_user_chat_id_by_user_id_impl, get_user_chat_i
 from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
 from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
-from storage_user_settings import clear_user_default_time_impl, get_user_default_time_impl, set_user_default_time_impl
+from storage_user_settings import clear_user_default_time_impl, count_active_reminders_for_user_impl, get_user_default_time_impl, get_user_timezone_name_impl, move_active_reminders_timezone_for_user_impl, set_user_default_time_impl, set_user_timezone_name_impl
 from storage_write import add_reminder_impl, claim_due_reminders_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_delivery_failed_impl, mark_reminder_sent_impl, reset_stale_processing_reminders_impl, update_reminder_time_impl
 from storage_nudges import _nudge_threshold_minutes_impl, exhaust_nudges_impl, get_due_nudges_impl, increment_nudge_count_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
@@ -445,6 +447,36 @@ def clear_user_default_time(user_id: int) -> None:
     return clear_user_default_time_impl(user_id, deps=_build_storage_user_settings_deps())
 
 
+def get_user_timezone_name_raw(user_id: Optional[int]) -> Optional[str]:
+    return get_user_timezone_name_impl(user_id, deps=_build_storage_user_settings_deps())
+
+
+def get_user_timezone_name(user_id: Optional[int]) -> str:
+    return get_user_timezone_name_raw(user_id) or "Europe/Madrid"
+
+
+def set_user_timezone_name(user_id: int, timezone_name: str) -> None:
+    return set_user_timezone_name_impl(user_id, timezone_name, deps=_build_storage_user_settings_deps())
+
+
+def count_active_reminders_for_user(user_id: int) -> int:
+    return count_active_reminders_for_user_impl(user_id, deps=_build_storage_user_settings_deps())
+
+
+def move_active_reminders_timezone_for_user(*, user_id: int, old_tz: str, new_tz: str, mode: str) -> Dict[str, int]:
+    return move_active_reminders_timezone_for_user_impl(
+        user_id=user_id,
+        old_tz=old_tz,
+        new_tz=new_tz,
+        mode=mode,
+        deps=_build_storage_user_settings_deps(),
+    )
+
+
+def _timezone_for_created_by(created_by: Optional[int]) -> str:
+    return get_user_timezone_name(created_by)
+
+
 def _build_storage_write_deps():
     return SimpleNamespace(
         DB_PATH=DB_PATH,
@@ -455,7 +487,7 @@ def _build_storage_write_deps():
     )
 
 def add_reminder(chat_id: int, text: str, remind_at: datetime, created_by: Optional[int], template_id: Optional[int]=None) -> int:
-    return add_reminder_impl(chat_id, text, remind_at, created_by, template_id, deps=_build_storage_write_deps())
+    return add_reminder_impl(chat_id, text, remind_at, created_by, template_id, deps=_build_storage_write_deps(), timezone_name=_timezone_for_created_by(created_by))
 
 def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
     return update_reminder_time_impl(reminder_id, new_dt, deps=_build_storage_write_deps())
@@ -494,7 +526,7 @@ def mark_nudge_sent(reminder_id: int) -> None:
     return mark_nudge_sent_impl(reminder_id, deps=_build_storage_write_deps())
 
 def create_recurring_template(chat_id: int, text: str, pattern_type: str, payload: Dict[str, Any], time_hour: int, time_minute: int, created_by: Optional[int]) -> int:
-    return create_recurring_template_impl(chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, deps=_build_storage_write_deps())
+    return create_recurring_template_impl(chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, deps=_build_storage_write_deps(), timezone_name=_timezone_for_created_by(created_by))
 
 
 def _build_storage_read_deps():
@@ -716,6 +748,13 @@ async def start(update: Update, context: CTX) -> None:
     text = START_TEXT
 
     msg = update.effective_message
+    if get_user_timezone_name_raw(user.id) is None:
+        await safe_reply(
+            msg,
+            build_first_timezone_prompt(),
+            reply_markup=build_timezone_picker_keyboard(),
+        )
+
     await safe_reply(msg, text)
 
 async def start_command(update: Update, context: CTX) -> None:
@@ -880,6 +919,28 @@ def get_user_alias_chat_id_for_user(alias: str, created_by: int):
 
 async def defaulttime_command(update: Update, context: CTX) -> None:
     await handle_defaulttime_command(update, context, _build_alias_settings_command_deps())
+
+
+def _build_timezone_settings_deps():
+    return SimpleNamespace(
+        get_user_timezone_name=get_user_timezone_name,
+        set_user_timezone_name=set_user_timezone_name,
+        get_user_default_time=get_user_default_time,
+        count_active_reminders_for_user=count_active_reminders_for_user,
+        move_active_reminders_timezone_for_user=move_active_reminders_timezone_for_user,
+    )
+
+
+async def settings_command(update: Update, context: CTX) -> None:
+    await handle_settings_command(update, context, _build_timezone_settings_deps())
+
+
+async def timezone_settings_callback(update: Update, context: CTX) -> None:
+    await handle_timezone_callback(update, context, _build_timezone_settings_deps())
+
+
+async def timezone_location_message(update: Update, context: CTX) -> None:
+    await handle_timezone_location_message(update, context, _build_timezone_settings_deps())
 
 
 def _build_remind_command_deps():
@@ -1082,6 +1143,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("defaulttime", defaulttime_command))
+    application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("linkuser", linkuser_command))
     application.add_handler(CommandHandler("aliases", aliases_command))
@@ -1090,7 +1152,9 @@ def main() -> None:
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
+    application.add_handler(MessageHandler(filters.LOCATION, timezone_location_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
+    application.add_handler(CallbackQueryHandler(timezone_settings_callback, pattern=r"^tz:"))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))
     application.add_handler(CallbackQueryHandler(created_snooze_custom_callback, pattern=CREATED_SNOOZE_CUSTOM_PATTERN))

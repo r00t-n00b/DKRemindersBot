@@ -68,6 +68,9 @@ def init_db_impl(*, deps) -> None:
     if 'next_retry_at' not in cols:
         c.execute('ALTER TABLE reminders ADD COLUMN next_retry_at TEXT')
         logger.info('DB migration: added reminders.next_retry_at column')
+    if 'timezone_name' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN timezone_name TEXT')
+        logger.info('DB migration: added reminders.timezone_name column')
 
     c.execute(
         """
@@ -85,11 +88,21 @@ def init_db_impl(*, deps) -> None:
     c.execute('\n        CREATE TABLE IF NOT EXISTS reminder_messages (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            reminder_id INTEGER NOT NULL,\n            chat_id INTEGER NOT NULL,\n            message_id INTEGER NOT NULL,\n            kind TEXT NOT NULL,\n            created_at TEXT NOT NULL,\n            UNIQUE(reminder_id, chat_id, message_id)\n        )\n        ')
     c.execute('CREATE INDEX IF NOT EXISTS idx_reminder_messages_reminder_id ON reminder_messages(reminder_id)')
     c.execute('\n        CREATE TABLE IF NOT EXISTS chat_aliases (\n            alias TEXT NOT NULL,\n            chat_id INTEGER NOT NULL,\n            title TEXT,\n            created_by INTEGER NOT NULL,\n            PRIMARY KEY (created_by, alias)\n        )\n        ')
-    c.execute('\n        CREATE TABLE IF NOT EXISTS recurring_templates (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            chat_id INTEGER NOT NULL,\n            text TEXT NOT NULL,\n            pattern_type TEXT NOT NULL,\n            payload TEXT NOT NULL,\n            time_hour INTEGER NOT NULL,\n            time_minute INTEGER NOT NULL,\n            created_by INTEGER,\n            created_at TEXT NOT NULL,\n            active INTEGER NOT NULL DEFAULT 1\n        )\n        ')
+    c.execute('\n        CREATE TABLE IF NOT EXISTS recurring_templates (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            chat_id INTEGER NOT NULL,\n            text TEXT NOT NULL,\n            pattern_type TEXT NOT NULL,\n            payload TEXT NOT NULL,\n            time_hour INTEGER NOT NULL,\n            time_minute INTEGER NOT NULL,\n            created_by INTEGER,\n            created_at TEXT NOT NULL,\n            active INTEGER NOT NULL DEFAULT 1,\n            timezone_name TEXT\n        )\n        ')
+    c.execute('PRAGMA table_info(recurring_templates)')
+    tpl_cols = [row[1] for row in c.fetchall()]
+    if 'timezone_name' not in tpl_cols:
+        c.execute('ALTER TABLE recurring_templates ADD COLUMN timezone_name TEXT')
+        logger.info('DB migration: added recurring_templates.timezone_name column')
     c.execute('\n        CREATE TABLE IF NOT EXISTS user_aliases (\n            alias TEXT NOT NULL,\n            user_id INTEGER NOT NULL,\n            chat_id INTEGER NOT NULL,\n            username TEXT,\n            created_by INTEGER NOT NULL,\n            created_at TEXT NOT NULL,\n            PRIMARY KEY (created_by, alias)\n        )\n        ')
     c.execute('\n        CREATE TABLE IF NOT EXISTS user_chats (\n            user_id INTEGER PRIMARY KEY,\n            chat_id INTEGER NOT NULL,\n            username TEXT,\n            first_name TEXT,\n            last_name TEXT,\n            updated_at TEXT NOT NULL\n        )\n        ')
     c.execute('CREATE INDEX IF NOT EXISTS idx_user_chats_username ON user_chats(username)')
-    c.execute('\n        CREATE TABLE IF NOT EXISTS user_settings (\n            user_id INTEGER PRIMARY KEY,\n            default_hour INTEGER,\n            default_minute INTEGER,\n            updated_at TEXT NOT NULL\n        )\n        ')
+    c.execute('\n        CREATE TABLE IF NOT EXISTS user_settings (\n            user_id INTEGER PRIMARY KEY,\n            default_hour INTEGER,\n            default_minute INTEGER,\n            timezone_name TEXT,\n            updated_at TEXT NOT NULL\n        )\n        ')
+    c.execute('PRAGMA table_info(user_settings)')
+    user_settings_cols = [row[1] for row in c.fetchall()]
+    if 'timezone_name' not in user_settings_cols:
+        c.execute('ALTER TABLE user_settings ADD COLUMN timezone_name TEXT')
+        logger.info('DB migration: added user_settings.timezone_name column')
     conn.commit()
     conn.close()
 

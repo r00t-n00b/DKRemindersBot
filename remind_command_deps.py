@@ -27,6 +27,7 @@ REMIND_COMMAND_DEP_NAMES = (
     "get_user_alias_chat_id_for_user",
     "get_user_chat_id_by_username",
     "get_user_default_time",
+    "get_user_timezone_name",
     "handle_single_oneoff_reminder",
     "is_recurring_missing_dash_candidate",
     "logger",

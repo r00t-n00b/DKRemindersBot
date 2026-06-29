@@ -2,10 +2,24 @@
 
 import json
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 
 from keyboards import build_list_delete_keyboard
 
+
+
+def _format_timezone_name(tz_name: Optional[str]) -> str:
+    return str(tz_name or "Europe/Madrid")
+
+
+def _datetime_in_row_timezone(dt: datetime, tz_name: Optional[str]) -> datetime:
+    if not tz_name:
+        return dt
+    try:
+        return dt.astimezone(ZoneInfo(str(tz_name)))
+    except Exception:
+        return dt
 
 def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[str, Any]]) -> str:
     """
@@ -116,8 +130,10 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
         template_id = _active_reminder_row_value(row, "template_id", 3)
         tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
         tpl_payload_raw = _active_reminder_row_value(row, "payload", 5)
+        tz_name = _active_reminder_row_value(row, "timezone_name", 6)
 
-        dt = datetime.fromisoformat(remind_at_str)
+        dt = _datetime_in_row_timezone(datetime.fromisoformat(remind_at_str), tz_name)
+        tz_label = _format_timezone_name(tz_name)
 
         if dt.date() == today:
             section = "Сегодня"
@@ -149,7 +165,7 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
             human = format_recurring_human(tpl_pattern_type, tpl_payload)
             suffix = f"  🔁 {human}" if human else "  🔁"
 
-        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}")
+        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}  🕒 {tz_label}")
         ids.append(rid)
 
     reply = header + "\n\n" + "\n".join(lines)
@@ -256,9 +272,11 @@ def build_target_user_reminders_list_response(
         template_id = _active_reminder_row_value(row, "template_id", 3)
         tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
         tpl_payload_raw = _active_reminder_row_value(row, "payload", 5)
+        tz_name = _active_reminder_row_value(row, "timezone_name", 6)
 
-        dt = datetime.fromisoformat(remind_at_str)
+        dt = _datetime_in_row_timezone(datetime.fromisoformat(remind_at_str), tz_name)
         ts = dt.strftime("%d.%m %H:%M")
+        tz_label = _format_timezone_name(tz_name)
 
         suffix = ""
         if template_id is not None:
@@ -274,7 +292,7 @@ def build_target_user_reminders_list_response(
             human = format_recurring_human(tpl_pattern_type, tpl_payload)
             suffix = f"  🔁 {human}" if human else "  🔁"
 
-        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}")
+        lines.append(f"{idx}. {ts} - {reminder_text}{suffix}  🕒 {tz_label}")
         ids.append(rid)
 
     if not ids:

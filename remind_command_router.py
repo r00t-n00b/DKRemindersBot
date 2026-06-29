@@ -4,6 +4,10 @@ The router receives dependencies from main.py to keep this module independent
 from the Telegram application wiring and easy to test.
 """
 
+from zoneinfo import ZoneInfo
+
+from time_utils import BOT_TZ
+
 
 async def handle_remind_command(update, context, deps) -> None:
     Chat = deps.Chat
@@ -29,6 +33,7 @@ async def handle_remind_command(update, context, deps) -> None:
     get_user_alias_chat_id_for_user = deps.get_user_alias_chat_id_for_user
     get_user_chat_id_by_username = deps.get_user_chat_id_by_username
     get_user_default_time = deps.get_user_default_time
+    get_user_timezone_name = deps.get_user_timezone_name
     handle_single_oneoff_reminder = deps.handle_single_oneoff_reminder
     is_recurring_missing_dash_candidate = deps.is_recurring_missing_dash_candidate
     logger = deps.logger
@@ -57,7 +62,13 @@ async def handle_remind_command(update, context, deps) -> None:
     if chat is None or message is None or user is None:
         return
 
-    now = get_now()
+    timezone_name = get_user_timezone_name(user.id)
+    try:
+        user_tz = ZoneInfo(timezone_name)
+    except Exception:
+        user_tz = BOT_TZ
+
+    now = get_now().astimezone(user_tz)
     default_time = get_user_default_time(user.id)
 
     raw_text = message.text or ""

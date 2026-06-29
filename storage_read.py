@@ -36,6 +36,18 @@ def _apply_deps(deps) -> None:
         globals()[name] = getattr(deps, name)
 
 
+def _table_columns(conn, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def _timezone_select(conn, table: str, alias: str = "") -> str:
+    cols = _table_columns(conn, table)
+    prefix = f"{alias}." if alias else ""
+    return f"{prefix}timezone_name" if "timezone_name" in cols else "NULL AS timezone_name"
+
+
+
 
 def get_due_reminders_impl(now: datetime, deps) -> List[Reminder]:
     _apply_deps(deps)
@@ -107,9 +119,10 @@ def get_active_reminders_created_by_for_chat_impl(chat_id: int, created_by: int,
     conn.row_factory = sqlite3.Row
     try:
         c = conn.cursor()
+        tz_select = _timezone_select(conn, "reminders")
         c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id
+            f"""
+            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id, {tz_select}
             FROM reminders
             WHERE chat_id = ?
               AND delivered = 0
@@ -131,9 +144,10 @@ def get_active_reminders_for_chat_impl(chat_id: int, deps) -> List[Dict[str, Any
     conn.row_factory = sqlite3.Row
     try:
         c = conn.cursor()
+        tz_select = _timezone_select(conn, "reminders")
         c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id
+            f"""
+            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id, {tz_select}
             FROM reminders
             WHERE chat_id = ? AND delivered = 0
             ORDER BY remind_at ASC
@@ -153,9 +167,10 @@ def get_reminder_row_impl(rid: int, deps) -> Optional[Dict[str, Any]]:
     conn.row_factory = sqlite3.Row
     try:
         c = conn.cursor()
+        tz_select = _timezone_select(conn, "reminders")
         c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id
+            f"""
+            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id, {tz_select}
             FROM reminders
             WHERE id = ?
             """,
@@ -176,9 +191,10 @@ def get_recurring_template_row_impl(tpl_id: int, deps) -> Optional[Dict[str, Any
     conn.row_factory = sqlite3.Row
     try:
         c = conn.cursor()
+        tz_select = _timezone_select(conn, "recurring_templates")
         c.execute(
-            """
-            SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active
+            f"""
+            SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active, {tz_select}
             FROM recurring_templates
             WHERE id = ?
             """,
@@ -208,9 +224,10 @@ def get_reminders_by_template_id_impl(template_id: int, chat_id: int, deps) -> L
     conn.row_factory = sqlite3.Row
     try:
         c = conn.cursor()
+        tz_select = _timezone_select(conn, "reminders")
         c.execute(
-            """
-            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id
+            f"""
+            SELECT id, chat_id, text, remind_at, created_by, created_at, delivered, template_id, {tz_select}
             FROM reminders
             WHERE chat_id = ? AND template_id = ?
             ORDER BY remind_at ASC
@@ -252,9 +269,10 @@ def get_recurring_template_impl(template_id: int, deps) -> Optional[Dict[str, An
     _apply_deps(deps)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    tz_select = _timezone_select(conn, "recurring_templates")
     c.execute(
-        """
-        SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, active
+        f"""
+        SELECT id, chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, active, {tz_select}
         FROM recurring_templates
         WHERE id = ?
         """,
@@ -274,6 +292,7 @@ def get_recurring_template_impl(template_id: int, deps) -> Optional[Dict[str, An
         time_minute,
         created_by,
         active,
+        timezone_name,
     ) = row
     try:
         payload = json.loads(payload_json) if payload_json else {}

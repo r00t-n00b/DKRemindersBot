@@ -137,15 +137,30 @@ async def handle_list_command_flow(update, context, deps) -> None:
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    c.execute("PRAGMA table_info(reminders)", ())
+    reminder_cols = {row[1] for row in c.fetchall()}
+    c.execute("PRAGMA table_info(recurring_templates)", ())
+    template_cols = {row[1] for row in c.fetchall()}
+    if "timezone_name" in reminder_cols and "timezone_name" in template_cols:
+        timezone_select = "COALESCE(r.timezone_name, rt.timezone_name) AS timezone_name"
+    elif "timezone_name" in reminder_cols:
+        timezone_select = "r.timezone_name AS timezone_name"
+    elif "timezone_name" in template_cols:
+        timezone_select = "rt.timezone_name AS timezone_name"
+    else:
+        timezone_select = "NULL AS timezone_name"
+
     c.execute(
-        """
+        f"""
         SELECT
             r.id,
             r.text,
             r.remind_at,
             r.template_id,
             rt.pattern_type,
-            rt.payload
+            rt.payload,
+            {timezone_select}
         FROM reminders r
         LEFT JOIN recurring_templates rt ON rt.id = r.template_id
         WHERE r.chat_id = ? AND r.delivered = 0

@@ -34,6 +34,7 @@ def add_reminder_impl(
     template_id: Optional[int] = None,
     *,
     deps,
+    timezone_name: Optional[str] = None,
 ) -> int:
     _apply_deps(deps)
     conn = sqlite3.connect(DB_PATH)
@@ -65,6 +66,9 @@ def add_reminder_impl(
         if "delivery_attempts" in cols:
             insert_cols.append("delivery_attempts")
             values.append(0)
+        if "timezone_name" in cols and timezone_name:
+            insert_cols.append("timezone_name")
+            values.append(str(timezone_name))
 
         placeholders = ", ".join("?" for _ in insert_cols)
         column_sql = ", ".join(insert_cols)
@@ -361,26 +365,49 @@ def create_recurring_template_impl(
     created_by: Optional[int],
     *,
     deps,
+    timezone_name: Optional[str] = None,
 ) -> int:
     _apply_deps(deps)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    cols = _table_columns(conn, "recurring_templates")
+
+    insert_cols = [
+        "chat_id",
+        "text",
+        "pattern_type",
+        "payload",
+        "time_hour",
+        "time_minute",
+        "created_by",
+        "created_at",
+        "active",
+    ]
+    values = [
+        chat_id,
+        text,
+        pattern_type,
+        json.dumps(payload, ensure_ascii=False),
+        time_hour,
+        time_minute,
+        created_by,
+        aware_now(TZ).isoformat(),
+        1,
+    ]
+
+    if "timezone_name" in cols and timezone_name:
+        insert_cols.append("timezone_name")
+        values.append(str(timezone_name))
+
+    placeholders = ", ".join("?" for _ in insert_cols)
+    column_sql = ", ".join(insert_cols)
+
     c.execute(
-        """
-        INSERT INTO recurring_templates
-            (chat_id, text, pattern_type, payload, time_hour, time_minute, created_by, created_at, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        f"""
+        INSERT INTO recurring_templates ({column_sql})
+        VALUES ({placeholders})
         """,
-        (
-            chat_id,
-            text,
-            pattern_type,
-            json.dumps(payload, ensure_ascii=False),
-            time_hour,
-            time_minute,
-            created_by,
-            aware_now(TZ).isoformat(),
-        ),
+        values,
     )
     tpl_id = c.lastrowid
     conn.commit()
