@@ -11,6 +11,7 @@ class FakeMessage:
 
     async def reply_text(self, text, **kwargs):
         self.replies.append((text, kwargs))
+        return SimpleNamespace(message_id=len(self.replies), chat_id=100)
 
     async def edit_text(self, text, **kwargs):
         self.edits.append((text, kwargs))
