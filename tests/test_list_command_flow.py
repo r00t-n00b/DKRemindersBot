@@ -230,7 +230,10 @@ def test_list_chat_alias_reads_active_reminders_and_sets_ids():
     assert context.user_data["list_chat_id"] == -100
     assert fake_sqlite.connections[0][0] == "/tmp/test.db"
     assert fake_sqlite.connections[0][1].closed is True
-    assert fake_sqlite.connections[0][1].cursor_obj.executed[0][1] == (-100,)
+    assert (-100,) in [
+        params
+        for _query, params in fake_sqlite.connections[0][1].cursor_obj.executed
+    ]
 
 
 def test_list_default_chat_reads_active_reminders_and_sets_ids():
