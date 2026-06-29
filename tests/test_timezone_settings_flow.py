@@ -316,3 +316,17 @@ def test_location_same_timezone_does_not_ask_migration(monkeypatch):
     assert message.replies
     assert "уже выбран" in message.replies[0][0]
 
+
+
+def test_main_timezone_picker_does_not_show_dead_end_other_button():
+    keyboard = timezone_features.build_timezone_picker_keyboard()
+    callback_data = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert "tz:geo" in callback_data
+    assert "tz:preset:cet" in callback_data
+    assert "tz:preset:moscow" in callback_data
+    assert "tz:other" not in callback_data

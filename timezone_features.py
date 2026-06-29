@@ -81,7 +81,6 @@ def build_timezone_picker_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("📍 Определить по геопозиции", callback_data="tz:geo")],
             [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
             [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
-            [InlineKeyboardButton("🌍 Выбрать другой", callback_data="tz:other")],
         ]
     )
 
