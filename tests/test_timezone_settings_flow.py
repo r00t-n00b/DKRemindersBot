@@ -151,7 +151,7 @@ def test_other_timezone_callback_keeps_user_in_choose_flow():
 
     assert query.message.edits
     text, kwargs = query.message.edits[0]
-    assert "Выбери часовой пояс" in text
+    assert "выбери часовой пояс" in text.lower()
     assert "IANA" not in text
     assert "debug" not in text
     assert kwargs.get("reply_markup") is not None
@@ -178,5 +178,77 @@ def test_geo_callback_edits_existing_message_and_shows_inline_fallback():
     assert len(query.message.edits) == 1
     text, kwargs = query.message.edits[0]
     assert "Telegram Desktop" in text
-    assert "Выбери часовой пояс" in text
+    assert "выбери часовой пояс" in text.lower()
     assert kwargs.get("reply_markup") is not None
+
+
+def test_timezone_preset_same_timezone_does_not_ask_migration():
+    saved = []
+
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 5,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    query = FakeQuery("tz:preset:cet")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert saved == []
+    assert "pending_timezone_migration" not in context.user_data
+    assert query.message.edits
+    text, kwargs = query.message.edits[0]
+    assert "уже выбран" in text
+    assert "Перенести их" not in text
+
+
+def test_geo_fallback_keyboard_does_not_loop_to_geo_again():
+    keyboard = timezone_features.build_timezone_other_keyboard()
+    callback_data = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert "tz:geo" not in callback_data
+    assert "tz:preset:cet" in callback_data
+    assert "tz:preset:moscow" in callback_data
+    assert "tz:back" in callback_data
+
+
+def test_geo_callback_edits_to_desktop_explanation_without_retry_geo_button():
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    query = FakeQuery("tz:geo")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert query.message.replies == []
+    assert len(query.message.edits) == 1
+    text, kwargs = query.message.edits[0]
+    assert "Telegram Desktop" in text
+    assert "телефоне" in text
+    keyboard = kwargs["reply_markup"]
+    callback_data = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+    assert "tz:geo" not in callback_data

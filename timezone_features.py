@@ -91,7 +91,6 @@ def build_timezone_other_keyboard() -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
             [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
-            [InlineKeyboardButton("📍 Попробовать геопозицию", callback_data="tz:geo")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="tz:back")],
         ]
     )
@@ -161,8 +160,12 @@ async def _edit_or_reply(query, text: str, **kwargs) -> None:
         if hasattr(result, "__await__"):
             await result
         return
-    except Exception:
-        pass
+    except Exception as e:
+        # Telegram raises "message is not modified" when the user presses
+        # a button that would render the same screen again. In that case
+        # do nothing instead of posting a duplicate message.
+        if "not modified" in str(e).lower():
+            return
 
     message = getattr(query, "message", None)
     await _reply(message, text, **kwargs)
@@ -235,8 +238,9 @@ async def handle_timezone_callback(update, context, deps) -> None:
         await _edit_or_reply(
             query,
             (
-                "Telegram Desktop не всегда умеет отправлять геопозицию боту.\n\n"
-                "Выбери часовой пояс кнопкой ниже. Если нужен другой город — нажми “Выбрать другой”."
+                "Telegram Desktop не умеет отправлять геопозицию боту.\n\n"
+                "Чтобы определить часовой пояс автоматически, открой /settings в Telegram на телефоне.\n\n"
+                "На этом устройстве выбери часовой пояс кнопкой ниже:"
             ),
             reply_markup=build_timezone_other_keyboard(),
         )
@@ -248,9 +252,8 @@ async def handle_timezone_callback(update, context, deps) -> None:
             query,
             (
                 "Выбери часовой пояс.\n\n"
-                "Если нужного варианта нет, попробуй определить по геопозиции. "
-                "На телефоне Telegram обычно умеет отправлять геопозицию, "
-                "а в Telegram Desktop эта функция может быть недоступна."
+                "Если нужного варианта нет, открой /settings в Telegram на телефоне "
+                "и попробуй определить часовой пояс по геопозиции."
             ),
             reply_markup=build_timezone_other_keyboard(),
         )
@@ -273,6 +276,19 @@ async def handle_timezone_callback(update, context, deps) -> None:
 
         _label, new_tz = TIMEZONE_PRESETS[preset_key]
         old_tz = deps.get_user_timezone_name(user.id) or DEFAULT_TIMEZONE_NAME
+
+        if old_tz == new_tz:
+            await query.answer("Уже выбран")
+            await _edit_or_reply(
+                query,
+                (
+                    f"Этот часовой пояс уже выбран: {timezone_label(new_tz)}\n"
+                    f"Сейчас в нём: {format_timezone_now(new_tz)}"
+                ),
+                reply_markup=build_timezone_picker_keyboard(),
+            )
+            return
+
         deps.set_user_timezone_name(user.id, new_tz)
 
         await query.answer("Часовой пояс сохранён")
