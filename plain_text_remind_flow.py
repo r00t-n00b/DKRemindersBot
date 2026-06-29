@@ -56,6 +56,7 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
         and callable(build_timezone_picker_keyboard)
         and get_user_timezone_name_raw(user.id) is None
     ):
+        context.user_data["pending_plain_text_reminder_after_timezone"] = raw_text
         await safe_reply(
             message,
             build_first_timezone_prompt(),

@@ -54,7 +54,17 @@ def test_plain_text_without_timezone_shows_picker_and_does_not_create_reminder()
         message=message,
     )
 
-    asyncio.run(plain_text_remind_flow.handle_plain_text_remind_command(update, SimpleNamespace(), deps))
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(plain_text_remind_flow.handle_plain_text_remind_command(update, context, deps))
 
     assert fake_remind_command.calls == []
+    assert context.user_data["pending_plain_text_reminder_after_timezone"] == "напомни завтра тест"
     assert fake_safe_reply.calls == [("Telegram не передаёт мне твой часовой пояс автоматически", {"reply_markup": "timezone-picker"})]
+
+def test_timezone_settings_deps_can_resume_pending_plain_text(main_module):
+    deps = main_module._build_timezone_settings_deps()
+
+    assert deps.get_user_timezone_name_raw is main_module.get_user_timezone_name_raw
+    assert deps.plain_text_remind_command is main_module.plain_text_remind_command
+

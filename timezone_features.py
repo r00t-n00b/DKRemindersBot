@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 try:
@@ -217,6 +218,45 @@ async def _delete_saved_location_prompt(update, context) -> None:
         pass
 
 
+async def _resume_pending_plain_text_reminder(update, context, deps) -> bool:
+    raw_text = context.user_data.get("pending_plain_text_reminder_after_timezone")
+    if not raw_text:
+        return False
+
+    handler = getattr(deps, "plain_text_remind_command", None)
+    if not callable(handler):
+        return False
+
+    query = getattr(update, "callback_query", None)
+    message = getattr(query, "message", None) if query is not None else None
+    if message is None:
+        message = getattr(update, "effective_message", None)
+    if message is None:
+        return False
+
+    chat = getattr(message, "chat", None)
+    if chat is None:
+        chat = SimpleNamespace(
+            id=getattr(message, "chat_id", None),
+            type="private",
+        )
+
+    proxy_message = SimpleNamespace(
+        text=raw_text,
+        reply_text=getattr(message, "reply_text", None),
+    )
+    proxy_update = SimpleNamespace(
+        effective_chat=chat,
+        effective_message=proxy_message,
+        effective_user=getattr(update, "effective_user", None),
+        message=proxy_message,
+    )
+
+    await handler(proxy_update, context)
+    context.user_data.pop("pending_plain_text_reminder_after_timezone", None)
+    return True
+
+
 async def handle_settings_command(update, context, deps) -> None:
     message = update.effective_message
     user = update.effective_user
@@ -334,9 +374,13 @@ async def handle_timezone_callback(update, context, deps) -> None:
 
         _label, new_tz = TIMEZONE_PRESETS[preset_key]
         await _delete_saved_location_prompt(update, context)
-        old_tz = deps.get_user_timezone_name(user.id) or DEFAULT_TIMEZONE_NAME
 
-        if old_tz == new_tz:
+        get_raw_timezone = getattr(deps, "get_user_timezone_name_raw", None)
+        old_tz_raw = get_raw_timezone(user.id) if callable(get_raw_timezone) else deps.get_user_timezone_name(user.id)
+        is_first_timezone = old_tz_raw is None
+        old_tz = old_tz_raw or DEFAULT_TIMEZONE_NAME
+
+        if old_tz == new_tz and not is_first_timezone:
             await query.answer("Уже выбран")
             await _edit_or_reply(
                 query,
@@ -359,7 +403,9 @@ async def handle_timezone_callback(update, context, deps) -> None:
                 "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
             ),
         )
-        await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=new_tz)
+        if old_tz != new_tz:
+            await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=new_tz)
+        await _resume_pending_plain_text_reminder(update, context, deps)
         return
 
     if data.startswith("tz:migrate:"):
@@ -422,9 +468,12 @@ async def handle_timezone_location_message(update, context, deps) -> None:
         )
         return
 
-    old_tz = deps.get_user_timezone_name(user.id) or DEFAULT_TIMEZONE_NAME
+    get_raw_timezone = getattr(deps, "get_user_timezone_name_raw", None)
+    old_tz_raw = get_raw_timezone(user.id) if callable(get_raw_timezone) else deps.get_user_timezone_name(user.id)
+    is_first_timezone = old_tz_raw is None
+    old_tz = old_tz_raw or DEFAULT_TIMEZONE_NAME
 
-    if old_tz == tz_name:
+    if old_tz == tz_name and not is_first_timezone:
         await _reply(
             message,
             (
@@ -447,4 +496,6 @@ async def handle_timezone_location_message(update, context, deps) -> None:
         ),
         reply_markup=ReplyKeyboardRemove(),
     )
-    await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=tz_name)
+    if old_tz != tz_name:
+        await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=tz_name)
+    await _resume_pending_plain_text_reminder(update, context, deps)

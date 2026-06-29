@@ -429,3 +429,84 @@ def test_location_message_deletes_saved_location_prompt(monkeypatch):
     assert deleted == [(100, 7)]
     assert "timezone_location_prompt_message_id" not in context.user_data
 
+def test_first_timezone_preset_matching_default_saves_and_resumes_pending_plain_text():
+    saved = []
+    resumed = []
+
+    async def fake_plain_text_remind_command(update, context):
+        resumed.append(update.effective_message.text)
+        await update.effective_message.reply_text("Ок, напомню")
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: None,
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+        plain_text_remind_command=fake_plain_text_remind_command,
+    )
+
+    query = FakeQuery("tz:preset:cet")
+    query.message.chat = SimpleNamespace(id=100, type="private")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(
+        user_data={"pending_plain_text_reminder_after_timezone": "напомни завтра тест"}
+    )
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert saved == [(42, "Europe/Madrid")]
+    assert resumed == ["напомни завтра тест"]
+    assert "pending_plain_text_reminder_after_timezone" not in context.user_data
+    assert query.message.edits
+    assert "Ок, поставил часовой пояс: CET" in query.message.edits[0][0]
+    assert "уже выбран" not in query.message.edits[0][0]
+
+
+def test_first_timezone_location_matching_default_saves_and_resumes_pending_plain_text(monkeypatch):
+    saved = []
+    resumed = []
+
+    async def fake_plain_text_remind_command(update, context):
+        resumed.append(update.effective_message.text)
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(
+        timezone_features,
+        "detect_timezone_from_location",
+        lambda latitude, longitude: "Europe/Madrid",
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: None,
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 0,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+        plain_text_remind_command=fake_plain_text_remind_command,
+    )
+
+    message = FakeMessage()
+    message.chat = SimpleNamespace(id=100, type="private")
+    message.location = SimpleNamespace(latitude=41.38, longitude=2.17)
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        message=message,
+    )
+    context = SimpleNamespace(
+        user_data={"pending_plain_text_reminder_after_timezone": "напомни завтра тест"}
+    )
+
+    asyncio.run(timezone_features.handle_timezone_location_message(update, context, deps))
+
+    assert saved == [(42, "Europe/Madrid")]
+    assert resumed == ["напомни завтра тест"]
+    assert "pending_plain_text_reminder_after_timezone" not in context.user_data
+    assert message.replies
+    assert "Ок, поставил часовой пояс: CET" in message.replies[0][0]
+    assert "уже выбран" not in message.replies[0][0]
+
