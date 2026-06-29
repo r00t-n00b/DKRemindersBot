@@ -46,6 +46,23 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
     if raw_text.startswith("/"):
         return
 
+    get_user_timezone_name_raw = getattr(deps, "get_user_timezone_name_raw", None)
+    build_first_timezone_prompt = getattr(deps, "build_first_timezone_prompt", None)
+    build_timezone_picker_keyboard = getattr(deps, "build_timezone_picker_keyboard", None)
+
+    if (
+        callable(get_user_timezone_name_raw)
+        and callable(build_first_timezone_prompt)
+        and callable(build_timezone_picker_keyboard)
+        and get_user_timezone_name_raw(user.id) is None
+    ):
+        await safe_reply(
+            message,
+            build_first_timezone_prompt(),
+            reply_markup=build_timezone_picker_keyboard(),
+        )
+        return
+
     normalization_source = "local"
     normalized = _normalize_plain_text_reminder_locally(raw_text)
 

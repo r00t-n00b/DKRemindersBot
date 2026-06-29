@@ -285,7 +285,6 @@ async def handle_timezone_callback(update, context, deps) -> None:
                     f"Этот часовой пояс уже выбран: {timezone_label(new_tz)}\n"
                     f"Сейчас в нём: {format_timezone_now(new_tz)}"
                 ),
-                reply_markup=build_timezone_picker_keyboard(),
             )
             return
 

@@ -252,3 +252,30 @@ def test_geo_callback_edits_to_desktop_explanation_without_retry_geo_button():
         for button in row
     ]
     assert "tz:geo" not in callback_data
+
+
+def test_same_timezone_confirmation_has_no_picker_keyboard():
+    saved = []
+
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 5,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    query = FakeQuery("tz:preset:cet")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(user_data={})
+
+    asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
+
+    assert saved == []
+    assert "pending_timezone_migration" not in context.user_data
+    assert query.message.edits
+    text, kwargs = query.message.edits[0]
+    assert "уже выбран" in text
+    assert "reply_markup" not in kwargs
