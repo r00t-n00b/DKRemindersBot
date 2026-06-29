@@ -6,6 +6,8 @@ import asyncio
 import logging
 import os
 
+from timezone_features import timezone_label
+
 
 async def handle_single_oneoff_reminder(
     *,
@@ -107,7 +109,10 @@ async def handle_single_oneoff_reminder(
         user.id,
     )
 
-    when_str = remind_at.strftime("%d.%m %H:%M")
+    display_tz = getattr(now, "tzinfo", None)
+    display_tz_name = getattr(display_tz, "key", None)
+    display_dt = remind_at.astimezone(display_tz) if display_tz is not None else remind_at
+    when_str = f"{display_dt.strftime('%d.%m %H:%M')} {timezone_label(display_tz_name)}"
     created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id)
     if used_alias:
         await safe_reply(

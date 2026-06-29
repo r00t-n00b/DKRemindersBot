@@ -1,5 +1,7 @@
 """Handle one-line recurring /remind flow."""
 
+from timezone_features import timezone_label
+
 
 async def try_handle_single_recurring_reminder(
     *,
@@ -73,7 +75,10 @@ async def try_handle_single_recurring_reminder(
         user.id,
     )
 
-    when_str = first_dt.strftime("%d.%m %H:%M")
+    display_tz = getattr(now, "tzinfo", None)
+    display_tz_name = getattr(display_tz, "key", None)
+    display_dt = first_dt.astimezone(display_tz) if display_tz is not None else first_dt
+    when_str = f"{display_dt.strftime('%d.%m %H:%M')} {timezone_label(display_tz_name)}"
     human = format_recurring_human(pattern_type, payload)
 
     created_actions_keyboard = build_created_reminder_actions_keyboard(

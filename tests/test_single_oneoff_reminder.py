@@ -83,7 +83,7 @@ def test_single_oneoff_handler_creates_reminder_and_replies_in_same_chat():
             "created_by": 42,
         }
     ]
-    assert message.replies == [("created 02.01 10:00: milk", {"reply_markup": "kb:101"})]
+    assert message.replies == [("created 02.01 10:00 CET: milk", {"reply_markup": "kb:101"})]
     assert logger.calls
 
 
@@ -100,7 +100,7 @@ def test_single_oneoff_handler_replies_with_alias_text():
     )
 
     assert message.replies == [
-        ("Ок, напомню в чате 'home' 02.01 10:00: milk", {"reply_markup": "kb:101"})
+        ("Ок, напомню в чате 'home' 02.01 10:00 CET: milk", {"reply_markup": "kb:101"})
     ]
 
 
@@ -118,7 +118,7 @@ def test_single_oneoff_handler_replies_with_other_person_text_in_private_chat():
     )
 
     assert message.replies == [
-        ("Ок, напомню этому человеку 02.01 10:00: milk", {"reply_markup": "kb:101"})
+        ("Ок, напомню этому человеку 02.01 10:00 CET: milk", {"reply_markup": "kb:101"})
     ]
 
 
@@ -148,7 +148,7 @@ def test_single_oneoff_handler_uses_gemini_fallback_after_parse_error():
     )
 
     assert calls == ["bad raw", "tomorrow 10:00 - milk"]
-    assert message.replies == [("created 02.01 10:00: milk", {"reply_markup": "kb:101"})]
+    assert message.replies == [("created 02.01 10:00 CET: milk", {"reply_markup": "kb:101"})]
 
 
 def test_single_oneoff_handler_replies_parse_failed_when_gemini_says_no_reminder():

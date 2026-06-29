@@ -134,7 +134,7 @@ def test_single_recurring_handler_creates_template_and_reminder_and_replies():
         }
     ]
     assert message.replies == [
-        ("created 02.01 10:00 water каждый день home", {"reply_markup": "kb:101:True"})
+        ("created 02.01 10:00 CET water каждый день home", {"reply_markup": "kb:101:True"})
     ]
     assert logger.calls
 

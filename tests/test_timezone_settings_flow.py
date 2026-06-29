@@ -157,7 +157,7 @@ def test_other_timezone_callback_keeps_user_in_choose_flow():
     assert kwargs.get("reply_markup") is not None
 
 
-def test_geo_callback_mentions_desktop_fallback_and_shows_inline_choices():
+def test_geo_callback_edits_existing_message_and_shows_inline_fallback():
     deps = SimpleNamespace(
         get_user_timezone_name=lambda user_id: "Europe/Madrid",
         set_user_timezone_name=lambda user_id, tz: None,
@@ -174,7 +174,9 @@ def test_geo_callback_mentions_desktop_fallback_and_shows_inline_choices():
 
     asyncio.run(timezone_features.handle_timezone_callback(update, context, deps))
 
-    assert len(query.message.replies) == 2
-    assert "Telegram Desktop" in query.message.replies[0][0]
-    assert "выбери часовой пояс вручную" in query.message.replies[1][0].lower()
-    assert query.message.replies[1][1].get("reply_markup") is not None
+    assert query.message.replies == []
+    assert len(query.message.edits) == 1
+    text, kwargs = query.message.edits[0]
+    assert "Telegram Desktop" in text
+    assert "Выбери часовой пояс" in text
+    assert kwargs.get("reply_markup") is not None

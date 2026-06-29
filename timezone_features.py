@@ -232,19 +232,12 @@ async def handle_timezone_callback(update, context, deps) -> None:
 
     if data == "tz:geo":
         await query.answer()
-        await _reply(
-            query.message,
+        await _edit_or_reply(
+            query,
             (
-                "Нажми кнопку ниже и отправь геопозицию. "
-                "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
-                "В Telegram Desktop отправка геопозиции может быть недоступна. "
-                "Тогда выбери CET или Москву кнопками ниже."
+                "Telegram Desktop не всегда умеет отправлять геопозицию боту.\n\n"
+                "Выбери часовой пояс кнопкой ниже. Если нужен другой город — нажми “Выбрать другой”."
             ),
-            reply_markup=build_location_request_keyboard(),
-        )
-        await _reply(
-            query.message,
-            "Или выбери часовой пояс вручную:",
             reply_markup=build_timezone_other_keyboard(),
         )
         return
