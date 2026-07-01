@@ -267,7 +267,7 @@ def normalize_voice_reminder_text(text: str) -> str:
     m = re.match(
         r"^(?P<date>today|tomorrow|day after tomorrow|сегодня|завтра|послезавтра)\s+"
         r"(?:(?:в|at)\s+)?"
-        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"(?P<hour>\d{1,2})(?:(?:[:.])(?P<minute>\d{2}))?"
         r"\s+(?P<text>.+)$",
         s,
         flags=re.IGNORECASE,
@@ -283,7 +283,7 @@ def normalize_voice_reminder_text(text: str) -> str:
         r"^(?:в\s+)?(?P<date>следующий|следующая|следующее|следующие|next)\s+"
         r"(?P<weekday>[a-zа-яё]+)\s+"
         r"(?:(?:в|at)\s+)?"
-        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"(?P<hour>\d{1,2})(?:(?:[:.])(?P<minute>\d{2}))?"
         r"\s+(?P<text>.+)$",
         s,
         flags=re.IGNORECASE,
@@ -301,7 +301,7 @@ def normalize_voice_reminder_text(text: str) -> str:
     m = re.match(
         r"^(?:в\s+)?(?P<weekday>[a-zа-яё]+)\s+"
         r"(?:(?:в|at)\s+)?"
-        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"(?P<hour>\d{1,2})(?:(?:[:.])(?P<minute>\d{2}))?"
         r"\s+(?P<text>.+)$",
         s,
         flags=re.IGNORECASE,
@@ -318,7 +318,7 @@ def normalize_voice_reminder_text(text: str) -> str:
     m = re.match(
         r"^(?P<day>\d{1,2})\s+(?P<month>[a-z]+)\s+"
         r"(?:(?:в|at)\s+)?"
-        r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+        r"(?P<hour>\d{1,2})(?:(?:[:.])(?P<minute>\d{2}))?"
         r"\s+(?P<text>.+)$",
         s,
         flags=re.IGNORECASE,
@@ -334,7 +334,7 @@ def normalize_voice_reminder_text(text: str) -> str:
 
     # "в 11 купить" / "at 11 buy" -> "11:00 - buy"
     m = re.match(
-        r"^(?:(?:в|at)\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s+(?P<text>.+)$",
+        r"^(?:(?:в|at)\s+)?(?P<hour>\d{1,2})(?:(?:[:.])(?P<minute>\d{2}))?\s+(?P<text>.+)$",
         s,
         flags=re.IGNORECASE,
     )

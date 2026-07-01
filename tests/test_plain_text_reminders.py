@@ -318,3 +318,53 @@ def test_linkchat_and_alias_examples_include_natural_language(main_module):
 
     assert "напомни football 28.11 12:00 завтра футбол" in message
     assert "/remind football 28.11 12:00 - завтра футбол" in message
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected"),
+    [
+        ("напомни в 13.46 рейд", "/remind 13:46 - рейд"),
+        ("напомни 13:46 рейд", "/remind 13:46 - рейд"),
+        ("напомни в 13 рейд", "/remind 13:00 - рейд"),
+        ("напомни завтра 13.46 рейд", "/remind завтра 13:46 - рейд"),
+        ("напомни сегодня в 13 рейд", "/remind сегодня 13:00 - рейд"),
+        ("напомни в понедельник 22.58 спросить", "/remind в понедельник 22:58 - спросить"),
+        ("напомни 1 октября в 13.46 страховка", "/remind 1 октября в 13:46 - страховка"),
+        ("remind me at 13.46 raid", "/remind 13:46 - raid"),
+        ("remind me tomorrow at 13.46 raid", "/remind tomorrow 13:46 - raid"),
+        ("remind me 29 may at 18.46 ask", "/remind 29 may 18:46 - ask"),
+    ],
+)
+def test_plain_text_explicit_time_patterns_use_local_normalizer_without_gemini(
+    main_module,
+    monkeypatch,
+    raw_text,
+    expected,
+):
+    seen = {}
+
+    async def fail_normalize(*args, **kwargs):
+        raise AssertionError("Gemini must not be called for explicit local time patterns")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+        await update.effective_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", fail_normalize)
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update(raw_text)
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == expected
+    reply, _ = message.replies[0]
+    assert "Я понял:" in reply
+    assert expected.removeprefix("/remind ") in reply
+
+
+def test_plain_text_fallback_understands_dot_time_when_gemini_fails(main_module):
+    assert (
+        main_module._normalize_reminder_text_fallback("напомни в 13.46 рейд")
+        == "13:46 - рейд"
+    )

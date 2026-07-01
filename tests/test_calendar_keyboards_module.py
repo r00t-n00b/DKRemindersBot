@@ -1,4 +1,5 @@
-from datetime import date as date_cls
+from datetime import date as date_cls, datetime
+from zoneinfo import ZoneInfo
 
 
 class DummyInlineKeyboardButton:
@@ -47,6 +48,9 @@ def test_calendar_keyboard_builders_are_exposed_via_main_proxy(main_module):
 
 def test_custom_date_keyboard_generates_snooze_callbacks(main_module, monkeypatch):
     _patch_keyboard_classes(main_module, monkeypatch)
+    import keyboards
+    fixed_now = datetime(2026, 6, 15, 12, 0, tzinfo=ZoneInfo("Europe/Madrid"))
+    monkeypatch.setattr(keyboards, "aware_now", lambda tz: fixed_now)
 
     markup = main_module.build_custom_date_keyboard(
         7,
@@ -66,6 +70,9 @@ def test_custom_date_keyboard_generates_snooze_callbacks(main_module, monkeypatc
 
 def test_custom_date_keyboard_generates_selfremind_event_callbacks(main_module, monkeypatch):
     _patch_keyboard_classes(main_module, monkeypatch)
+    import keyboards
+    fixed_now = datetime(2026, 6, 15, 12, 0, tzinfo=ZoneInfo("Europe/Madrid"))
+    monkeypatch.setattr(keyboards, "aware_now", lambda tz: fixed_now)
 
     markup = main_module.build_custom_date_keyboard(
         7,
