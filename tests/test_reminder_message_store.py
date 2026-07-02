@@ -137,3 +137,115 @@ def test_delete_old_snoozed_reminder_messages_falls_back_to_clear_keyboard(main_
     assert bot.deleted == []
     assert bot.cleared == [(555, 1001, None)]
     assert main_module.get_reminder_messages(old_rid) == []
+
+
+def test_delete_old_snoozed_reminder_messages_drops_tracking_when_telegram_refuses_delete(main_module):
+    class BadRequest(Exception):
+        pass
+
+    class BotRefusesDelete:
+        def __init__(self):
+            self.deleted = []
+            self.cleared = []
+
+        async def delete_message(self, *, chat_id, message_id):
+            raise BadRequest("Message can't be deleted for everyone")
+
+        async def edit_message_reply_markup(self, *, chat_id, message_id, reply_markup=None):
+            self.cleared.append((chat_id, message_id, reply_markup))
+
+    old_rid = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+        delivered=1,
+        acked=1,
+    )
+    current_rid = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+        delivered=1,
+        acked=0,
+    )
+
+    main_module.register_reminder_message(old_rid, 555, 1001, "delivery")
+
+    bot = BotRefusesDelete()
+
+    asyncio.run(
+        main_module.delete_old_snoozed_reminder_messages(
+            bot,
+            current_reminder_id=current_rid,
+            chat_id=555,
+            text="milk",
+            created_by=42,
+        )
+    )
+
+    assert bot.cleared == []
+    assert main_module.get_reminder_messages(old_rid) == []
+
+
+def test_delete_old_snoozed_reminder_messages_stops_on_retry_after(main_module):
+    class RetryAfter(Exception):
+        pass
+
+    class BotRetryAfter:
+        def __init__(self):
+            self.delete_attempts = 0
+            self.cleared = []
+
+        async def delete_message(self, *, chat_id, message_id):
+            self.delete_attempts += 1
+            raise RetryAfter("Flood control exceeded. Retry in 9 seconds")
+
+        async def edit_message_reply_markup(self, *, chat_id, message_id, reply_markup=None):
+            self.cleared.append((chat_id, message_id, reply_markup))
+
+    old_rid_1 = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+        delivered=1,
+        acked=1,
+    )
+    old_rid_2 = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+        delivered=1,
+        acked=1,
+    )
+    current_rid = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+        delivered=1,
+        acked=0,
+    )
+
+    main_module.register_reminder_message(old_rid_1, 555, 1001, "delivery")
+    main_module.register_reminder_message(old_rid_2, 555, 1002, "delivery")
+
+    bot = BotRetryAfter()
+
+    asyncio.run(
+        main_module.delete_old_snoozed_reminder_messages(
+            bot,
+            current_reminder_id=current_rid,
+            chat_id=555,
+            text="milk",
+            created_by=42,
+        )
+    )
+
+    assert bot.delete_attempts == 1
+    assert bot.cleared == []
+    assert [row["message_id"] for row in main_module.get_reminder_messages(old_rid_1)] == [1001]
+    assert [row["message_id"] for row in main_module.get_reminder_messages(old_rid_2)] == [1002]

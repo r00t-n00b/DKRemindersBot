@@ -114,19 +114,53 @@ async def delete_old_snoozed_reminder_messages_impl(
     text: str,
     created_by: int | None,
     deps,
+    max_messages: int = 10,
 ) -> None:
-    """Best-effort delete old already-acked delivery/nudge messages from the same snooze chain.
+    """Best-effort cleanup for old messages from the same snooze chain.
 
-    Snooze creates a new reminder row. Without this cleanup, every later snooze leaves
-    the previous delivered bot message in chat:
-      11:00 text (Отложено до 12:00)
-      12:00 text (Отложено до 13:00)
-      13:00 text (Отложено до 13:20)
-
-    We deliberately only target already acked/sent reminders with the same
-    chat/text/creator and exclude the current reminder id.
+    Important production rules:
+    - If Telegram says the message cannot be deleted anymore, drop local tracking
+      and do not try fallback edit; otherwise the same impossible message will be
+      retried forever.
+    - If Telegram returns RetryAfter/flood control, stop the loop immediately.
+    - Limit one cleanup pass so a burst of old Done clicks cannot flood Telegram.
     """
     _apply_deps(deps)
+
+    def _exc_name(exc: Exception) -> str:
+        return exc.__class__.__name__
+
+    def _exc_text(exc: Exception) -> str:
+        return str(exc).lower()
+
+    def _is_retry_after(exc: Exception) -> bool:
+        return _exc_name(exc) == "RetryAfter" or "retry after" in _exc_text(exc) or "flood control" in _exc_text(exc)
+
+    def _is_permanent_delete_failure(exc: Exception) -> bool:
+        msg = _exc_text(exc)
+        return (
+            "can't be deleted" in msg
+            or "cannot be deleted" in msg
+            or "message to delete not found" in msg
+            or "message not found" in msg
+        )
+
+    def _is_permanent_edit_failure(exc: Exception) -> bool:
+        msg = _exc_text(exc)
+        return (
+            "message is not modified" in msg
+            or "message to edit not found" in msg
+            or "message can't be edited" in msg
+            or "message cannot be edited" in msg
+            or "message not found" in msg
+        )
+
+    def _drop_message_tracking(row_id: int) -> None:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM reminder_messages WHERE id = ?", (int(row_id),))
+        conn.commit()
+        conn.close()
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -150,6 +184,7 @@ async def delete_old_snoozed_reminder_messages_impl(
           AND r.delivered = 1
           AND r.acked = 1
         ORDER BY rm.id ASC
+        LIMIT ?
         """,
         (
             int(current_reminder_id),
@@ -157,6 +192,7 @@ async def delete_old_snoozed_reminder_messages_impl(
             int(chat_id),
             text,
             created_by,
+            int(max_messages),
         ),
     )
     rows = [dict(row) for row in c.fetchall()]
@@ -169,26 +205,71 @@ async def delete_old_snoozed_reminder_messages_impl(
 
         try:
             await bot.delete_message(chat_id=row_chat_id, message_id=message_id)
-        except Exception:
-            try:
-                await bot.edit_message_reply_markup(
-                    chat_id=row_chat_id,
-                    message_id=message_id,
-                    reply_markup=None,
+            _drop_message_tracking(row_id)
+            continue
+        except Exception as delete_exc:
+            if _is_retry_after(delete_exc):
+                logger.warning(
+                    "Stop old snoozed cleanup because Telegram returned RetryAfter "
+                    "current_reminder_id=%s chat_id=%s message_id=%s error=%s",
+                    current_reminder_id,
+                    row_chat_id,
+                    message_id,
+                    delete_exc,
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to delete/deactivate old snoozed reminder message "
-                    "current_reminder_id=%s old_reminder_id=%s chat_id=%s message_id=%s",
+                break
+
+            if _is_permanent_delete_failure(delete_exc):
+                logger.info(
+                    "Drop old snoozed message tracking after permanent delete failure "
+                    "current_reminder_id=%s old_reminder_id=%s chat_id=%s message_id=%s error=%s",
                     current_reminder_id,
                     row.get("reminder_id"),
                     row_chat_id,
                     message_id,
+                    delete_exc,
                 )
+                _drop_message_tracking(row_id)
                 continue
 
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("DELETE FROM reminder_messages WHERE id = ?", (row_id,))
-        conn.commit()
-        conn.close()
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=row_chat_id,
+                message_id=message_id,
+                reply_markup=None,
+            )
+            _drop_message_tracking(row_id)
+        except Exception as edit_exc:
+            if _is_retry_after(edit_exc):
+                logger.warning(
+                    "Stop old snoozed cleanup because Telegram returned RetryAfter on fallback edit "
+                    "current_reminder_id=%s chat_id=%s message_id=%s error=%s",
+                    current_reminder_id,
+                    row_chat_id,
+                    message_id,
+                    edit_exc,
+                )
+                break
+
+            if _is_permanent_edit_failure(edit_exc):
+                logger.info(
+                    "Drop old snoozed message tracking after permanent edit failure "
+                    "current_reminder_id=%s old_reminder_id=%s chat_id=%s message_id=%s error=%s",
+                    current_reminder_id,
+                    row.get("reminder_id"),
+                    row_chat_id,
+                    message_id,
+                    edit_exc,
+                )
+                _drop_message_tracking(row_id)
+                continue
+
+            logger.warning(
+                "Failed to delete/deactivate old snoozed reminder message "
+                "current_reminder_id=%s old_reminder_id=%s chat_id=%s message_id=%s error=%s",
+                current_reminder_id,
+                row.get("reminder_id"),
+                row_chat_id,
+                message_id,
+                edit_exc,
+            )
