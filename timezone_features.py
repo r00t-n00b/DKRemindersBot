@@ -87,6 +87,17 @@ def build_timezone_picker_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def build_timezone_picker_keyboard_with_settings_back() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("📍 For mobile only: определить по геопозиции", callback_data="tz:geo")],
+            [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
+            [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="settings:back")],
+        ]
+    )
+
+
 def build_timezone_after_geo_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -195,7 +206,7 @@ def build_settings_text(
         "",
         f"Часовой пояс: {timezone_label(tz_name)}",
         f"Сейчас в нём: {format_timezone_now(tz_name)}",
-        f"Если ты не укажешь время при постановке ремайндера, то я установлю его на {default_line}. Изменить это можно командой указанной ниже.",
+        f"Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: {default_line}",
         f"Запланированные напоминания: {active_count}",
     ]
 
@@ -220,8 +231,6 @@ def build_settings_text(
         [
             "",
             "Команды для изменения:",
-            "/defaulttime 09:30 — изменить время, которое подставляется, если ты указал дату без времени",
-            "/defaulttime reset — сбросить это время на 10:00",
             "/aliases — посмотреть алиасы",
             "/linkuser <alias> @username — добавить user alias",
             "/linkchat <alias> — добавить chat alias в группе",
@@ -431,7 +440,7 @@ async def handle_settings_callback(update, context, deps) -> None:
         await _edit_or_reply(
             query,
             build_first_timezone_prompt(),
-            reply_markup=build_timezone_picker_keyboard(),
+            reply_markup=build_timezone_picker_keyboard_with_settings_back(),
         )
         return
 

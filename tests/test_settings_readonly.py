@@ -24,14 +24,14 @@ def test_build_settings_text_includes_readonly_summary_sections():
 
     assert "Настройки" in text
     assert "Часовой пояс: CET" in text
-    assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 09:30." in text
+    assert "Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: 09:30" in text
     assert "Запланированные напоминания: 3" in text
     assert "Активные повторяющиеся напоминания" not in text
     assert "👤 User aliases:" in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "💬 Chat aliases:" in text
     assert "• football -> Football Chat / chat_id=222" in text
-    assert "/defaulttime 09:30" in text
+    assert "/defaulttime 09:30" not in text
     assert "/aliases" in text
     assert "Nudge policy" not in text
     assert "в backlog" not in text
@@ -47,7 +47,7 @@ def test_build_settings_text_shows_empty_alias_summary():
         chat_alias_lines=[],
     )
 
-    assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 10:00." in text
+    assert "Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: 10:00" in text
     assert "Запланированные напоминания: 0" in text
     assert "Тобой не было заведено ни одного алиаса" in text
 
@@ -75,7 +75,7 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
     text, kwargs = message.replies[0]
 
     assert "Часовой пояс: CET" in text
-    assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 09:30." in text
+    assert "Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: 09:30" in text
     assert "Запланированные напоминания: 3" in text
     assert "Активные повторяющиеся напоминания" not in text
     assert "• wife -> @wife / chat_id=111" in text
@@ -246,7 +246,7 @@ def test_settings_defaulttime_set_saves_and_returns_to_settings():
     assert saved == [(123, 9, 30)]
     assert query.answers[0][0] == "Сохранил 09:30"
     text, _ = query.message.edits[0]
-    assert "я установлю его на 09:30" in text
+    assert "Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: 09:30" in text
 
 
 def test_settings_defaulttime_reset_clears_and_returns_to_settings():
@@ -276,7 +276,7 @@ def test_settings_defaulttime_reset_clears_and_returns_to_settings():
     assert cleared == [123]
     assert query.answers[0][0] == "Сбросил на 10:00"
     text, _ = query.message.edits[0]
-    assert "я установлю его на 10:00" in text
+    assert "Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: 10:00" in text
 
 
 
@@ -320,3 +320,43 @@ def test_settings_timezone_callback_opens_timezone_dialog():
     assert "tz:geo" in callback_data
     assert "tz:preset:cet" in callback_data
     assert "tz:preset:moscow" in callback_data
+
+
+
+def test_settings_text_uses_compact_default_time_line_and_no_defaulttime_commands():
+    text = build_settings_text(
+        tz_name="Europe/Madrid",
+        default_time_text="10:30",
+        active_reminders_count=20,
+        user_alias_lines=[],
+        chat_alias_lines=[],
+    )
+
+    assert "Часовой пояс: CET" in text
+    assert "Сейчас в нём:" in text
+    assert "Время по умолчанию, на которое будет установлен ремайндер, если оно не указано: 10:30" in text
+    assert "Запланированные напоминания: 20" in text
+    assert "Если ты не укажешь время при постановке ремайндера" not in text
+    assert "/defaulttime 09:30" not in text
+    assert "/defaulttime reset" not in text
+
+
+def test_settings_timezone_dialog_opened_from_settings_has_back_button():
+    from timezone_features import handle_settings_callback
+
+    query = Query("settings:timezone")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace()
+
+    asyncio.run(handle_settings_callback(update, SimpleNamespace(), deps))
+
+    _, kwargs = query.message.edits[0]
+    keyboard = kwargs["reply_markup"].inline_keyboard
+    callback_data = [button.callback_data for row in keyboard for button in row]
+
+    assert "settings:back" in callback_data
