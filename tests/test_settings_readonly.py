@@ -145,9 +145,14 @@ def test_settings_command_counts_visible_chat_reminders_not_created_by_user():
 class QueryMessage:
     def __init__(self):
         self.edits = []
+        self.replies = []
 
     async def edit_text(self, text, **kwargs):
         self.edits.append((text, kwargs))
+
+    async def reply_text(self, text, **kwargs):
+        self.replies.append((text, kwargs))
+        return SimpleNamespace(message_id=len(self.replies), chat_id=999)
 
 
 class Query:
@@ -393,7 +398,7 @@ def test_timezone_preset_from_settings_returns_to_settings_when_no_migration_nee
         get_user_timezone_name=lambda user_id: "Europe/Moscow",
         set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
         count_active_reminders_for_user=lambda user_id: 0,
-        count_active_reminders_for_chat=lambda chat_id: 5,
+        count_active_reminders_for_chat=lambda chat_id: 0,
         get_user_default_time=lambda user_id: (10, 30),
         get_all_user_aliases=lambda user_id: [],
         get_all_aliases=lambda user_id: [],
@@ -407,7 +412,7 @@ def test_timezone_preset_from_settings_returns_to_settings_when_no_migration_nee
     text, kwargs = query.message.edits[0]
     assert "Настройки" in text
     assert "Часовой пояс: Россия / Москва" in text
-    assert "Запланированные напоминания: 5" in text
+    assert "Запланированные напоминания: 0" in text
     assert kwargs.get("reply_markup") is not None
 
 
@@ -459,3 +464,34 @@ def test_timezone_migration_from_settings_returns_to_settings_after_answer():
     assert "Настройки" in text
     assert "Часовой пояс: Россия / Москва" in text
     assert kwargs.get("reply_markup") is not None
+
+
+def test_timezone_migration_question_from_settings_uses_settings_chat_count():
+    from timezone_features import handle_timezone_callback
+
+    saved = []
+    context = SimpleNamespace(user_data={"timezone_started_from_settings": True})
+
+    query = Query("tz:preset:moscow")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 31,
+        count_active_reminders_for_chat=lambda chat_id: 20 if chat_id == 999 else -1,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    asyncio.run(handle_timezone_callback(update, context, deps))
+
+    assert saved == [(123, "Europe/Moscow")]
+    assert query.message.replies
+    text, _ = query.message.replies[0]
+    assert "У тебя есть активные напоминания: 20." in text
+    assert "У тебя есть активные напоминания: 31." not in text

@@ -508,7 +508,7 @@ async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz:
     if user is None:
         return False
 
-    active_count = deps.count_active_reminders_for_user(user.id)
+    active_count = _settings_active_count(update, user.id, deps)
     if active_count <= 0:
         return False
 
