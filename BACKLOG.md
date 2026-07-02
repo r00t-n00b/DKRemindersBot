@@ -42,11 +42,17 @@ Production reminder-worker должен стабильно:
 
 Нужно довести настройки до полноценного UX:
 
-- read-only экран сначала;
-- default time;
+- read-only экран сначала — DONE;
+- fallback time: понятный read-only текст “если время не указано...” — DONE;
 - timezone — DONE;
-- aliases summary;
+- aliases summary — DONE;
 - дальше editable settings;
+- editable fallback/default reminder time;
+- editable timezone;
+- nudge policy;
+- язык кнопок;
+- формат времени: 24h / verbose;
+- тестовое напоминание;
 - нормальный UX для смены timezone при отпуске/переезде;
 - возможно показывать текущие user settings/debug summary только для себя.
 

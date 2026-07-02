@@ -24,15 +24,17 @@ def test_build_settings_text_includes_readonly_summary_sections():
 
     assert "Настройки" in text
     assert "Часовой пояс: CET" in text
-    assert "Если время не указано: 09:30" in text
+    assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 09:30." in text
     assert "Запланированные напоминания: 3" in text
-    assert "Активные повторяющиеся правила: 2" in text
+    assert "Активные повторяющиеся напоминания: 2" in text
     assert "👤 User aliases:" in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "💬 Chat aliases:" in text
     assert "• football -> Football Chat / chat_id=222" in text
     assert "/defaulttime 09:30" in text
     assert "/aliases" in text
+    assert "Nudge policy" not in text
+    assert "в backlog" not in text
 
 
 def test_build_settings_text_shows_empty_alias_summary():
@@ -45,7 +47,7 @@ def test_build_settings_text_shows_empty_alias_summary():
         chat_alias_lines=[],
     )
 
-    assert "Если время не указано: 10:00" in text
+    assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 10:00." in text
     assert "Запланированные напоминания: 0" in text
     assert "Тобой не было заведено ни одного алиаса" in text
 
@@ -73,9 +75,9 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
     text, kwargs = message.replies[0]
 
     assert "Часовой пояс: CET" in text
-    assert "Если время не указано: 09:30" in text
+    assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 09:30." in text
     assert "Запланированные напоминания: 3" in text
-    assert "Активные повторяющиеся правила: 2" in text
+    assert "Активные повторяющиеся напоминания: 2" in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "• football -> Football Chat / chat_id=222" in text
     assert kwargs["reply_markup"] is not None
