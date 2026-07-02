@@ -186,6 +186,45 @@ def count_active_recurring_templates_for_user_impl(user_id: int, *, deps) -> int
         conn.close()
 
 
+def count_active_reminders_for_chat_impl(chat_id: int, *, deps) -> int:
+    _apply_deps(deps)
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM reminders
+            WHERE delivered = 0
+              AND chat_id = ?
+            """,
+            (int(chat_id),),
+        ).fetchone()
+        return int(row[0] or 0)
+    finally:
+        conn.close()
+
+
+def count_active_recurring_templates_for_chat_impl(chat_id: int, *, deps) -> int:
+    _apply_deps(deps)
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            """
+            SELECT COUNT(DISTINCT r.template_id)
+            FROM reminders r
+            JOIN recurring_templates rt ON rt.id = r.template_id
+            WHERE r.delivered = 0
+              AND r.chat_id = ?
+              AND r.template_id IS NOT NULL
+              AND rt.active = 1
+            """,
+            (int(chat_id),),
+        ).fetchone()
+        return int(row[0] or 0)
+    finally:
+        conn.close()
+
+
 def _convert_preserving_local_time(remind_at_iso: str, old_tz: str, new_tz: str) -> str:
     old_zone = ZoneInfo(old_tz or DEFAULT_TIMEZONE_NAME)
     new_zone = ZoneInfo(new_tz or DEFAULT_TIMEZONE_NAME)

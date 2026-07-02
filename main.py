@@ -312,7 +312,7 @@ from storage_user_chats import get_user_chat_id_by_user_id_impl, get_user_chat_i
 from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
 from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
 from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
-from storage_user_settings import clear_user_default_time_impl, count_active_reminders_for_user_impl, count_active_recurring_templates_for_user_impl, get_user_default_time_impl, get_user_timezone_name_impl, move_active_reminders_timezone_for_user_impl, set_user_default_time_impl, set_user_timezone_name_impl
+from storage_user_settings import clear_user_default_time_impl, count_active_reminders_for_chat_impl, count_active_reminders_for_user_impl, count_active_recurring_templates_for_chat_impl, count_active_recurring_templates_for_user_impl, get_user_default_time_impl, get_user_timezone_name_impl, move_active_reminders_timezone_for_user_impl, set_user_default_time_impl, set_user_timezone_name_impl
 from storage_write import add_reminder_impl, claim_due_reminders_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_delivery_failed_impl, mark_reminder_sent_impl, reset_stale_processing_reminders_impl, update_reminder_time_impl
 from storage_nudges import _nudge_threshold_minutes_impl, exhaust_nudges_impl, get_due_nudges_impl, increment_nudge_count_impl
 from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
@@ -483,6 +483,14 @@ def count_active_reminders_for_user(user_id: int) -> int:
 
 def count_active_recurring_templates_for_user(user_id: int) -> int:
     return count_active_recurring_templates_for_user_impl(user_id, deps=_build_storage_user_settings_deps())
+
+
+def count_active_reminders_for_chat(chat_id: int) -> int:
+    return count_active_reminders_for_chat_impl(chat_id, deps=_build_storage_user_settings_deps())
+
+
+def count_active_recurring_templates_for_chat(chat_id: int) -> int:
+    return count_active_recurring_templates_for_chat_impl(chat_id, deps=_build_storage_user_settings_deps())
 
 
 def move_active_reminders_timezone_for_user(*, user_id: int, old_tz: str, new_tz: str, mode: str) -> Dict[str, int]:
@@ -951,6 +959,8 @@ def _build_timezone_settings_deps():
         get_user_default_time=get_user_default_time,
         count_active_reminders_for_user=count_active_reminders_for_user,
         count_active_recurring_templates_for_user=count_active_recurring_templates_for_user,
+        count_active_reminders_for_chat=count_active_reminders_for_chat,
+        count_active_recurring_templates_for_chat=count_active_recurring_templates_for_chat,
         get_all_user_aliases=get_all_user_aliases,
         get_user_alias=get_user_alias,
         get_all_aliases=get_all_aliases,

@@ -57,13 +57,14 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
     update = SimpleNamespace(
         effective_message=message,
         effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
     )
 
     deps = SimpleNamespace(
         get_user_timezone_name=lambda user_id: "Europe/Madrid",
         get_user_default_time=lambda user_id: (9, 30),
-        count_active_reminders_for_user=lambda user_id: 3,
-        count_active_recurring_templates_for_user=lambda user_id: 2,
+        count_active_reminders_for_chat=lambda chat_id: 3 if chat_id == 999 else -1,
+        count_active_recurring_templates_for_chat=lambda chat_id: 2 if chat_id == 999 else -1,
         get_all_user_aliases=lambda user_id: [("wife", 111)],
         get_user_alias=lambda alias, created_by: {"username": "wife"},
         get_all_aliases=lambda user_id: [("football", 222, "Football Chat")],
@@ -109,3 +110,36 @@ def test_settings_command_prompts_for_timezone_when_user_has_no_timezone():
     assert "Telegram не передаёт мне твой часовой пояс автоматически" in text
     assert "Часовой пояс: CET" not in text
     assert kwargs["reply_markup"] is not None
+
+
+
+def test_settings_command_counts_visible_chat_reminders_not_created_by_user():
+    message = Message()
+    calls = []
+
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        get_user_default_time=lambda user_id: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        count_active_recurring_templates_for_user=lambda user_id: 0,
+        count_active_reminders_for_chat=lambda chat_id: calls.append(("reminders", chat_id)) or 3,
+        count_active_recurring_templates_for_chat=lambda chat_id: calls.append(("recurring", chat_id)) or 2,
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+    )
+
+    asyncio.run(handle_settings_command(update, SimpleNamespace(), deps))
+
+    text, _ = message.replies[0]
+
+    assert ("reminders", 999) in calls
+    assert ("recurring", 999) in calls
+    assert "Запланированные напоминания: 3" in text
+    assert "Активные повторяющиеся напоминания: 2" in text

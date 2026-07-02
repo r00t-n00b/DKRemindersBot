@@ -348,12 +348,21 @@ async def handle_settings_command(update, context, deps) -> None:
         if value:
             default_time = f"{value[0]:02d}:{value[1]:02d}"
 
+    chat = getattr(update, "effective_chat", None)
+    settings_chat_id = getattr(chat, "id", None)
+    if settings_chat_id is None:
+        settings_chat_id = user.id
+
     active_count = 0
-    if hasattr(deps, "count_active_reminders_for_user"):
+    if hasattr(deps, "count_active_reminders_for_chat"):
+        active_count = deps.count_active_reminders_for_chat(settings_chat_id)
+    elif hasattr(deps, "count_active_reminders_for_user"):
         active_count = deps.count_active_reminders_for_user(user.id)
 
     recurring_count = 0
-    if hasattr(deps, "count_active_recurring_templates_for_user"):
+    if hasattr(deps, "count_active_recurring_templates_for_chat"):
+        recurring_count = deps.count_active_recurring_templates_for_chat(settings_chat_id)
+    elif hasattr(deps, "count_active_recurring_templates_for_user"):
         recurring_count = deps.count_active_recurring_templates_for_user(user.id)
 
     user_alias_lines, chat_alias_lines = _load_settings_alias_lines(user.id, deps)
