@@ -186,8 +186,11 @@ def test_settings_keyboard_has_default_time_button():
     keyboard = kwargs["reply_markup"].inline_keyboard
     buttons = [button for row in keyboard for button in row]
 
-    assert any(button.text == "Изменить время по умолчанию" for button in buttons)
+    assert any(button.text == "⏰ Изменить время по умолчанию" for button in buttons)
     assert any(button.callback_data == "settings:defaulttime" for button in buttons)
+    assert any(button.text == "🌍 Изменить часовой пояс" for button in buttons)
+    assert any(button.callback_data == "settings:timezone" for button in buttons)
+    assert not any((button.callback_data or "").startswith("tz:") for button in buttons)
 
 
 def test_settings_defaulttime_callback_opens_picker():
@@ -274,3 +277,46 @@ def test_settings_defaulttime_reset_clears_and_returns_to_settings():
     assert query.answers[0][0] == "Сбросил на 10:00"
     text, _ = query.message.edits[0]
     assert "я установлю его на 10:00" in text
+
+
+
+def test_settings_text_does_not_include_big_timezone_help_block():
+    text = build_settings_text(
+        tz_name="Europe/Madrid",
+        default_time_text="10:30",
+        active_reminders_count=3,
+        user_alias_lines=[],
+        chat_alias_lines=[],
+    )
+
+    assert "Часовой пояс: CET" in text
+    assert "Часовой пояс можно поменять кнопками ниже" not in text
+    assert "Telegram не позволит пошарить геопозицию" not in text
+    assert "For mobile only: определить по геопозиции" not in text
+
+
+
+def test_settings_timezone_callback_opens_timezone_dialog():
+    from timezone_features import handle_settings_callback
+
+    query = Query("settings:timezone")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace()
+
+    asyncio.run(handle_settings_callback(update, SimpleNamespace(), deps))
+
+    assert query.answers
+    text, kwargs = query.message.edits[0]
+    assert "Telegram не передаёт мне твой часовой пояс автоматически" in text
+
+    keyboard = kwargs["reply_markup"].inline_keyboard
+    callback_data = [button.callback_data for row in keyboard for button in row]
+
+    assert "tz:geo" in callback_data
+    assert "tz:preset:cet" in callback_data
+    assert "tz:preset:moscow" in callback_data

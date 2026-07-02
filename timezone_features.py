@@ -120,10 +120,8 @@ def build_timezone_migration_keyboard() -> InlineKeyboardMarkup:
 def build_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("Изменить время по умолчанию", callback_data="settings:defaulttime")],
-            [InlineKeyboardButton("📍 For mobile only: определить по геопозиции", callback_data="tz:geo")],
-            [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
-            [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
+            [InlineKeyboardButton("⏰ Изменить время по умолчанию", callback_data="settings:defaulttime")],
+            [InlineKeyboardButton("🌍 Изменить часовой пояс", callback_data="settings:timezone")],
         ]
     )
 
@@ -228,11 +226,6 @@ def build_settings_text(
             "/linkuser <alias> @username — добавить user alias",
             "/linkchat <alias> — добавить chat alias в группе",
             "/unalias <alias> — удалить алиас",
-            "",
-            "Часовой пояс можно поменять кнопками ниже.",
-            "📱 Если ты на мобильном устройстве, нажми “📍 For mobile only: определить по геопозиции” — после этого кнопка отправки геопозиции появится внизу под строкой ввода. Я сохраню только часовой пояс, координаты хранить не буду.",
-            "🖥️ Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. В этом случае выбери часовой пояс быстрыми кнопками под сообщением.",
-            "✈️ Если потом поедешь в другую страну или захочешь изменить время, зайди в /settings и поменяй часовой пояс.",
         ]
     )
 
@@ -432,6 +425,15 @@ async def handle_settings_callback(update, context, deps) -> None:
         return
 
     data = query.data or ""
+
+    if data == "settings:timezone":
+        await query.answer()
+        await _edit_or_reply(
+            query,
+            build_first_timezone_prompt(),
+            reply_markup=build_timezone_picker_keyboard(),
+        )
+        return
 
     if data == "settings:defaulttime":
         current = _settings_default_time_text(user.id, deps) or "10:00"

@@ -349,16 +349,22 @@ def test_geo_callback_removes_inline_geo_and_shows_mobile_reply_keyboard():
     assert reply_kwargs.get("reply_markup") is not None
 
 
-def test_settings_text_explains_mobile_desktop_and_travel_paths():
+def test_settings_text_does_not_show_timezone_help_in_main_settings_screen():
     text = timezone_features.build_settings_text("Europe/Madrid", "10:00")
 
-    assert "📱 Если ты на мобильном устройстве" in text
-    assert "📍 For mobile only: определить по геопозиции" in text
-    assert "🖥️ Если ты на десктопе" in text
-    assert "✈️ Если потом поедешь" in text
-    assert "/settings" in text
-    assert "мобиле" not in text
+    assert "Часовой пояс: CET" in text
+    assert "📱 Если ты на мобильном устройстве" not in text
+    assert "🖥️ Если ты на десктопе" not in text
+    assert "Часовой пояс можно поменять кнопками ниже" not in text
 
+
+def test_timezone_prompt_explains_mobile_desktop_and_travel_paths():
+    text = timezone_features.build_first_timezone_prompt()
+
+    assert "📱 Если ты на мобильном устройстве" in text
+    assert "🖥️ Если ты на десктопе" in text
+    assert "если потом поедешь в другую страну" in text.lower()
+    assert "/settings" in text
 
 def test_timezone_preset_deletes_saved_location_prompt():
     deleted = []
