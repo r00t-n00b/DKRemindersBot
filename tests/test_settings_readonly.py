@@ -360,3 +360,102 @@ def test_settings_timezone_dialog_opened_from_settings_has_back_button():
     callback_data = [button.callback_data for row in keyboard for button in row]
 
     assert "settings:back" in callback_data
+
+
+def test_timezone_preset_from_settings_returns_to_settings_when_no_migration_needed():
+    from timezone_features import handle_settings_callback, handle_timezone_callback
+
+    saved = []
+    context = SimpleNamespace(user_data={})
+
+    query = Query("settings:timezone")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace()
+
+    asyncio.run(handle_settings_callback(update, context, deps))
+
+    assert context.user_data["timezone_started_from_settings"] is True
+
+    query = Query("tz:preset:moscow")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Moscow",
+        set_user_timezone_name=lambda user_id, tz: saved.append((user_id, tz)),
+        count_active_reminders_for_user=lambda user_id: 0,
+        count_active_reminders_for_chat=lambda chat_id: 5,
+        get_user_default_time=lambda user_id: (10, 30),
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    asyncio.run(handle_timezone_callback(update, context, deps))
+
+    assert saved == [(123, "Europe/Moscow")]
+    assert "timezone_started_from_settings" not in context.user_data
+    text, kwargs = query.message.edits[0]
+    assert "Настройки" in text
+    assert "Часовой пояс: Россия / Москва" in text
+    assert "Запланированные напоминания: 5" in text
+    assert kwargs.get("reply_markup") is not None
+
+
+def test_timezone_migration_from_settings_returns_to_settings_after_answer():
+    from timezone_features import handle_timezone_callback
+
+    calls = []
+    context = SimpleNamespace(
+        user_data={
+            "timezone_started_from_settings": True,
+            "pending_timezone_migration": {
+                "old_tz": "Europe/Madrid",
+                "new_tz": "Europe/Moscow",
+            },
+        }
+    )
+
+    query = Query("tz:migrate:oneoff")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name=lambda user_id: "Europe/Moscow",
+        get_user_default_time=lambda user_id: (10, 30),
+        count_active_reminders_for_chat=lambda chat_id: 5,
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+        move_active_reminders_timezone_for_user=lambda **kwargs: calls.append(kwargs) or {
+            "reminders": 2,
+            "templates": 1,
+        },
+    )
+
+    asyncio.run(handle_timezone_callback(update, context, deps))
+
+    assert calls == [{
+        "user_id": 123,
+        "old_tz": "Europe/Madrid",
+        "new_tz": "Europe/Moscow",
+        "mode": "oneoff",
+    }]
+    assert "pending_timezone_migration" not in context.user_data
+    assert "timezone_started_from_settings" not in context.user_data
+
+    text, kwargs = query.message.edits[0]
+    assert "Настройки" in text
+    assert "Часовой пояс: Россия / Москва" in text
+    assert kwargs.get("reply_markup") is not None

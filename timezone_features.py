@@ -396,6 +396,14 @@ def _settings_text_for_user(update, user_id: int, deps) -> str:
     )
 
 
+def _timezone_started_from_settings(context) -> bool:
+    return bool(getattr(context, "user_data", {}).get("timezone_started_from_settings"))
+
+
+def _clear_timezone_started_from_settings(context) -> None:
+    getattr(context, "user_data", {}).pop("timezone_started_from_settings", None)
+
+
 async def _render_settings_screen(update, query, deps) -> None:
     user = update.effective_user
     if user is None:
@@ -436,6 +444,9 @@ async def handle_settings_callback(update, context, deps) -> None:
     data = query.data or ""
 
     if data == "settings:timezone":
+        if not hasattr(context, "user_data") or context.user_data is None:
+            context.user_data = {}
+        context.user_data["timezone_started_from_settings"] = True
         await query.answer()
         await _edit_or_reply(
             query,
@@ -492,14 +503,14 @@ async def handle_settings_callback(update, context, deps) -> None:
     await query.answer("Неизвестная настройка", show_alert=True)
 
 
-async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz: str) -> None:
+async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz: str) -> bool:
     user = update.effective_user
     if user is None:
-        return
+        return False
 
     active_count = deps.count_active_reminders_for_user(user.id)
     if active_count <= 0:
-        return
+        return False
 
     context.user_data["pending_timezone_migration"] = {
         "old_tz": old_tz,
@@ -524,6 +535,7 @@ async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz:
         ),
         reply_markup=build_timezone_migration_keyboard(),
     )
+    return True
 
 
 async def handle_timezone_callback(update, context, deps) -> None:
@@ -597,29 +609,43 @@ async def handle_timezone_callback(update, context, deps) -> None:
 
         if old_tz == new_tz and not is_first_timezone:
             await query.answer("Уже выбран")
-            await _edit_or_reply(
-                query,
-                (
-                    f"Этот часовой пояс уже выбран: {timezone_label(new_tz)}\n"
-                    f"Сейчас в нём: {format_timezone_now(new_tz)}\n\n"
-                    "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
-                ),
-            )
+            if _timezone_started_from_settings(context):
+                _clear_timezone_started_from_settings(context)
+                await _render_settings_screen(update, query, deps)
+            else:
+                await _edit_or_reply(
+                    query,
+                    (
+                        f"Этот часовой пояс уже выбран: {timezone_label(new_tz)}\n"
+                        f"Сейчас в нём: {format_timezone_now(new_tz)}\n\n"
+                        "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
+                    ),
+                )
             return
 
         deps.set_user_timezone_name(user.id, new_tz)
 
         await query.answer("Часовой пояс сохранён")
-        await _edit_or_reply(
-            query,
-            (
-                f"Ок, поставил часовой пояс: {timezone_label(new_tz)}\n"
-                f"Сейчас в нём: {format_timezone_now(new_tz)}\n\n"
-                "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
-            ),
-        )
+        asked_migration = False
         if old_tz != new_tz:
-            await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=new_tz)
+            asked_migration = await _after_timezone_changed(update, context, deps, old_tz=old_tz, new_tz=new_tz)
+
+        if asked_migration:
+            await _resume_pending_plain_text_reminder(update, context, deps)
+            return
+
+        if _timezone_started_from_settings(context):
+            _clear_timezone_started_from_settings(context)
+            await _render_settings_screen(update, query, deps)
+        else:
+            await _edit_or_reply(
+                query,
+                (
+                    f"Ок, поставил часовой пояс: {timezone_label(new_tz)}\n"
+                    f"Сейчас в нём: {format_timezone_now(new_tz)}\n\n"
+                    "Не забудь вернуться в /settings, если полетишь в отпуск и часовой пояс изменится."
+                ),
+            )
         await _resume_pending_plain_text_reminder(update, context, deps)
         return
 
@@ -632,7 +658,11 @@ async def handle_timezone_callback(update, context, deps) -> None:
         if mode == "none":
             context.user_data.pop("pending_timezone_migration", None)
             await query.answer("Ок")
-            await _edit_or_reply(query, "Ок, старые напоминания не трогаю.")
+            if _timezone_started_from_settings(context):
+                _clear_timezone_started_from_settings(context)
+                await _render_settings_screen(update, query, deps)
+            else:
+                await _edit_or_reply(query, "Ок, старые напоминания не трогаю.")
             return
 
         if mode not in {"all", "oneoff", "recurring"} or not old_tz or not new_tz:
@@ -648,14 +678,18 @@ async def handle_timezone_callback(update, context, deps) -> None:
         )
         context.user_data.pop("pending_timezone_migration", None)
         await query.answer("Готово")
-        await _edit_or_reply(
-            query,
-            (
-                "Перенёс напоминания в новый часовой пояс.\n\n"
-                f"Обычных/инстансов: {result.get('reminders', 0)}\n"
-                f"Повторяющихся шаблонов: {result.get('templates', 0)}"
-            ),
-        )
+        if _timezone_started_from_settings(context):
+            _clear_timezone_started_from_settings(context)
+            await _render_settings_screen(update, query, deps)
+        else:
+            await _edit_or_reply(
+                query,
+                (
+                    "Перенёс напоминания в новый часовой пояс.\n\n"
+                    f"Обычных/инстансов: {result.get('reminders', 0)}\n"
+                    f"Повторяющихся шаблонов: {result.get('templates', 0)}"
+                ),
+            )
         return
 
 
