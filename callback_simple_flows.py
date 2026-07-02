@@ -89,6 +89,7 @@ async def handle_done_callback_data(
     clear_reminder_message_keyboards,
     get_reminder,
     format_completed_reminder_text,
+    delete_old_snoozed_reminder_messages=None,
 ):
     reminder_id = parse_optional_int_callback_id(data, prefix="done:")
 
@@ -100,6 +101,7 @@ async def handle_done_callback_data(
         clear_reminder_message_keyboards=clear_reminder_message_keyboards,
         get_reminder=get_reminder,
         format_completed_reminder_text=format_completed_reminder_text,
+        delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
     )
 
 

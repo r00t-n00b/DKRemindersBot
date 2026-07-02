@@ -175,3 +175,91 @@ def test_apply_snooze_to_reminder_deletes_old_snoozed_messages_before_current_up
     )
     assert calls[1] == ("acked", 123)
     assert calls[2] == ("clear", "bot", 123, "snoozed 02.01 10:00: milk")
+
+
+def test_done_callback_deletes_old_snoozed_messages_before_completion():
+    import asyncio
+    from reminder_done_flow import handle_done_callback
+
+    calls = []
+    reminder = SimpleNamespace(
+        id=123,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+    )
+
+    class DoneQuery(Query):
+        def __init__(self):
+            super().__init__()
+            self.message = SimpleNamespace(text="milk")
+
+    query = DoneQuery()
+    context = SimpleNamespace(bot="bot")
+
+    async def delete_old(bot, **kwargs):
+        calls.append(("delete_old", bot, kwargs))
+
+    async def clear_reminder_message_keyboards(bot, rid, replacement_text=None):
+        calls.append(("clear", bot, rid, replacement_text))
+
+    asyncio.run(
+        handle_done_callback(
+            reminder_id=123,
+            query=query,
+            context=context,
+            mark_reminder_acked=lambda rid: calls.append(("acked", rid)),
+            clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+            get_reminder=lambda rid: reminder,
+            format_completed_reminder_text=lambda text: f"{text} done",
+            delete_old_snoozed_reminder_messages=delete_old,
+        )
+    )
+
+    assert calls[0] == (
+        "delete_old",
+        "bot",
+        {
+            "current_reminder_id": 123,
+            "chat_id": 555,
+            "text": "milk",
+            "created_by": 42,
+        },
+    )
+    assert calls[1] == ("acked", 123)
+    assert calls[2] == ("clear", "bot", 123, "milk done")
+    assert query.edited_texts == ["milk done"]
+
+
+def test_done_callback_data_passes_delete_old_snoozed_messages():
+    import asyncio
+    from callback_simple_flows import handle_done_callback_data
+
+    seen = {}
+
+    async def fake_handle_done_callback(**kwargs):
+        seen.update(kwargs)
+
+    async def fake_delete_old(*args, **kwargs):
+        pass
+
+    query = SimpleNamespace()
+    context = SimpleNamespace(bot="bot")
+
+    asyncio.run(
+        handle_done_callback_data(
+            data="done:123",
+            query=query,
+            context=context,
+            parse_optional_int_callback_id=lambda data, prefix: 123,
+            handle_done_callback=fake_handle_done_callback,
+            mark_reminder_acked=lambda rid: None,
+            clear_reminder_message_keyboards=lambda *a, **k: None,
+            get_reminder=lambda rid: None,
+            format_completed_reminder_text=lambda text: text,
+            delete_old_snoozed_reminder_messages=fake_delete_old,
+        )
+    )
+
+    assert seen["reminder_id"] == 123
+    assert seen["delete_old_snoozed_reminder_messages"] is fake_delete_old
