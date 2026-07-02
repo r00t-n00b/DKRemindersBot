@@ -146,23 +146,59 @@ def build_first_timezone_prompt() -> str:
     )
 
 
-def build_settings_text(tz_name: str | None, default_time_text: str | None = None) -> str:
+def build_settings_text(
+    tz_name: str | None,
+    default_time_text: str | None = None,
+    *,
+    active_reminders_count: int | None = None,
+    user_alias_lines: list[str] | None = None,
+    chat_alias_lines: list[str] | None = None,
+) -> str:
     tz_name = tz_name or DEFAULT_TIMEZONE_NAME
     default_line = default_time_text or "10:00"
+    active_count = 0 if active_reminders_count is None else int(active_reminders_count)
+    user_alias_lines = user_alias_lines or []
+    chat_alias_lines = chat_alias_lines or []
 
-    return (
-        "Настройки\n\n"
-        f"Часовой пояс: {timezone_label(tz_name)}\n"
-        f"Сейчас в нём: {format_timezone_now(tz_name)}\n"
-        f"Время по умолчанию: {default_line}\n\n"
-        "📱 Если ты на мобильном устройстве, нажми “📍 For mobile only: определить по геопозиции” — "
-        "после этого кнопка отправки геопозиции появится внизу под строкой ввода. "
-        "Я сохраню только часовой пояс, координаты хранить не буду.\n\n"
-        "🖥️ Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. "
-        "В этом случае выбери часовой пояс быстрыми кнопками под сообщением.\n\n"
-        "✈️ Если потом поедешь в другую страну или захочешь изменить время, "
-        "зайди в /settings и поменяй часовой пояс."
+    parts = [
+        "Настройки",
+        "",
+        f"Часовой пояс: {timezone_label(tz_name)}",
+        f"Сейчас в нём: {format_timezone_now(tz_name)}",
+        f"Время по умолчанию: {default_line}",
+        f"Активные напоминания: {active_count}",
+    ]
+
+    if user_alias_lines or chat_alias_lines:
+        parts.extend(["", "Алиасы:"])
+        if user_alias_lines:
+            parts.append("👤 User aliases:")
+            parts.extend(user_alias_lines)
+        if chat_alias_lines:
+            parts.append("💬 Chat aliases:")
+            parts.extend(chat_alias_lines)
+    else:
+        parts.extend(["", "Алиасы: нет"])
+
+    parts.extend(
+        [
+            "",
+            "Команды для изменения:",
+            "/defaulttime 09:30 — изменить время по умолчанию",
+            "/defaulttime reset — сбросить время по умолчанию",
+            "/aliases — посмотреть алиасы",
+            "/linkuser <alias> @username — добавить user alias",
+            "/linkchat <alias> — добавить chat alias в группе",
+            "/unalias <alias> — удалить алиас",
+            "",
+            "Часовой пояс можно поменять кнопками ниже.",
+            "📱 Если ты на мобильном устройстве, нажми “📍 For mobile only: определить по геопозиции” — после этого кнопка отправки геопозиции появится внизу под строкой ввода. Я сохраню только часовой пояс, координаты хранить не буду.",
+            "🖥️ Если ты на десктопе, Telegram не позволит пошарить геопозицию боту. В этом случае выбери часовой пояс быстрыми кнопками под сообщением.",
+            "✈️ Если потом поедешь в другую страну или захочешь изменить время, зайди в /settings и поменяй часовой пояс.",
+        ]
     )
+
+    return "\n".join(parts)
 
 
 async def _reply(message, text: str, **kwargs):
@@ -257,6 +293,31 @@ async def _resume_pending_plain_text_reminder(update, context, deps) -> bool:
     return True
 
 
+def _load_settings_alias_lines(user_id: int, deps) -> tuple[list[str], list[str]]:
+    user_alias_lines: list[str] = []
+    chat_alias_lines: list[str] = []
+
+    if hasattr(deps, "get_all_user_aliases"):
+        for alias, chat_id in deps.get_all_user_aliases(user_id):
+            row = {}
+            if hasattr(deps, "get_user_alias"):
+                row = deps.get_user_alias(alias, user_id) or {}
+            username = row.get("username") if isinstance(row, dict) else None
+            if username:
+                user_alias_lines.append(f"• {alias} -> @{username} / chat_id={chat_id}")
+            else:
+                user_alias_lines.append(f"• {alias} -> chat_id={chat_id}")
+
+    if hasattr(deps, "get_all_aliases"):
+        for alias, chat_id, title in deps.get_all_aliases(user_id):
+            if title:
+                chat_alias_lines.append(f"• {alias} -> {title} / chat_id={chat_id}")
+            else:
+                chat_alias_lines.append(f"• {alias} -> chat_id={chat_id}")
+
+    return user_alias_lines, chat_alias_lines
+
+
 async def handle_settings_command(update, context, deps) -> None:
     message = update.effective_message
     user = update.effective_user
@@ -270,9 +331,21 @@ async def handle_settings_command(update, context, deps) -> None:
         if value:
             default_time = f"{value[0]:02d}:{value[1]:02d}"
 
+    active_count = 0
+    if hasattr(deps, "count_active_reminders_for_user"):
+        active_count = deps.count_active_reminders_for_user(user.id)
+
+    user_alias_lines, chat_alias_lines = _load_settings_alias_lines(user.id, deps)
+
     await _reply(
         message,
-        build_settings_text(tz_name, default_time),
+        build_settings_text(
+            tz_name,
+            default_time,
+            active_reminders_count=active_count,
+            user_alias_lines=user_alias_lines,
+            chat_alias_lines=chat_alias_lines,
+        ),
         reply_markup=build_timezone_picker_keyboard(),
     )
 

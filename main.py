@@ -946,6 +946,9 @@ def _build_timezone_settings_deps():
         set_user_timezone_name=set_user_timezone_name,
         get_user_default_time=get_user_default_time,
         count_active_reminders_for_user=count_active_reminders_for_user,
+        get_all_user_aliases=get_all_user_aliases,
+        get_user_alias=get_user_alias,
+        get_all_aliases=get_all_aliases,
         move_active_reminders_timezone_for_user=move_active_reminders_timezone_for_user,
         plain_text_remind_command=plain_text_remind_command,
     )
