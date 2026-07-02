@@ -140,3 +140,137 @@ def test_settings_command_counts_visible_chat_reminders_not_created_by_user():
     assert ("reminders", 999) in calls
     assert "Запланированные напоминания: 3" in text
     assert "Активные повторяющиеся напоминания" not in text
+
+
+class QueryMessage:
+    def __init__(self):
+        self.edits = []
+
+    async def edit_text(self, text, **kwargs):
+        self.edits.append((text, kwargs))
+
+
+class Query:
+    def __init__(self, data):
+        self.data = data
+        self.message = QueryMessage()
+        self.answers = []
+
+    async def answer(self, text=None, **kwargs):
+        self.answers.append((text, kwargs))
+
+    async def edit_message_text(self, text, **kwargs):
+        self.message.edits.append((text, kwargs))
+
+
+def test_settings_keyboard_has_default_time_button():
+    message = Message()
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        get_user_default_time=lambda user_id: (10, 30),
+        count_active_reminders_for_chat=lambda chat_id: 3,
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+    )
+
+    asyncio.run(handle_settings_command(update, SimpleNamespace(), deps))
+
+    _, kwargs = message.replies[0]
+    keyboard = kwargs["reply_markup"].inline_keyboard
+    buttons = [button for row in keyboard for button in row]
+
+    assert any(button.text == "Изменить время по умолчанию" for button in buttons)
+    assert any(button.callback_data == "settings:defaulttime" for button in buttons)
+
+
+def test_settings_defaulttime_callback_opens_picker():
+    from timezone_features import handle_settings_callback
+
+    query = Query("settings:defaulttime")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_default_time=lambda user_id: (10, 30),
+    )
+
+    asyncio.run(handle_settings_callback(update, SimpleNamespace(), deps))
+
+    assert query.answers
+    text, kwargs = query.message.edits[0]
+    assert "Выбери время" in text
+    keyboard = kwargs["reply_markup"].inline_keyboard
+    callback_data = [button.callback_data for row in keyboard for button in row]
+    assert "settings:defaulttime:set:10:30" in callback_data
+    assert "settings:defaulttime:reset" in callback_data
+    assert "settings:back" in callback_data
+
+
+def test_settings_defaulttime_set_saves_and_returns_to_settings():
+    from timezone_features import handle_settings_callback
+
+    saved = []
+
+    query = Query("settings:defaulttime:set:9:30")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        set_user_default_time=lambda user_id, hour, minute: saved.append((user_id, hour, minute)),
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        get_user_default_time=lambda user_id: (9, 30),
+        count_active_reminders_for_chat=lambda chat_id: 3,
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+    )
+
+    asyncio.run(handle_settings_callback(update, SimpleNamespace(), deps))
+
+    assert saved == [(123, 9, 30)]
+    assert query.answers[0][0] == "Сохранил 09:30"
+    text, _ = query.message.edits[0]
+    assert "я установлю его на 09:30" in text
+
+
+def test_settings_defaulttime_reset_clears_and_returns_to_settings():
+    from timezone_features import handle_settings_callback
+
+    cleared = []
+
+    query = Query("settings:defaulttime:reset")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        clear_user_default_time=lambda user_id: cleared.append(user_id),
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        get_user_default_time=lambda user_id: None,
+        count_active_reminders_for_chat=lambda chat_id: 3,
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+    )
+
+    asyncio.run(handle_settings_callback(update, SimpleNamespace(), deps))
+
+    assert cleared == [123]
+    assert query.answers[0][0] == "Сбросил на 10:00"
+    text, _ = query.message.edits[0]
+    assert "я установлю его на 10:00" in text

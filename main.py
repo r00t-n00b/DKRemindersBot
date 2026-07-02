@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from time_utils import BOT_TZ, ensure_aware
-from timezone_features import build_first_timezone_prompt, build_timezone_picker_keyboard, handle_settings_command, handle_timezone_callback, handle_timezone_location_message
+from timezone_features import build_first_timezone_prompt, build_timezone_picker_keyboard, handle_settings_callback, handle_settings_command, handle_timezone_callback, handle_timezone_location_message
 
 # --- Telegram imports ---
 # Во время тестов telegram не установлен, поэтому:
@@ -957,6 +957,8 @@ def _build_timezone_settings_deps():
         get_user_timezone_name_raw=get_user_timezone_name_raw,
         set_user_timezone_name=set_user_timezone_name,
         get_user_default_time=get_user_default_time,
+        set_user_default_time=set_user_default_time,
+        clear_user_default_time=clear_user_default_time,
         count_active_reminders_for_user=count_active_reminders_for_user,
         count_active_recurring_templates_for_user=count_active_recurring_templates_for_user,
         count_active_reminders_for_chat=count_active_reminders_for_chat,
@@ -971,6 +973,10 @@ def _build_timezone_settings_deps():
 
 async def settings_command(update: Update, context: CTX) -> None:
     await handle_settings_command(update, context, _build_timezone_settings_deps())
+
+
+async def settings_callback(update: Update, context: CTX) -> None:
+    await handle_settings_callback(update, context, _build_timezone_settings_deps())
 
 
 async def timezone_settings_callback(update: Update, context: CTX) -> None:
@@ -1192,6 +1198,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
     application.add_handler(MessageHandler(filters.LOCATION, timezone_location_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
+    application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
     application.add_handler(CallbackQueryHandler(timezone_settings_callback, pattern=r"^tz:"))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))

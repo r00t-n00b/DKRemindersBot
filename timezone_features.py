@@ -54,6 +54,7 @@ TIMEZONE_PRESETS = {
 }
 
 TZ_CALLBACK_PREFIX = "tz:"
+SETTINGS_CALLBACK_PREFIX = "settings:"
 
 
 def timezone_label(tz_name: str | None) -> str:
@@ -112,6 +113,35 @@ def build_timezone_migration_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("Да, только одинарные", callback_data="tz:migrate:oneoff")],
             [InlineKeyboardButton("Да, только повторяющиеся", callback_data="tz:migrate:recurring")],
             [InlineKeyboardButton("Нет, ничего не надо", callback_data="tz:migrate:none")],
+        ]
+    )
+
+
+def build_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Изменить время по умолчанию", callback_data="settings:defaulttime")],
+            [InlineKeyboardButton("📍 For mobile only: определить по геопозиции", callback_data="tz:geo")],
+            [InlineKeyboardButton("🇪🇺 CET", callback_data="tz:preset:cet")],
+            [InlineKeyboardButton("🇷🇺 Россия / Москва", callback_data="tz:preset:moscow")],
+        ]
+    )
+
+
+def build_default_time_picker_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("09:00", callback_data="settings:defaulttime:set:9:0"),
+                InlineKeyboardButton("10:00", callback_data="settings:defaulttime:set:10:0"),
+            ],
+            [
+                InlineKeyboardButton("10:30", callback_data="settings:defaulttime:set:10:30"),
+                InlineKeyboardButton("12:00", callback_data="settings:defaulttime:set:12:0"),
+            ],
+            [InlineKeyboardButton("18:00", callback_data="settings:defaulttime:set:18:0")],
+            [InlineKeyboardButton("Сбросить на 10:00", callback_data="settings:defaulttime:reset")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="settings:back")],
         ]
     )
 
@@ -326,6 +356,53 @@ def _load_settings_alias_lines(user_id: int, deps) -> tuple[list[str], list[str]
     return user_alias_lines, chat_alias_lines
 
 
+def _settings_default_time_text(user_id: int, deps) -> str | None:
+    if not hasattr(deps, "get_user_default_time"):
+        return None
+
+    value = deps.get_user_default_time(user_id)
+    if value:
+        return f"{value[0]:02d}:{value[1]:02d}"
+    return None
+
+
+def _settings_active_count(update, user_id: int, deps) -> int:
+    chat = getattr(update, "effective_chat", None)
+    settings_chat_id = getattr(chat, "id", None)
+    if settings_chat_id is None:
+        settings_chat_id = user_id
+
+    if hasattr(deps, "count_active_reminders_for_chat"):
+        return deps.count_active_reminders_for_chat(settings_chat_id)
+    if hasattr(deps, "count_active_reminders_for_user"):
+        return deps.count_active_reminders_for_user(user_id)
+    return 0
+
+
+def _settings_text_for_user(update, user_id: int, deps) -> str:
+    tz_name = deps.get_user_timezone_name(user_id)
+    default_time = _settings_default_time_text(user_id, deps)
+    active_count = _settings_active_count(update, user_id, deps)
+    user_alias_lines, chat_alias_lines = _load_settings_alias_lines(user_id, deps)
+
+    return build_settings_text(
+        tz_name,
+        default_time,
+        active_reminders_count=active_count,
+        user_alias_lines=user_alias_lines,
+        chat_alias_lines=chat_alias_lines,
+    )
+
+
+async def _render_settings_screen(update, query, deps) -> None:
+    user = update.effective_user
+    if user is None:
+        return
+
+    text = _settings_text_for_user(update, user.id, deps)
+    await _edit_or_reply(query, text, reply_markup=build_settings_keyboard())
+
+
 async def handle_settings_command(update, context, deps) -> None:
     message = update.effective_message
     user = update.effective_user
@@ -336,41 +413,72 @@ async def handle_settings_command(update, context, deps) -> None:
         await _reply(
             message,
             build_first_timezone_prompt(),
-            reply_markup=build_timezone_picker_keyboard(),
+            reply_markup=build_settings_keyboard(),
         )
         return
 
-    tz_name = deps.get_user_timezone_name(user.id)
-    default_time = None
-    if hasattr(deps, "get_user_default_time"):
-        value = deps.get_user_default_time(user.id)
-        if value:
-            default_time = f"{value[0]:02d}:{value[1]:02d}"
-
-    chat = getattr(update, "effective_chat", None)
-    settings_chat_id = getattr(chat, "id", None)
-    if settings_chat_id is None:
-        settings_chat_id = user.id
-
-    active_count = 0
-    if hasattr(deps, "count_active_reminders_for_chat"):
-        active_count = deps.count_active_reminders_for_chat(settings_chat_id)
-    elif hasattr(deps, "count_active_reminders_for_user"):
-        active_count = deps.count_active_reminders_for_user(user.id)
-
-    user_alias_lines, chat_alias_lines = _load_settings_alias_lines(user.id, deps)
-
     await _reply(
         message,
-        build_settings_text(
-            tz_name,
-            default_time,
-            active_reminders_count=active_count,
-            user_alias_lines=user_alias_lines,
-            chat_alias_lines=chat_alias_lines,
-        ),
-        reply_markup=build_timezone_picker_keyboard(),
+        _settings_text_for_user(update, user.id, deps),
+        reply_markup=build_settings_keyboard(),
     )
+
+
+
+async def handle_settings_callback(update, context, deps) -> None:
+    query = update.callback_query
+    user = update.effective_user
+    if query is None or user is None:
+        return
+
+    data = query.data or ""
+
+    if data == "settings:defaulttime":
+        current = _settings_default_time_text(user.id, deps) or "10:00"
+        await query.answer()
+        await _edit_or_reply(
+            query,
+            (
+                "Выбери время, которое я буду подставлять, если ты указал дату без времени.\n\n"
+                f"Сейчас: {current}"
+            ),
+            reply_markup=build_default_time_picker_keyboard(),
+        )
+        return
+
+    if data == "settings:back":
+        await query.answer()
+        await _render_settings_screen(update, query, deps)
+        return
+
+    if data == "settings:defaulttime:reset":
+        if hasattr(deps, "clear_user_default_time"):
+            deps.clear_user_default_time(user.id)
+        await query.answer("Сбросил на 10:00")
+        await _render_settings_screen(update, query, deps)
+        return
+
+    if data.startswith("settings:defaulttime:set:"):
+        try:
+            _, _, _, hour_text, minute_text = data.split(":", 4)
+            hour = int(hour_text)
+            minute = int(minute_text)
+        except Exception:
+            await query.answer("Не смог понять время", show_alert=True)
+            return
+
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            await query.answer("Некорректное время", show_alert=True)
+            return
+
+        if hasattr(deps, "set_user_default_time"):
+            deps.set_user_default_time(user.id, hour, minute)
+
+        await query.answer(f"Сохранил {hour:02d}:{minute:02d}")
+        await _render_settings_screen(update, query, deps)
+        return
+
+    await query.answer("Неизвестная настройка", show_alert=True)
 
 
 async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz: str) -> None:
@@ -458,7 +566,7 @@ async def handle_timezone_callback(update, context, deps) -> None:
         await _edit_or_reply(
             query,
             build_first_timezone_prompt(),
-            reply_markup=build_timezone_picker_keyboard(),
+            reply_markup=build_settings_keyboard(),
         )
         return
 
