@@ -126,3 +126,52 @@ def test_snooze_callback_uses_extracted_apply_helper():
 
 def test_main_reexports_snooze_apply_helper():
     assert main.apply_snooze_to_reminder is apply_snooze_to_reminder
+
+
+
+def test_apply_snooze_to_reminder_deletes_old_snoozed_messages_before_current_update():
+    calls = []
+    query = Query()
+    context = SimpleNamespace(bot="bot")
+    reminder = SimpleNamespace(
+        id=123,
+        chat_id=555,
+        text="milk",
+        created_by=42,
+    )
+    new_dt = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
+
+    async def delete_old(bot, **kwargs):
+        calls.append(("delete_old", bot, kwargs))
+
+    async def clear_reminder_message_keyboards(bot, rid, replacement_text=None):
+        calls.append(("clear", bot, rid, replacement_text))
+
+    async def run():
+        await apply_snooze_to_reminder(
+            reminder=reminder,
+            new_dt=new_dt,
+            query=query,
+            context=context,
+            mark_reminder_acked=lambda rid: calls.append(("acked", rid)),
+            clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+            add_reminder=lambda **kwargs: calls.append(("add", kwargs)),
+            format_snoozed_reminder_text=lambda text, when: f"snoozed {when}: {text}",
+            format_snoozed_answer_text=lambda when: f"answer {when}",
+            delete_old_snoozed_reminder_messages=delete_old,
+        )
+
+    asyncio.run(run())
+
+    assert calls[0] == (
+        "delete_old",
+        "bot",
+        {
+            "current_reminder_id": 123,
+            "chat_id": 555,
+            "text": "milk",
+            "created_by": 42,
+        },
+    )
+    assert calls[1] == ("acked", 123)
+    assert calls[2] == ("clear", "bot", 123, "snoozed 02.01 10:00: milk")

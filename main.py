@@ -307,7 +307,7 @@ from plain_text_remind_flow import handle_plain_text_remind_command
 from voice_remind_flow import handle_voice_remind_command
 from voice_transcription import transcribe_voice_message_impl
 from reminder_text_normalization import normalize_reminder_text_fallback_impl
-from reminder_message_store import clear_reminder_message_keyboards_impl, get_reminder_messages_impl, register_reminder_message_impl
+from reminder_message_store import clear_reminder_message_keyboards_impl, delete_old_snoozed_reminder_messages_impl, get_reminder_messages_impl, register_reminder_message_impl
 from storage_user_chats import get_user_chat_id_by_user_id_impl, get_user_chat_id_by_username_impl, upsert_user_chat_impl
 from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
 from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
@@ -410,6 +410,24 @@ async def clear_reminder_message_keyboards(
         reminder_id,
         _build_reminder_message_store_deps(),
         replacement_text=replacement_text,
+    )
+
+
+async def delete_old_snoozed_reminder_messages(
+    bot,
+    *,
+    current_reminder_id: int,
+    chat_id: int,
+    text: str,
+    created_by: Optional[int],
+) -> None:
+    await delete_old_snoozed_reminder_messages_impl(
+        bot,
+        current_reminder_id=current_reminder_id,
+        chat_id=chat_id,
+        text=text,
+        created_by=created_by,
+        deps=_build_reminder_message_store_deps(),
     )
 
 

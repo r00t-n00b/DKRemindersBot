@@ -19,7 +19,8 @@ async def handle_custom_snooze_picktime(
     apply_snooze_to_reminder,
     format_snoozed_reminder_text,
     format_snoozed_answer_text,
-    msg_reminder_not_found: str,
+    delete_old_snoozed_reminder_messages=None,
+    msg_reminder_not_found: str = "",
     msg_reschedule_bad_datetime: str,
     msg_reschedule_past_time: str,
 ):
@@ -50,4 +51,5 @@ async def handle_custom_snooze_picktime(
         add_reminder=add_reminder,
         format_snoozed_reminder_text=format_snoozed_reminder_text,
         format_snoozed_answer_text=format_snoozed_answer_text,
+        delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
     )

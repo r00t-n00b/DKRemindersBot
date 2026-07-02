@@ -32,6 +32,7 @@ async def handle_reminder_callback(update, context, deps):
     compute_self_remind_time = deps.compute_self_remind_time
     compute_snooze_target_time = deps.compute_snooze_target_time
     datetime = deps.datetime
+    delete_old_snoozed_reminder_messages = deps.delete_old_snoozed_reminder_messages
     enter_custom_snooze_flow = deps.enter_custom_snooze_flow
     enter_custom_snooze_time_picker = deps.enter_custom_snooze_time_picker
     extract_event_datetime_from_text = deps.extract_event_datetime_from_text
@@ -320,6 +321,7 @@ async def handle_reminder_callback(update, context, deps):
                 compute_snooze_target_time=compute_snooze_target_time,
                 enter_custom_snooze_flow=enter_custom_snooze_flow,
                 apply_snooze_to_reminder=apply_snooze_to_reminder,
+                delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
                 mark_reminder_acked=mark_reminder_acked,
                 clear_reminder_message_keyboards=clear_reminder_message_keyboards,
                 add_reminder=add_reminder,
@@ -382,6 +384,7 @@ async def handle_reminder_callback(update, context, deps):
                 clear_reminder_message_keyboards=clear_reminder_message_keyboards,
                 add_reminder=add_reminder,
                 apply_snooze_to_reminder=apply_snooze_to_reminder,
+                delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
                 format_snoozed_reminder_text=format_snoozed_reminder_text,
                 format_snoozed_answer_text=format_snoozed_answer_text,
                 msg_reminder_not_found=MSG_REMINDER_NOT_FOUND,

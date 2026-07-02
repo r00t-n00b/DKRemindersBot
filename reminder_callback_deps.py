@@ -30,6 +30,7 @@ REMINDER_CALLBACK_DEP_NAMES = (
     "compute_self_remind_time",
     "compute_snooze_target_time",
     "datetime",
+    "delete_old_snoozed_reminder_messages",
     "enter_custom_snooze_flow",
     "enter_custom_snooze_time_picker",
     "extract_event_datetime_from_text",

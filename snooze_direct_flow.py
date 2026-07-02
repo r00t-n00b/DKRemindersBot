@@ -19,7 +19,8 @@ async def handle_direct_snooze_action(
     build_custom_date_keyboard,
     format_snoozed_reminder_text,
     format_snoozed_answer_text,
-    msg_reminder_not_found: str,
+    delete_old_snoozed_reminder_messages=None,
+    msg_reminder_not_found: str = "",
     msg_reschedule_unknown_action: str,
 ):
     reminder = get_reminder(reminder_id)
@@ -60,4 +61,5 @@ async def handle_direct_snooze_action(
         add_reminder=add_reminder,
         format_snoozed_reminder_text=format_snoozed_reminder_text,
         format_snoozed_answer_text=format_snoozed_answer_text,
+        delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
     )
