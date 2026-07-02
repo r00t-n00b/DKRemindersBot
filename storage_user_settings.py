@@ -168,6 +168,24 @@ def count_active_reminders_for_user_impl(user_id: int, *, deps) -> int:
         conn.close()
 
 
+def count_active_recurring_templates_for_user_impl(user_id: int, *, deps) -> int:
+    _apply_deps(deps)
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM recurring_templates
+            WHERE active = 1
+              AND created_by = ?
+            """,
+            (int(user_id),),
+        ).fetchone()
+        return int(row[0] or 0)
+    finally:
+        conn.close()
+
+
 def _convert_preserving_local_time(remind_at_iso: str, old_tz: str, new_tz: str) -> str:
     old_zone = ZoneInfo(old_tz or DEFAULT_TIMEZONE_NAME)
     new_zone = ZoneInfo(new_tz or DEFAULT_TIMEZONE_NAME)

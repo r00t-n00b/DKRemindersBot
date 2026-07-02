@@ -151,12 +151,14 @@ def build_settings_text(
     default_time_text: str | None = None,
     *,
     active_reminders_count: int | None = None,
+    active_recurring_templates_count: int | None = None,
     user_alias_lines: list[str] | None = None,
     chat_alias_lines: list[str] | None = None,
 ) -> str:
     tz_name = tz_name or DEFAULT_TIMEZONE_NAME
     default_line = default_time_text or "10:00"
     active_count = 0 if active_reminders_count is None else int(active_reminders_count)
+    recurring_count = 0 if active_recurring_templates_count is None else int(active_recurring_templates_count)
     user_alias_lines = user_alias_lines or []
     chat_alias_lines = chat_alias_lines or []
 
@@ -165,8 +167,9 @@ def build_settings_text(
         "",
         f"Часовой пояс: {timezone_label(tz_name)}",
         f"Сейчас в нём: {format_timezone_now(tz_name)}",
-        f"Время по умолчанию: {default_line}",
-        f"Активные напоминания: {active_count}",
+        f"Если время не указано: {default_line}",
+        f"Запланированные напоминания: {active_count}",
+        f"Активные повторяющиеся правила: {recurring_count}",
     ]
 
     if user_alias_lines or chat_alias_lines:
@@ -178,18 +181,30 @@ def build_settings_text(
             parts.append("💬 Chat aliases:")
             parts.extend(chat_alias_lines)
     else:
-        parts.extend(["", "Алиасы: нет"])
+        parts.extend(
+            [
+                "",
+                "Алиасы:",
+                "Тобой не было заведено ни одного алиаса. Если хочешь это сделать, воспользуйся командами ниже.",
+            ]
+        )
 
     parts.extend(
         [
             "",
             "Команды для изменения:",
-            "/defaulttime 09:30 — изменить время по умолчанию",
-            "/defaulttime reset — сбросить время по умолчанию",
+            "/defaulttime 09:30 — изменить время, которое подставляется, если ты указал дату без времени",
+            "/defaulttime reset — сбросить это время на 10:00",
             "/aliases — посмотреть алиасы",
             "/linkuser <alias> @username — добавить user alias",
             "/linkchat <alias> — добавить chat alias в группе",
             "/unalias <alias> — удалить алиас",
+            "",
+            "Пока не настроено отдельными командами:",
+            "Nudge policy — в backlog",
+            "Язык кнопок — в backlog",
+            "Формат времени 24h / verbose — в backlog",
+            "Тестовое напоминание — в backlog",
             "",
             "Часовой пояс можно поменять кнопками ниже.",
             "📱 Если ты на мобильном устройстве, нажми “📍 For mobile only: определить по геопозиции” — после этого кнопка отправки геопозиции появится внизу под строкой ввода. Я сохраню только часовой пояс, координаты хранить не буду.",
@@ -324,6 +339,14 @@ async def handle_settings_command(update, context, deps) -> None:
     if message is None or user is None:
         return
 
+    if hasattr(deps, "get_user_timezone_name_raw") and deps.get_user_timezone_name_raw(user.id) is None:
+        await _reply(
+            message,
+            build_first_timezone_prompt(),
+            reply_markup=build_timezone_picker_keyboard(),
+        )
+        return
+
     tz_name = deps.get_user_timezone_name(user.id)
     default_time = None
     if hasattr(deps, "get_user_default_time"):
@@ -335,6 +358,10 @@ async def handle_settings_command(update, context, deps) -> None:
     if hasattr(deps, "count_active_reminders_for_user"):
         active_count = deps.count_active_reminders_for_user(user.id)
 
+    recurring_count = 0
+    if hasattr(deps, "count_active_recurring_templates_for_user"):
+        recurring_count = deps.count_active_recurring_templates_for_user(user.id)
+
     user_alias_lines, chat_alias_lines = _load_settings_alias_lines(user.id, deps)
 
     await _reply(
@@ -343,6 +370,7 @@ async def handle_settings_command(update, context, deps) -> None:
             tz_name,
             default_time,
             active_reminders_count=active_count,
+            active_recurring_templates_count=recurring_count,
             user_alias_lines=user_alias_lines,
             chat_alias_lines=chat_alias_lines,
         ),

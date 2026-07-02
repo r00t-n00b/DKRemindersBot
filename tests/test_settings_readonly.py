@@ -17,14 +17,16 @@ def test_build_settings_text_includes_readonly_summary_sections():
         tz_name="Europe/Madrid",
         default_time_text="09:30",
         active_reminders_count=3,
+        active_recurring_templates_count=2,
         user_alias_lines=["• wife -> @wife / chat_id=111"],
         chat_alias_lines=["• football -> Football Chat / chat_id=222"],
     )
 
     assert "Настройки" in text
     assert "Часовой пояс: CET" in text
-    assert "Время по умолчанию: 09:30" in text
-    assert "Активные напоминания: 3" in text
+    assert "Если время не указано: 09:30" in text
+    assert "Запланированные напоминания: 3" in text
+    assert "Активные повторяющиеся правила: 2" in text
     assert "👤 User aliases:" in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "💬 Chat aliases:" in text
@@ -38,13 +40,14 @@ def test_build_settings_text_shows_empty_alias_summary():
         tz_name="Europe/Madrid",
         default_time_text=None,
         active_reminders_count=0,
+        active_recurring_templates_count=0,
         user_alias_lines=[],
         chat_alias_lines=[],
     )
 
-    assert "Время по умолчанию: 10:00" in text
-    assert "Активные напоминания: 0" in text
-    assert "Алиасы: нет" in text
+    assert "Если время не указано: 10:00" in text
+    assert "Запланированные напоминания: 0" in text
+    assert "Тобой не было заведено ни одного алиаса" in text
 
 
 def test_settings_command_loads_default_time_active_count_and_aliases():
@@ -58,6 +61,7 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
         get_user_timezone_name=lambda user_id: "Europe/Madrid",
         get_user_default_time=lambda user_id: (9, 30),
         count_active_reminders_for_user=lambda user_id: 3,
+        count_active_recurring_templates_for_user=lambda user_id: 2,
         get_all_user_aliases=lambda user_id: [("wife", 111)],
         get_user_alias=lambda alias, created_by: {"username": "wife"},
         get_all_aliases=lambda user_id: [("football", 222, "Football Chat")],
@@ -69,8 +73,37 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
     text, kwargs = message.replies[0]
 
     assert "Часовой пояс: CET" in text
-    assert "Время по умолчанию: 09:30" in text
-    assert "Активные напоминания: 3" in text
+    assert "Если время не указано: 09:30" in text
+    assert "Запланированные напоминания: 3" in text
+    assert "Активные повторяющиеся правила: 2" in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "• football -> Football Chat / chat_id=222" in text
+    assert kwargs["reply_markup"] is not None
+
+
+
+def test_settings_command_prompts_for_timezone_when_user_has_no_timezone():
+    message = Message()
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=123),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: None,
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        get_user_default_time=lambda user_id: None,
+        count_active_reminders_for_user=lambda user_id: 0,
+        count_active_recurring_templates_for_user=lambda user_id: 0,
+        get_all_user_aliases=lambda user_id: [],
+        get_all_aliases=lambda user_id: [],
+    )
+
+    asyncio.run(handle_settings_command(update, SimpleNamespace(), deps))
+
+    assert len(message.replies) == 1
+    text, kwargs = message.replies[0]
+
+    assert "Telegram не передаёт мне твой часовой пояс автоматически" in text
+    assert "Часовой пояс: CET" not in text
     assert kwargs["reply_markup"] is not None
