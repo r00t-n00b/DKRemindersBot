@@ -169,7 +169,6 @@ def build_settings_text(
         f"Сейчас в нём: {format_timezone_now(tz_name)}",
         f"Если ты не укажешь время при постановке ремайндера, то я установлю его на {default_line}. Изменить это можно командой указанной ниже.",
         f"Запланированные напоминания: {active_count}",
-        f"Активные повторяющиеся напоминания: {recurring_count}",
     ]
 
     if user_alias_lines or chat_alias_lines:
@@ -359,12 +358,6 @@ async def handle_settings_command(update, context, deps) -> None:
     elif hasattr(deps, "count_active_reminders_for_user"):
         active_count = deps.count_active_reminders_for_user(user.id)
 
-    recurring_count = 0
-    if hasattr(deps, "count_active_recurring_templates_for_chat"):
-        recurring_count = deps.count_active_recurring_templates_for_chat(settings_chat_id)
-    elif hasattr(deps, "count_active_recurring_templates_for_user"):
-        recurring_count = deps.count_active_recurring_templates_for_user(user.id)
-
     user_alias_lines, chat_alias_lines = _load_settings_alias_lines(user.id, deps)
 
     await _reply(
@@ -373,7 +366,6 @@ async def handle_settings_command(update, context, deps) -> None:
             tz_name,
             default_time,
             active_reminders_count=active_count,
-            active_recurring_templates_count=recurring_count,
             user_alias_lines=user_alias_lines,
             chat_alias_lines=chat_alias_lines,
         ),

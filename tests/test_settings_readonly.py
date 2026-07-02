@@ -26,7 +26,7 @@ def test_build_settings_text_includes_readonly_summary_sections():
     assert "Часовой пояс: CET" in text
     assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 09:30." in text
     assert "Запланированные напоминания: 3" in text
-    assert "Активные повторяющиеся напоминания: 2" in text
+    assert "Активные повторяющиеся напоминания" not in text
     assert "👤 User aliases:" in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "💬 Chat aliases:" in text
@@ -64,7 +64,6 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
         get_user_timezone_name=lambda user_id: "Europe/Madrid",
         get_user_default_time=lambda user_id: (9, 30),
         count_active_reminders_for_chat=lambda chat_id: 3 if chat_id == 999 else -1,
-        count_active_recurring_templates_for_chat=lambda chat_id: 2 if chat_id == 999 else -1,
         get_all_user_aliases=lambda user_id: [("wife", 111)],
         get_user_alias=lambda alias, created_by: {"username": "wife"},
         get_all_aliases=lambda user_id: [("football", 222, "Football Chat")],
@@ -78,7 +77,7 @@ def test_settings_command_loads_default_time_active_count_and_aliases():
     assert "Часовой пояс: CET" in text
     assert "Если ты не укажешь время при постановке ремайндера, то я установлю его на 09:30." in text
     assert "Запланированные напоминания: 3" in text
-    assert "Активные повторяющиеся напоминания: 2" in text
+    assert "Активные повторяющиеся напоминания" not in text
     assert "• wife -> @wife / chat_id=111" in text
     assert "• football -> Football Chat / chat_id=222" in text
     assert kwargs["reply_markup"] is not None
@@ -130,7 +129,6 @@ def test_settings_command_counts_visible_chat_reminders_not_created_by_user():
         count_active_reminders_for_user=lambda user_id: 0,
         count_active_recurring_templates_for_user=lambda user_id: 0,
         count_active_reminders_for_chat=lambda chat_id: calls.append(("reminders", chat_id)) or 3,
-        count_active_recurring_templates_for_chat=lambda chat_id: calls.append(("recurring", chat_id)) or 2,
         get_all_user_aliases=lambda user_id: [],
         get_all_aliases=lambda user_id: [],
     )
@@ -140,6 +138,5 @@ def test_settings_command_counts_visible_chat_reminders_not_created_by_user():
     text, _ = message.replies[0]
 
     assert ("reminders", 999) in calls
-    assert ("recurring", 999) in calls
     assert "Запланированные напоминания: 3" in text
-    assert "Активные повторяющиеся напоминания: 2" in text
+    assert "Активные повторяющиеся напоминания" not in text
