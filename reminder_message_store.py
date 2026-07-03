@@ -273,3 +273,71 @@ async def delete_old_snoozed_reminder_messages_impl(
                 message_id,
                 edit_exc,
             )
+
+
+
+async def delete_other_reminder_messages_impl(
+    bot,
+    *,
+    reminder_id: int,
+    keep_chat_id: int,
+    keep_message_id: int,
+    deps,
+) -> None:
+    """Delete/deactivate sibling Telegram messages for the same reminder.
+
+    When a reminder has both delivery and nudge messages, snoozing one message
+    should not leave identical snoozed copies in the chat.
+    """
+    _apply_deps(deps)
+
+    def _drop_message_tracking(row_id: int) -> None:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM reminder_messages WHERE id = ?", (int(row_id),))
+        conn.commit()
+        conn.close()
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, message_id
+        FROM reminder_messages
+        WHERE reminder_id = ?
+          AND NOT (chat_id = ? AND message_id = ?)
+        ORDER BY id ASC
+        """,
+        (int(reminder_id), int(keep_chat_id), int(keep_message_id)),
+    )
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+
+    for row in rows:
+        row_id = int(row["id"])
+        chat_id = int(row["chat_id"])
+        message_id = int(row["message_id"])
+
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            _drop_message_tracking(row_id)
+            continue
+        except Exception:
+            pass
+
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=None,
+            )
+            _drop_message_tracking(row_id)
+        except Exception:
+            logger.warning(
+                "Failed to delete/deactivate sibling reminder message "
+                "reminder_id=%s chat_id=%s message_id=%s",
+                reminder_id,
+                chat_id,
+                message_id,
+            )

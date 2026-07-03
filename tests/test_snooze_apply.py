@@ -263,3 +263,64 @@ def test_done_callback_data_passes_delete_old_snoozed_messages():
 
     assert seen["reminder_id"] == 123
     assert seen["delete_old_snoozed_reminder_messages"] is fake_delete_old
+
+
+def test_apply_snooze_deletes_other_messages_from_same_reminder():
+    import asyncio
+    from types import SimpleNamespace
+
+    from snooze_apply import apply_snooze_to_reminder
+
+    calls = []
+
+    class Query:
+        def __init__(self):
+            self.message = SimpleNamespace(chat_id=555, message_id=1002)
+            self.edits = []
+            self.answers = []
+
+        async def edit_message_text(self, text):
+            self.edits.append(text)
+
+        async def edit_message_reply_markup(self, reply_markup=None):
+            calls.append(("fallback_clear_clicked", reply_markup))
+
+        async def answer(self, text):
+            self.answers.append(text)
+
+    reminder = SimpleNamespace(
+        id=77,
+        chat_id=555,
+        text="meltan",
+        created_by=42,
+    )
+    query = Query()
+    context = SimpleNamespace(bot=SimpleNamespace())
+
+    async def delete_other_reminder_messages(bot, *, reminder_id, keep_chat_id, keep_message_id):
+        calls.append(("delete_other", reminder_id, keep_chat_id, keep_message_id))
+
+    async def async_delete_old_snoozed_reminder_messages(bot, **kwargs):
+        calls.append(("delete_old", kwargs))
+
+    asyncio.run(
+        apply_snooze_to_reminder(
+            reminder=reminder,
+            new_dt=SimpleNamespace(strftime=lambda fmt: "03.07 14:56"),
+            query=query,
+            context=context,
+            mark_reminder_acked=lambda reminder_id: calls.append(("acked", reminder_id)),
+            clear_reminder_message_keyboards=lambda bot, reminder_id, replacement_text=None: calls.append(
+                ("clear_all", reminder_id, replacement_text)
+            ),
+            add_reminder=lambda **kwargs: calls.append(("add", kwargs)),
+            format_snoozed_reminder_text=lambda text, when: f"{text}\n\n(Отложено до {when})",
+            format_snoozed_answer_text=lambda when: f"Отложено до {when}",
+            delete_old_snoozed_reminder_messages=async_delete_old_snoozed_reminder_messages,
+            delete_other_reminder_messages=delete_other_reminder_messages,
+        )
+    )
+
+    assert ("delete_other", 77, 555, 1002) in calls
+    assert not any(call[0] == "clear_all" for call in calls)
+    assert query.edits == ["meltan\n\n(Отложено до 03.07 14:56)"]

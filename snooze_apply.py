@@ -13,6 +13,7 @@ async def apply_snooze_to_reminder(
     format_snoozed_reminder_text,
     format_snoozed_answer_text,
     delete_old_snoozed_reminder_messages=None,
+    delete_other_reminder_messages=None,
 ):
     when_str = new_dt.strftime("%d.%m %H:%M")
     snoozed_text = format_snoozed_reminder_text(reminder.text, when_str)
@@ -28,11 +29,28 @@ async def apply_snooze_to_reminder(
         )
 
     mark_reminder_acked(reminder.id)
-    await clear_reminder_message_keyboards(
-        context.bot,
-        reminder.id,
-        replacement_text=snoozed_text,
-    )
+
+    clicked_message = getattr(query, "message", None)
+    clicked_chat_id = getattr(clicked_message, "chat_id", None)
+    clicked_message_id = getattr(clicked_message, "message_id", None)
+
+    if (
+        delete_other_reminder_messages is not None
+        and clicked_chat_id is not None
+        and clicked_message_id is not None
+    ):
+        await delete_other_reminder_messages(
+            context.bot,
+            reminder_id=reminder.id,
+            keep_chat_id=clicked_chat_id,
+            keep_message_id=clicked_message_id,
+        )
+    else:
+        await clear_reminder_message_keyboards(
+            context.bot,
+            reminder.id,
+            replacement_text=snoozed_text,
+        )
 
     add_reminder(
         chat_id=reminder.chat_id,

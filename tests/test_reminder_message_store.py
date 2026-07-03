@@ -249,3 +249,60 @@ def test_delete_old_snoozed_reminder_messages_stops_on_retry_after(main_module):
     assert bot.cleared == []
     assert [row["message_id"] for row in main_module.get_reminder_messages(old_rid_1)] == [1001]
     assert [row["message_id"] for row in main_module.get_reminder_messages(old_rid_2)] == [1002]
+
+
+def test_delete_other_reminder_messages_keeps_clicked_message(main_module):
+    rid = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="meltan",
+        created_by=42,
+        delivered=1,
+        acked=0,
+    )
+
+    main_module.register_reminder_message(rid, 555, 1001, "delivery")
+    main_module.register_reminder_message(rid, 555, 1002, "nudge")
+
+    bot = Bot()
+
+    asyncio.run(
+        main_module.delete_other_reminder_messages(
+            bot,
+            reminder_id=rid,
+            keep_chat_id=555,
+            keep_message_id=1002,
+        )
+    )
+
+    assert bot.deleted == [(555, 1001)]
+    assert [row["message_id"] for row in main_module.get_reminder_messages(rid)] == [1002]
+
+
+def test_delete_other_reminder_messages_falls_back_to_clear_keyboard(main_module):
+    rid = _insert_reminder_row(
+        main_module,
+        chat_id=555,
+        text="meltan",
+        created_by=42,
+        delivered=1,
+        acked=0,
+    )
+
+    main_module.register_reminder_message(rid, 555, 1001, "delivery")
+    main_module.register_reminder_message(rid, 555, 1002, "nudge")
+
+    bot = Bot(fail_delete=True)
+
+    asyncio.run(
+        main_module.delete_other_reminder_messages(
+            bot,
+            reminder_id=rid,
+            keep_chat_id=555,
+            keep_message_id=1002,
+        )
+    )
+
+    assert bot.deleted == []
+    assert bot.cleared == [(555, 1001, None)]
+    assert [row["message_id"] for row in main_module.get_reminder_messages(rid)] == [1002]
