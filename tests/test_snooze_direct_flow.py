@@ -51,6 +51,8 @@ def run_handler(**overrides):
             build_custom_date_keyboard=overrides.pop("build_custom_date_keyboard", lambda rid: f"date-kb:{rid}"),
             format_snoozed_reminder_text=overrides.pop("format_snoozed_reminder_text", lambda text, when: f"snoozed {when}: {text}"),
             format_snoozed_answer_text=overrides.pop("format_snoozed_answer_text", lambda when: f"answer {when}"),
+            delete_old_snoozed_reminder_messages=overrides.pop("delete_old_snoozed_reminder_messages", None),
+            delete_other_reminder_messages=overrides.pop("delete_other_reminder_messages", None),
             msg_reminder_not_found=overrides.pop("msg_reminder_not_found", "not found"),
             msg_reschedule_unknown_action=overrides.pop("msg_reschedule_unknown_action", "unknown action"),
         )
@@ -135,3 +137,30 @@ def test_snooze_callback_uses_direct_snooze_flow_helper():
 
 def test_main_reexports_direct_snooze_flow_helper():
     assert main.handle_direct_snooze_action is handle_direct_snooze_action
+
+
+
+def test_direct_snooze_passes_delete_other_messages_to_apply():
+    async def delete_other_reminder_messages(*args, **kwargs):
+        pass
+
+    calls, query = run_handler(delete_other_reminder_messages=delete_other_reminder_messages)
+
+    assert query.answers == []
+    assert len(calls) == 1
+    name, kwargs = calls[0]
+    assert name == "apply"
+    assert kwargs["delete_other_reminder_messages"] is delete_other_reminder_messages
+
+
+def test_snooze_router_threads_delete_other_messages_into_direct_flow():
+    from pathlib import Path
+
+    source = Path("reminder_callback_router.py").read_text()
+    assert "delete_other_reminder_messages = deps.delete_other_reminder_messages" in source
+
+    direct_start = source.index('if data.startswith("snooze:"):')
+    cal_start = source.index('if data.startswith("snooze_cal:"):', direct_start)
+    direct_source = source[direct_start:cal_start]
+
+    assert "delete_other_reminder_messages=delete_other_reminder_messages" in direct_source

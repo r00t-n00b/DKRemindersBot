@@ -324,3 +324,59 @@ def test_apply_snooze_deletes_other_messages_from_same_reminder():
     assert ("delete_other", 77, 555, 1002) in calls
     assert not any(call[0] == "clear_all" for call in calls)
     assert query.edits == ["meltan\n\n(Отложено до 03.07 14:56)"]
+
+
+
+def test_apply_snooze_ignores_already_acked_reminder():
+    import asyncio
+    from types import SimpleNamespace
+
+    from snooze_apply import apply_snooze_to_reminder
+
+    calls = []
+
+    class Query:
+        def __init__(self):
+            self.message = SimpleNamespace(chat_id=555, message_id=1002)
+            self.answers = []
+            self.cleared = []
+
+        async def edit_message_text(self, text):
+            calls.append(("edit_text", text))
+
+        async def edit_message_reply_markup(self, reply_markup=None):
+            self.cleared.append(reply_markup)
+
+        async def answer(self, text=None, show_alert=None):
+            self.answers.append((text, show_alert))
+
+    reminder = SimpleNamespace(
+        id=77,
+        chat_id=555,
+        text="meltan",
+        created_by=42,
+        acked=1,
+    )
+    query = Query()
+    context = SimpleNamespace(bot=SimpleNamespace())
+
+    asyncio.run(
+        apply_snooze_to_reminder(
+            reminder=reminder,
+            new_dt=SimpleNamespace(strftime=lambda fmt: "03.07 14:56"),
+            query=query,
+            context=context,
+            mark_reminder_acked=lambda reminder_id: calls.append(("acked", reminder_id)),
+            clear_reminder_message_keyboards=lambda bot, reminder_id, replacement_text=None: calls.append(
+                ("clear_all", reminder_id, replacement_text)
+            ),
+            add_reminder=lambda **kwargs: calls.append(("add", kwargs)),
+            format_snoozed_reminder_text=lambda text, when: f"{text}\n\n(Отложено до {when})",
+            format_snoozed_answer_text=lambda when: f"Отложено до {when}",
+        )
+    )
+
+    assert query.cleared == [None]
+    assert query.answers == [("Это напоминание уже обработано", True)]
+    assert not any(call[0] == "add" for call in calls)
+    assert not any(call[0] == "acked" for call in calls)

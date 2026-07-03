@@ -18,6 +18,14 @@ async def apply_snooze_to_reminder(
     when_str = new_dt.strftime("%d.%m %H:%M")
     snoozed_text = format_snoozed_reminder_text(reminder.text, when_str)
 
+    if getattr(reminder, "acked", 0):
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await query.answer("Это напоминание уже обработано", show_alert=True)
+        return
+
     # УСПЕШНЫЙ snooze = реакция пользователя
     if delete_old_snoozed_reminder_messages is not None:
         await delete_old_snoozed_reminder_messages(
