@@ -517,24 +517,34 @@ async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz:
         "new_tz": new_tz,
     }
 
-    message = None
     query = getattr(update, "callback_query", None)
-    if query is not None:
-        message = getattr(query, "message", None)
-    if message is None:
-        message = update.effective_message
-
-    await _reply(
-        message,
-        (
-            "Ты поменял часовой пояс.\n\n"
-            f"У тебя есть активные напоминания: {active_count}.\n\n"
-            "Перенести их в новый часовой пояс?\n\n"
-            "Перенести = оставить то же локальное время, но использовать новый часовой пояс.\n"
-            "Например, 09:00 CET станет 09:00 Россия / Москва."
-        ),
-        reply_markup=build_timezone_migration_keyboard(),
+    prompt_text = (
+        "Ты поменял часовой пояс.\n\n"
+        f"У тебя есть активные напоминания: {active_count}.\n\n"
+        "Перенести их в новый часовой пояс?\n\n"
+        "Перенести = оставить то же локальное время, но использовать новый часовой пояс.\n"
+        "Например, 09:00 CET станет 09:00 Россия / Москва."
     )
+
+    if _timezone_started_from_settings(context) and query is not None:
+        await _edit_or_reply(
+            query,
+            prompt_text,
+            reply_markup=build_timezone_migration_keyboard(),
+        )
+    else:
+        message = None
+        if query is not None:
+            message = getattr(query, "message", None)
+        if message is None:
+            message = update.effective_message
+
+        await _reply(
+            message,
+            prompt_text,
+            reply_markup=build_timezone_migration_keyboard(),
+        )
+
     return True
 
 

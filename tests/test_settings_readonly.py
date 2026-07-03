@@ -491,7 +491,38 @@ def test_timezone_migration_question_from_settings_uses_settings_chat_count():
     asyncio.run(handle_timezone_callback(update, context, deps))
 
     assert saved == [(123, "Europe/Moscow")]
-    assert query.message.replies
-    text, _ = query.message.replies[0]
+    assert not query.message.replies
+    text, kwargs = query.message.edits[0]
     assert "У тебя есть активные напоминания: 20." in text
     assert "У тебя есть активные напоминания: 31." not in text
+    assert kwargs.get("reply_markup") is not None
+
+
+
+def test_timezone_migration_prompt_from_settings_edits_same_message_not_reply():
+    from timezone_features import handle_timezone_callback
+
+    context = SimpleNamespace(user_data={"timezone_started_from_settings": True})
+
+    query = Query("tz:preset:moscow")
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=123),
+        effective_chat=SimpleNamespace(id=999),
+    )
+
+    deps = SimpleNamespace(
+        get_user_timezone_name_raw=lambda user_id: "Europe/Madrid",
+        get_user_timezone_name=lambda user_id: "Europe/Madrid",
+        set_user_timezone_name=lambda user_id, tz: None,
+        count_active_reminders_for_chat=lambda chat_id: 20,
+        count_active_reminders_for_user=lambda user_id: 31,
+        move_active_reminders_timezone_for_user=lambda **kwargs: {"reminders": 0, "templates": 0},
+    )
+
+    asyncio.run(handle_timezone_callback(update, context, deps))
+
+    assert not query.message.replies
+    assert query.message.edits
+    text, _ = query.message.edits[0]
+    assert "Перенести их в новый часовой пояс?" in text
