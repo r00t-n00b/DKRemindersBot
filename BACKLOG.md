@@ -299,16 +299,6 @@ Recurring management UX:
 
 Diagnostics / debug history:
 - нормальный /list остаётся чистым и показывает только user-facing active reminders;
-- добавить private/admin-only debug command, например /debug_reminders или /history;
-- показать последние 20 reminders для текущего user/chat;
-- поля: id, text, remind_at, delivered, acked, nudge_count, sent_at, template_id, delivery_state;
-- показать количество tracked Telegram messages по kind: created / delivery / nudge;
-- read-only, без мутаций;
-- не раскрывать чужие reminders;
-- тесты на private chat, group chat, alias/created_by boundaries, empty history.
-
-Diagnostics / debug history:
-- нормальный /list остаётся чистым и показывает только user-facing active reminders;
 - добавить private/admin-only debug command, например `/debug_reminders` или `/history`;
 - показать последние 20 reminders для текущего user/chat;
 - поля: id, text, remind_at, delivered, acked, nudge_count, sent_at, template_id, delivery_state;
