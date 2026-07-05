@@ -306,6 +306,7 @@ async def handle_reminder_callback(update, context, deps):
                 get_reminder=get_reminder,
                 format_completed_reminder_text=format_completed_reminder_text,
                 delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
+                delete_other_reminder_messages=delete_other_reminder_messages,
             )
             return
 

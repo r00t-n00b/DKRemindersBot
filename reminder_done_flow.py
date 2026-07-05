@@ -13,6 +13,7 @@ async def handle_done_callback(
     get_reminder,
     format_completed_reminder_text,
     delete_old_snoozed_reminder_messages=None,
+    delete_other_reminder_messages=None,
 ):
     original_text = query.message.text if query.message and query.message.text else ""
 
@@ -37,7 +38,23 @@ async def handle_done_callback(
 
         mark_reminder_acked(reminder_id)
         bot = getattr(context, "bot", None)
-        if bot is not None:
+        clicked_message = getattr(query, "message", None)
+        clicked_chat_id = getattr(clicked_message, "chat_id", None)
+        clicked_message_id = getattr(clicked_message, "message_id", None)
+
+        if (
+            bot is not None
+            and delete_other_reminder_messages is not None
+            and clicked_chat_id is not None
+            and clicked_message_id is not None
+        ):
+            await delete_other_reminder_messages(
+                bot,
+                reminder_id=reminder_id,
+                keep_chat_id=clicked_chat_id,
+                keep_message_id=clicked_message_id,
+            )
+        elif bot is not None:
             await clear_reminder_message_keyboards(
                 bot,
                 reminder_id,

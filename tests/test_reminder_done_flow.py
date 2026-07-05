@@ -35,10 +35,13 @@ class Query:
 def run_handler(**overrides):
     calls = []
     query = overrides.pop("query", Query())
-    reminder = overrides.pop("reminder", SimpleNamespace(text="db text"))
+    reminder = overrides.pop("reminder", SimpleNamespace(id=123, chat_id=555, text="db text", created_by=42))
 
     async def clear_reminder_message_keyboards(bot, rid, replacement_text=None):
         calls.append(("clear", bot, rid, replacement_text))
+
+    async def delete_other_reminder_messages(bot, *, reminder_id, keep_chat_id, keep_message_id):
+        calls.append(("delete_other", bot, reminder_id, keep_chat_id, keep_message_id))
 
     async def run():
         await handle_done_callback(
@@ -49,6 +52,8 @@ def run_handler(**overrides):
             clear_reminder_message_keyboards=clear_reminder_message_keyboards,
             get_reminder=overrides.pop("get_reminder", lambda rid: reminder),
             format_completed_reminder_text=overrides.pop("format_completed_reminder_text", lambda text: f"done: {text}"),
+            delete_old_snoozed_reminder_messages=overrides.pop("delete_old_snoozed_reminder_messages", None),
+            delete_other_reminder_messages=overrides.pop("delete_other_reminder_messages", delete_other_reminder_messages),
         )
         assert not overrides, f"unused overrides: {overrides}"
 
@@ -125,3 +130,32 @@ def test_snooze_callback_uses_done_flow_helper():
 
 def test_main_reexports_done_flow_helper():
     assert main.handle_done_callback is handle_done_callback
+
+
+
+def test_done_callback_deletes_sibling_messages_when_clicked_message_is_known():
+    query = Query()
+    query.message.chat_id = 555
+    query.message.message_id = 1002
+
+    calls, query = run_handler(
+        query=query,
+    )
+
+    assert ("delete_other", "bot", 123, 555, 1002) in calls
+    assert not any(call[0] == "clear" for call in calls)
+    assert ("acked", 123) in calls
+    assert query.edited_texts == ["done: db text"]
+    assert query.edited_markups == [None]
+
+
+def test_done_router_threads_delete_other_messages():
+    from pathlib import Path
+
+    source = Path("reminder_callback_router.py").read_text()
+
+    done_start = source.index('if data.startswith("done:"):')
+    snooze_start = source.index('if data.startswith("snooze:"):', done_start)
+    done_source = source[done_start:snooze_start]
+
+    assert "delete_other_reminder_messages=delete_other_reminder_messages" in done_source
