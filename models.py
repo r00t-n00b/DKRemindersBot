@@ -14,3 +14,5 @@ class Reminder:
     created_by: Optional[int]
     template_id: Optional[int] = None
     sent_at: Optional[datetime] = None
+    delivered: int = 0
+    acked: int = 0

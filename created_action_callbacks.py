@@ -14,6 +14,21 @@ def _apply_deps(deps) -> None:
     globals()["logger"] = deps.logger
 
 
+def _is_processed_reminder(reminder) -> bool:
+    return bool(
+        int(getattr(reminder, "delivered", 0) or 0)
+        or int(getattr(reminder, "acked", 0) or 0)
+    )
+
+
+async def _answer_processed_reminder(query) -> None:
+    await query.answer("Это напоминание уже обработано", show_alert=True)
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
 async def answer_created_action_reminder_missing_impl(query, deps) -> None:
     _apply_deps(deps)
 
@@ -27,10 +42,16 @@ async def answer_created_action_reminder_missing_impl(query, deps) -> None:
 async def ensure_created_action_reminder_exists_impl(query, reminder_id: int, deps) -> bool:
     _apply_deps(deps)
 
-    if get_reminder(reminder_id) is not None:
-        return True
-    await deps.answer_created_action_reminder_missing(query)
-    return False
+    reminder = get_reminder(reminder_id)
+    if reminder is None:
+        await deps.answer_created_action_reminder_missing(query)
+        return False
+
+    if _is_processed_reminder(reminder):
+        await _answer_processed_reminder(query)
+        return False
+
+    return True
 
 
 async def handle_created_reschedule_callback(update, context, deps) -> None:

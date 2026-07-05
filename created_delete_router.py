@@ -44,6 +44,11 @@ async def handle_created_delete_callback(update, context, deps) -> None:
         await query.edit_message_text(MSG_REMINDER_ALREADY_DELETED_TEXT, reply_markup=None)
         return
 
+    if int(row.get("delivered", 0) or 0) or int(row.get("acked", 0) or 0):
+        await query.answer("Это напоминание уже обработано", show_alert=True)
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
     template_id = row["template_id"] if "template_id" in row.keys() else None
     if template_id is not None:
         keyboard = build_recurring_delete_choice_keyboard(reminder_id, int(template_id))

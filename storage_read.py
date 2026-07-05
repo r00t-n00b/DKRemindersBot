@@ -87,7 +87,7 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
     c = conn.cursor()
     c.execute(
         """
-        SELECT id, chat_id, text, remind_at, created_by, template_id, sent_at
+        SELECT id, chat_id, text, remind_at, created_by, template_id, sent_at, delivered, acked
         FROM reminders
         WHERE id = ?
         """,
@@ -98,7 +98,7 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
     if not row:
         return None
 
-    rid, chat_id, text, remind_at_str, created_by, template_id, sent_at_str = row
+    rid, chat_id, text, remind_at_str, created_by, template_id, sent_at_str, delivered, acked = row
     sent_at = from_iso(sent_at_str) if sent_at_str else None
 
     return Reminder(
@@ -109,6 +109,8 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
         created_by=created_by,
         template_id=template_id,
         sent_at=sent_at,
+        delivered=int(delivered or 0),
+        acked=int(acked or 0),
     )
 
 
@@ -122,7 +124,7 @@ def get_active_reminders_created_by_for_chat_impl(chat_id: int, created_by: int,
         tz_select = _timezone_select(conn, "reminders")
         c.execute(
             f"""
-            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id, {tz_select}
+            SELECT id, chat_id, text, remind_at, delivered, acked, created_by, template_id, {tz_select}
             FROM reminders
             WHERE chat_id = ?
               AND delivered = 0
@@ -170,7 +172,7 @@ def get_reminder_row_impl(rid: int, deps) -> Optional[Dict[str, Any]]:
         tz_select = _timezone_select(conn, "reminders")
         c.execute(
             f"""
-            SELECT id, chat_id, text, remind_at, delivered, created_by, template_id, {tz_select}
+            SELECT id, chat_id, text, remind_at, delivered, acked, created_by, template_id, {tz_select}
             FROM reminders
             WHERE id = ?
             """,

@@ -407,6 +407,7 @@ async def handle_reminder_callback(update, context, deps):
                 mark_reminder_acked=mark_reminder_acked,
                 build_snooze_keyboard=build_snooze_keyboard,
                 msg_invalid_reminder_id=MSG_INVALID_REMINDER_ID,
+                get_reminder=get_reminder,
             )
             return
 

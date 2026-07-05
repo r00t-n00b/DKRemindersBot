@@ -7,6 +7,21 @@ application module back.
 from messages import MSG_PICK_TIME, MSG_RETURNED_OPTIONS, msg_created_snoozed, msg_created_snoozed_answer
 
 
+def _is_processed_reminder(reminder) -> bool:
+    return bool(
+        int(getattr(reminder, "delivered", 0) or 0)
+        or int(getattr(reminder, "acked", 0) or 0)
+    )
+
+
+async def _answer_processed_reminder(query) -> None:
+    await query.answer("Это напоминание уже обработано", show_alert=True)
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+
 async def handle_created_snooze_callback(update, context, deps) -> None:
     MSG_INVALID_REMINDER_ID = deps.MSG_INVALID_REMINDER_ID
     MSG_RESCHEDULE_BAD_DATETIME = deps.MSG_RESCHEDULE_BAD_DATETIME
@@ -42,6 +57,9 @@ async def handle_created_snooze_callback(update, context, deps) -> None:
             r = get_reminder(rid)
             if not r:
                 await _answer_created_action_reminder_missing(query)
+                return
+            if _is_processed_reminder(r):
+                await _answer_processed_reminder(query)
                 return
 
             try:
@@ -122,6 +140,9 @@ async def handle_created_snooze_callback(update, context, deps) -> None:
             r = get_reminder(rid)
             if not r:
                 await _answer_created_action_reminder_missing(query)
+                return
+            if _is_processed_reminder(r):
+                await _answer_processed_reminder(query)
                 return
 
             try:

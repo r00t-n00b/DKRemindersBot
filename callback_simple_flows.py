@@ -141,6 +141,7 @@ async def handle_snooze_cancel_callback_data(
     mark_reminder_acked,
     build_snooze_keyboard,
     msg_invalid_reminder_id: str,
+    get_reminder=None,
 ):
     reminder_id = parse_optional_int_callback_id(data, prefix="snooze_cancel:")
 
@@ -150,4 +151,5 @@ async def handle_snooze_cancel_callback_data(
         mark_reminder_acked=mark_reminder_acked,
         build_snooze_keyboard=build_snooze_keyboard,
         msg_invalid_reminder_id=msg_invalid_reminder_id,
+        get_reminder=get_reminder,
     )

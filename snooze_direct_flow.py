@@ -37,6 +37,7 @@ async def handle_direct_snooze_action(
             build_custom_date_keyboard=build_custom_date_keyboard,
             context=context,
             clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+            delete_other_reminder_messages=delete_other_reminder_messages,
         )
         return
 
