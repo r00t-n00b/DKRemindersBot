@@ -40,20 +40,26 @@ Production reminder-worker должен стабильно:
 
 ## 3. /settings — IN PROGRESS
 
-Нужно довести настройки до полноценного UX:
+Нужно довести настройки до полноценного UX.
 
+Уже сделано:
 - read-only экран сначала — DONE;
 - fallback time: понятный read-only текст “если время не указано...” — DONE;
 - timezone — DONE;
 - aliases summary — DONE;
-- дальше editable settings;
-- editable fallback/default reminder time;
-- editable timezone;
-- nudge policy;
-- язык кнопок;
+- смена timezone через /settings — DONE;
+- default/fallback reminder time через /settings — DONE;
+- нормальный UX для смены timezone при отпуске/переезде с migration prompt — MOSTLY DONE.
+
+Остаётся:
+- собрать настройки в более полноценное меню, а не просто read-only summary + отдельные кнопки;
+- editable aliases из /settings, а не только summary;
+- nudge policy: включить/выключить nudges, интервал, максимум повторов;
+- язык кнопок / language preference;
 - формат времени: 24h / verbose;
-- тестовое напоминание;
-- нормальный UX для смены timezone при отпуске/переезде;
+- тестовое напоминание из /settings;
+- recurring management entry point из /settings;
+- diagnostics/debug entry point только для себя;
 - возможно показывать текущие user settings/debug summary только для себя.
 
 ## 4. Inbox / незакрытые напоминания — TODO
@@ -120,20 +126,30 @@ Production reminder-worker должен стабильно:
 - RU/EN wording;
 - подсказки с правильными примерами.
 
-## 10. Reminder lifecycle / Done-Snooze-Delete consistency — TODO
+## 10. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
 
-Довести lifecycle до консистентного состояния:
+Довести lifecycle до консистентного состояния.
 
-- старые inline-кнопки не дают странных эффектов;
-- /list не показывает удалённое/завершённое;
+Уже сделано:
+- Snooze удаляет sibling delivery/nudge messages, если Telegram позволяет;
+- Done удаляет sibling delivery/nudge messages, если Telegram позволяет;
+- stale Snooze/Done buttons больше не должны создавать duplicate reminders;
+- `Reminder` model читает `delivered` / `acked`, чтобы stale callbacks реально отсеивались;
+- custom snooze не должен оставлять активные sibling buttons;
+- created reminder action buttons на новых reminders регистрируются как `kind="created"`;
+- created action messages деактивируются/удаляются после фактической доставки reminder;
+- stale created-action buttons не должны оживлять уже delivered/acked reminder.
+
+Остаётся:
+- /list не показывает удалённое/завершённое — проверить и закрепить diagnostics;
 - recurring reminders ведут себя правильно;
 - undo не восстанавливает не то;
-- done/snooze/delete после already deleted/already done;
-- created reminder action buttons после удаления/срабатывания;
+- done/snooze/delete после already deleted/already done — расширить coverage;
 - recurring: delete one instance vs delete series;
 - recurring + snooze;
 - recurring после restart;
-- nudge lifecycle.
+- nudge lifecycle;
+- production sanity-check после lifecycle patches.
 
 ## 11. Callback/data consistency — TODO
 
@@ -223,8 +239,9 @@ Plain text уже работает с timezone, но остаётся полир
 
 ## 16. Recurring reminders — TODO
 
-Повторяющиеся reminders — один из самых рискованных кусков:
+Повторяющиеся reminders — один из самых рискованных кусков.
 
+Core behavior:
 - “каждый день в 9”;
 - “каждый понедельник”;
 - “каждые 2 недели”;
@@ -236,6 +253,22 @@ Plain text уже работает с timezone, но остаётся полир
 - recurring после restart;
 - recurring + list/delete/undo;
 - recurring + lifecycle consistency.
+
+Recurring management UX:
+- отдельный экран управления повторяющимися напоминаниями;
+- список активных серий;
+- показывать template_id / текст / human schedule / next instance / target chat;
+- выключить/поставить на паузу серию;
+- включить обратно;
+- удалить ближайшее срабатывание;
+- удалить всю серию;
+- изменить текст;
+- изменить время/schedule;
+- entry point из /settings;
+- entry point из /list, если reminder recurring;
+- чётко различать “удалить ближайшее” и “удалить всю серию”;
+- access control для group/private/created_by;
+- тесты на private/group/created_by/undo/stale callbacks.
 
 ## 17. Snooze / reschedule UX — TODO
 
@@ -263,6 +296,16 @@ Plain text уже работает с timezone, но остаётся полир
 - старые callback-и;
 - индексы после удаления;
 - пустые списки.
+
+Diagnostics / debug history:
+- нормальный /list остаётся чистым и показывает только user-facing active reminders;
+- добавить private/admin-only debug command, например `/debug_reminders` или `/history`;
+- показать последние 20 reminders для текущего user/chat;
+- поля: id, text, remind_at, delivered, acked, nudge_count, sent_at, template_id, delivery_state;
+- показать количество tracked Telegram messages по kind: created / delivery / nudge;
+- read-only, без мутаций;
+- не раскрывать чужие reminders;
+- тесты на private chat, group chat, alias/created_by boundaries, empty history.
 
 ## 19. Алиасы чатов и пользователей — TODO
 
@@ -308,6 +351,8 @@ Plain text уже работает с timezone, но остаётся полир
 - plain text normalization source: local/local_relative/gemini/fallback;
 - debug-команды/SQL-команды для проверки active/future/undelivered reminders;
 - посмотреть активные reminders конкретного user/chat;
+- посмотреть последние delivered/acked/nudged reminders;
+- посмотреть tracked reminder_messages by kind;
 - посмотреть timezone/settings пользователя;
 - посмотреть pending recurring;
 - dry-run due reminders;
@@ -348,11 +393,12 @@ Plain text уже работает с timezone, но остаётся полир
 
 ## Suggested next order
 
-1. Voice UX polish: timezone gate for voice reminders.
-2. /settings: read-only summary + default time + aliases summary.
-3. Reminder lifecycle / Done-Snooze-Delete consistency.
-4. Callback/data consistency.
-5. Access control audit.
-6. Групповые напоминания и self-remind.
-7. “Напоминание до события”.
-8. Production observability.
+1. /settings: finish the planned settings menu, especially nudge policy, aliases editing, recurring management entry point, diagnostics entry point.
+2. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
+3. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
+4. Voice UX polish: timezone gate for voice reminders.
+5. Reminder lifecycle / Done-Snooze-Delete consistency: remaining recurring/undo/nudge edge cases.
+6. Callback/data consistency.
+7. Access control audit.
+8. Групповые напоминания и self-remind.
+9. “Напоминание до события”.
