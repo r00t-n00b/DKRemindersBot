@@ -1,5 +1,5 @@
 import main
-from voice_text_normalization import (
+from dkreminders_bot.integrations.voice_text_normalization import (
     _normalize_plain_text_relative_reminder_locally,
     _normalize_voice_ru_months,
     _normalize_voice_spoken_numbers,
@@ -91,4 +91,4 @@ def test_voice_text_normalization_bodies_are_no_longer_in_main_source():
     assert "def _normalize_plain_text_relative_reminder_locally(" not in source
     assert "def normalize_gemini_reminder_command_text(" not in source
     assert "def normalize_voice_reminder_text(" not in source
-    assert "from voice_text_normalization import (" in source
+    assert "from dkreminders_bot.integrations.voice_text_normalization import (" in source

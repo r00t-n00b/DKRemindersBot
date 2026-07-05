@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import main
-from parser_recurring import parse_recurring
+from dkreminders_bot.parsing.parser_recurring import parse_recurring
 
 
 TZ = ZoneInfo("Europe/Madrid")

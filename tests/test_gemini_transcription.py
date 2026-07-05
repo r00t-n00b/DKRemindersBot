@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 import main
-from gemini_transcription import gemini_transcribe_audio_with_retries
+from dkreminders_bot.integrations.gemini_transcription import gemini_transcribe_audio_with_retries
 
 
 class FakePart:
@@ -137,4 +137,4 @@ def test_gemini_transcription_body_is_no_longer_in_main_source():
     assert "GEMINI_TRANSCRIPTION_SUCCESS" not in source
     assert "genai_types.Part.from_bytes" not in source
     assert "Gemini временно не смог распознать голосовое" not in source
-    assert "from gemini_transcription import gemini_transcribe_audio_with_retries" in source
+    assert "from dkreminders_bot.integrations.gemini_transcription import gemini_transcribe_audio_with_retries" in source

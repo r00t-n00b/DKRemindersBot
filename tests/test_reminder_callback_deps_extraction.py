@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import main
-import reminder_callback_deps
+import dkreminders_bot.callbacks.reminder_callback_deps as reminder_callback_deps
 
 
 def test_main_reminder_callback_deps_builder_delegates_to_factory(monkeypatch):
@@ -54,7 +54,7 @@ def test_reminder_callback_deps_module_contains_expected_dependency_names():
 
 
 def test_reminder_callback_deps_module_does_not_import_main():
-    source = open("reminder_callback_deps.py").read()
+    source = open("dkreminders_bot/callbacks/reminder_callback_deps.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

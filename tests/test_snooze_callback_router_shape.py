@@ -25,7 +25,7 @@ def test_main_snooze_callback_is_thin_wrapper_after_9x_refactor():
 
 def test_reminder_callback_router_contains_expected_routes():
     _, _, source = _get_top_level_async_function_source(
-        "reminder_callback_router.py",
+        "dkreminders_bot/callbacks/reminder_callback_router.py",
         "handle_reminder_callback",
     )
 
@@ -58,7 +58,7 @@ def test_reminder_callback_router_contains_expected_routes():
 
 
 def test_reminder_callback_router_does_not_import_main():
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
 
     assert "import main" not in source
     assert "from main import" not in source
@@ -66,7 +66,7 @@ def test_reminder_callback_router_does_not_import_main():
 
 def test_reminder_callback_router_does_not_reintroduce_business_logic():
     _, _, source = _get_top_level_async_function_source(
-        "reminder_callback_router.py",
+        "dkreminders_bot/callbacks/reminder_callback_router.py",
         "handle_reminder_callback",
     )
 
@@ -93,7 +93,7 @@ def test_reminder_callback_router_does_not_reintroduce_business_logic():
 
 def test_reminder_callback_router_size_stays_bounded():
     _, node, _ = _get_top_level_async_function_source(
-        "reminder_callback_router.py",
+        "dkreminders_bot/callbacks/reminder_callback_router.py",
         "handle_reminder_callback",
     )
 

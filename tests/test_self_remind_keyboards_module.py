@@ -16,7 +16,7 @@ def _callback_data(markup):
 
 
 def test_self_remind_keyboard_builders_are_moved_to_keyboards_module(main_module, monkeypatch):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
 
     class DummyInlineKeyboardButton:
         def __init__(self, text, callback_data=None, **kwargs):

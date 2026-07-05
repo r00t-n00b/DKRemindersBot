@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-import storage_user_settings
+import dkreminders_bot.storage.storage_user_settings as storage_user_settings
 
 
 TARGETS = [
@@ -58,7 +58,7 @@ def test_storage_user_settings_wrappers_in_main_are_thin():
 
 
 def test_storage_user_settings_module_contains_impls_and_no_main_import():
-    source = open("storage_user_settings.py").read()
+    source = open("dkreminders_bot/storage/storage_user_settings.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

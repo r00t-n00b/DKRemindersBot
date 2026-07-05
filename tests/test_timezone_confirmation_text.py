@@ -3,7 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from single_oneoff_reminder import handle_single_oneoff_reminder
+from dkreminders_bot.commands.single_oneoff_reminder import handle_single_oneoff_reminder
 
 
 class FakeMessage:

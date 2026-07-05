@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import main
-from bulk_single_reminder import create_single_reminder_from_line
+from dkreminders_bot.commands.bulk_single_reminder import create_single_reminder_from_line
 
 
 class Logger:

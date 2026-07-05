@@ -1,9 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
-from created_action_callbacks import ensure_created_action_reminder_exists_impl
-from created_delete_router import handle_created_delete_callback
-from created_snooze_router import handle_created_snooze_callback
+from dkreminders_bot.callbacks.created_action_callbacks import ensure_created_action_reminder_exists_impl
+from dkreminders_bot.callbacks.created_delete_router import handle_created_delete_callback
+from dkreminders_bot.callbacks.created_snooze_router import handle_created_snooze_callback
 
 
 class Query:

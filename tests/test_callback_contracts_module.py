@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-import callback_contracts as c
+import dkreminders_bot.callbacks.callback_contracts as c
 
 
 def test_callback_contract_patterns_compile():

@@ -18,7 +18,7 @@ def _patch_keyboard_classes(m, monkeypatch):
     monkeypatch.setattr(m, "InlineKeyboardButton", DummyInlineKeyboardButton)
     monkeypatch.setattr(m, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)
 
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
     monkeypatch.setattr(keyboards, "InlineKeyboardButton", DummyInlineKeyboardButton)
     monkeypatch.setattr(keyboards, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)
 

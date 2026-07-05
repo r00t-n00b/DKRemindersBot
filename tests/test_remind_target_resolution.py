@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-from remind_target_resolution import resolve_remind_target_and_args
+from dkreminders_bot.commands.remind_target_resolution import resolve_remind_target_and_args
 
 
 class Logger:
@@ -184,7 +184,7 @@ def test_remind_command_uses_target_resolution_helper():
     import ast
     from pathlib import Path
 
-    source = Path("remind_command_router.py").read_text()
+    source = Path("dkreminders_bot/commands/remind_command_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [

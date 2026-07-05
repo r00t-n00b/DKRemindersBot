@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import main
-from self_remind_event_cancel_flow import handle_self_remind_event_cancel
+from dkreminders_bot.callbacks.self_remind_event_cancel_flow import handle_self_remind_event_cancel
 
 
 class Query:
@@ -97,7 +97,7 @@ def test_snooze_callback_uses_self_remind_event_cancel_flow_helper():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [

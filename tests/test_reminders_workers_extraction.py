@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-import reminders_workers
+import dkreminders_bot.workers.reminders_workers as reminders_workers
 
 
 def test_main_reminders_worker_delegates_to_worker_module(monkeypatch):
@@ -96,7 +96,7 @@ def test_worker_wrappers_are_thin():
 
 
 def test_reminders_workers_module_contains_expected_paths():
-    source = open("reminders_workers.py").read()
+    source = open("dkreminders_bot/workers/reminders_workers.py").read()
 
     assert "async def _safe_get_chat_type(" in source
     assert "async def run_reminders_worker(" in source

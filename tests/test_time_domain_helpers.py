@@ -1,13 +1,13 @@
 from datetime import datetime
 from types import SimpleNamespace
 
-from event_datetime import (
+from dkreminders_bot.parsing.event_datetime import (
     compute_event_before_time,
     extract_event_datetime_from_text,
     get_self_remind_event_base,
     normalize_relative_event_date_in_text,
 )
-from self_remind_time import compute_self_remind_time
+from dkreminders_bot.callbacks.self_remind_time import compute_self_remind_time
 
 
 def test_compute_self_remind_time_accepts_naive_now_as_bot_timezone():

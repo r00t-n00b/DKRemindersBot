@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import main
-from event_datetime import (
+from dkreminders_bot.parsing.event_datetime import (
     compute_event_before_time,
     extract_event_datetime_from_text,
     get_self_remind_event_base,

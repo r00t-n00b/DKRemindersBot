@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import main
-from models import Reminder
+from dkreminders_bot.domain.models import Reminder
 
 
 def test_reminder_model_fields_and_defaults():
@@ -32,4 +32,4 @@ def test_reminder_model_is_no_longer_defined_in_main_source():
 
     assert "class Reminder:" not in source
     assert "from dataclasses import dataclass" not in source
-    assert "from models import Reminder" in source
+    assert "from dkreminders_bot.domain.models import Reminder" in source

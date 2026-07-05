@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-import storage_write
+import dkreminders_bot.storage.storage_write as storage_write
 
 
 TZ = ZoneInfo("Europe/Madrid")

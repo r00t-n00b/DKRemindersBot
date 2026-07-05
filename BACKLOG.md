@@ -106,7 +106,18 @@ Production reminder-worker должен стабильно:
 - кнопки не должны вести в тупик;
 - старые кнопки должны либо работать, либо объяснять, что устарели.
 
-## 8. Убрать _apply_deps/globals постепенно — TODO
+## 8. Repo/package structure cleanup — DONE
+
+Корневую свалку `.py` файлов перенесли в нормальный package layout:
+
+- root `main.py` оставлен как Fly-compatible entrypoint;
+- production modules перенесены в `dkreminders_bot/`;
+- добавлены package folders: callbacks, commands, domain, integrations, parsing, settings, storage, ui, utils, workers;
+- tests updated for packaged imports;
+- behavior changes не смешивались с refactor;
+- full test suite green after move.
+
+## 9. Убрать _apply_deps/globals постепенно — TODO
 
 Постепенный технический рефакторинг:
 
@@ -117,7 +128,7 @@ Production reminder-worker должен стабильно:
 - перейти к явным deps/dataclass deps;
 - не делать одним большим рискованным рефактором.
 
-## 9. Улучшить wording invalid recurring ordinals — TODO
+## 10. Улучшить wording invalid recurring ordinals — TODO
 
 Сделать понятные ошибки для невалидных recurring формулировок:
 
@@ -126,7 +137,7 @@ Production reminder-worker должен стабильно:
 - RU/EN wording;
 - подсказки с правильными примерами.
 
-## 10. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
+## 11. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
 
 Довести lifecycle до консистентного состояния.
 
@@ -151,7 +162,7 @@ Production reminder-worker должен стабильно:
 - nudge lifecycle;
 - production sanity-check после lifecycle patches.
 
-## 11. Callback/data consistency — TODO
+## 12. Callback/data consistency — TODO
 
 Закрепить тестами, что router pattern совпадает с callback_data:
 
@@ -165,7 +176,7 @@ Production reminder-worker должен стабильно:
 - старые callback-и должны либо работать, либо честно говорить, что устарели;
 - не должно быть unknown-option из-за несовпадения callback_data и pattern.
 
-## 12. Групповые напоминания и self-remind — TODO
+## 13. Групповые напоминания и self-remind — TODO
 
 Отдельный крупный функциональный блок.
 
@@ -186,7 +197,7 @@ Edge-cases:
 - cancel/back в self-remind flow;
 - обычное напоминание vs напоминание до события внутри self-remind.
 
-## 13. Access control audit — TODO
+## 14. Access control audit — TODO
 
 Общий security/pass по всем флоу:
 
@@ -199,7 +210,7 @@ Edge-cases:
 - reminder создан в группе, действие нажато в личке или наоборот;
 - нельзя удалить/сдвинуть чужой reminder через старую кнопку.
 
-## 14. Voice UX polish — TODO
+## 15. Voice UX polish — TODO
 
 Отдельный большой блок по voice reminders:
 
@@ -222,7 +233,7 @@ Edge-cases:
 Следующий вероятный приоритет:
 - проверить, что voice reminders не обходят timezone onboarding и не создают reminder в implicit CET.
 
-## 15. Plain text / Gemini / fallback — TODO
+## 16. Plain text / Gemini / fallback — TODO
 
 Plain text уже работает с timezone, но остаётся полировка:
 
@@ -237,7 +248,7 @@ Plain text уже работает с timezone, но остаётся полир
 - alias в plain text;
 - конфликт alias vs дата/время.
 
-## 16. Recurring reminders — TODO
+## 17. Recurring reminders — TODO
 
 Повторяющиеся reminders — один из самых рискованных кусков.
 
@@ -270,7 +281,7 @@ Recurring management UX:
 - access control для group/private/created_by;
 - тесты на private/group/created_by/undo/stale callbacks.
 
-## 17. Snooze / reschedule UX — TODO
+## 18. Snooze / reschedule UX — TODO
 
 Полировка snooze/reschedule:
 
@@ -282,7 +293,7 @@ Recurring management UX:
 - не показывать бесполезные кнопки после удаления/выполнения;
 - понятные тексты после переноса.
 
-## 18. List / delete / undo — TODO
+## 19. List / delete / undo — TODO
 
 Довести до железобетона:
 
@@ -307,7 +318,7 @@ Diagnostics / debug history:
 - не раскрывать чужие reminders;
 - тесты на private chat, group chat, alias/created_by boundaries, empty history.
 
-## 19. Алиасы чатов и пользователей — TODO
+## 20. Алисы чатов и пользователей — TODO
 
 Бэклог по aliases:
 
@@ -321,7 +332,7 @@ Diagnostics / debug history:
 - конфликт alias vs дата/время;
 - alias в voice/plain text.
 
-## 20. “Напоминание до события” — TODO
+## 21. “Напоминание до события” — TODO
 
 Флоу:
 - обычное напоминание;
@@ -339,7 +350,7 @@ Diagnostics / debug history:
 - тесты на RU/EN даты;
 - интеграция с self-remind flow.
 
-## 21. Production observability — TODO
+## 22. Production observability — TODO
 
 Логирование и prod visibility:
 
@@ -359,7 +370,7 @@ Diagnostics / debug history:
 - аккуратная debug-команда только для себя;
 - health-ish prod checks после deploy.
 
-## 22. Тестовая инфраструктура — RULE
+## 23. Тестовая инфраструктура — RULE
 
 Постоянное правило:
 
@@ -379,7 +390,7 @@ Diagnostics / debug history:
 - access control;
 - prod-risk edge cases.
 
-## 23. DB migration discipline — RULE
+## 24. DB migration discipline — RULE
 
 Постоянное правило:
 

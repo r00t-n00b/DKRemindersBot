@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-from snooze_custom_flow import enter_custom_snooze_flow
+from dkreminders_bot.callbacks.snooze_custom_flow import enter_custom_snooze_flow
 
 
 class Query:
@@ -62,7 +62,7 @@ def test_snooze_callback_uses_custom_snooze_flow():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -74,7 +74,7 @@ def test_snooze_callback_uses_custom_snooze_flow():
 
     snooze_source = ast.get_source_segment(source, nodes[0])
 
-    direct_source = Path("snooze_direct_flow.py").read_text()
+    direct_source = Path("dkreminders_bot/callbacks/snooze_direct_flow.py").read_text()
     assert "enter_custom_snooze_flow=enter_custom_snooze_flow" in snooze_source
     assert "enter_custom_snooze_flow(" in direct_source
     assert "context=context" in direct_source

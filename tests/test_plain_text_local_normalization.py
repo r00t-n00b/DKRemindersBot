@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import main
-from plain_text_local_normalization import normalize_plain_text_reminder_locally
+from dkreminders_bot.commands.plain_text_local_normalization import normalize_plain_text_reminder_locally
 
 
 def fake_now():
@@ -79,7 +79,7 @@ def test_plain_text_local_normalizer_body_is_no_longer_in_main_source():
 
     assert "Fast local path for plain text reminders before Gemini" not in source
     assert "напомни 1 октября пересчитать страховку" not in source
-    assert "from plain_text_local_normalization import normalize_plain_text_reminder_locally" in source
+    assert "from dkreminders_bot.commands.plain_text_local_normalization import normalize_plain_text_reminder_locally" in source
 
 
 def test_plain_text_local_normalizer_uses_injected_split_expr_dependency():

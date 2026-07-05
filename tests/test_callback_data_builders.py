@@ -1,4 +1,4 @@
-import callback_contracts as c
+import dkreminders_bot.callbacks.callback_contracts as c
 
 
 def test_delete_callback_builders():

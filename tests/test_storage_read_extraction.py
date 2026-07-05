@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import main
-import storage_read
+import dkreminders_bot.storage.storage_read as storage_read
 
 
 TARGETS = [
@@ -46,7 +46,7 @@ def test_storage_read_wrappers_in_main_are_thin():
 
 
 def test_storage_read_module_contains_impls_and_no_main_import():
-    source = open("storage_read.py").read()
+    source = open("dkreminders_bot/storage/storage_read.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

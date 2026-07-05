@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-import storage_write
+import dkreminders_bot.storage.storage_write as storage_write
 
 
 TARGETS = [
@@ -91,7 +91,7 @@ def test_storage_write_wrappers_in_main_are_thin():
 
 
 def test_storage_write_module_contains_impls_and_no_main_import_or_delete_logic():
-    source = open("storage_write.py").read()
+    source = open("dkreminders_bot/storage/storage_write.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

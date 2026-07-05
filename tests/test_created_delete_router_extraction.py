@@ -3,7 +3,7 @@ import asyncio
 
 from types import SimpleNamespace
 
-import created_delete_router
+import dkreminders_bot.callbacks.created_delete_router as created_delete_router
 
 import main
 
@@ -73,7 +73,7 @@ def test_created_delete_wrapper_is_thin():
 
 def test_created_delete_router_contains_expected_branches():
 
-    source = open("created_delete_router.py").read()
+    source = open("dkreminders_bot/callbacks/created_delete_router.py").read()
 
     assert "async def handle_created_delete_callback(" in source
 

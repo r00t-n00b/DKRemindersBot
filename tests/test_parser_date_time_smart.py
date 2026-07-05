@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import main
-from parser_date_time_smart import parse_date_time_smart
+from dkreminders_bot.parsing.parser_date_time_smart import parse_date_time_smart
 
 
 TZ = ZoneInfo("Europe/Madrid")

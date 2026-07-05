@@ -1,7 +1,7 @@
 import pytest
 
 import main
-from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
+from dkreminders_bot.callbacks.callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
 
 
 
@@ -26,7 +26,7 @@ def test_selfremind_caltoday_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -38,7 +38,7 @@ def test_selfremind_caltoday_uses_required_id_parser():
 
     snooze_source = ast.get_source_segment(source, nodes[0])
 
-    calendar_source = Path("self_remind_calendar_flow.py").read_text()
+    calendar_source = Path("dkreminders_bot/callbacks/self_remind_calendar_flow.py").read_text()
 
     today_start = snooze_source.index('if data.startswith("selfremind_caltoday:") or data.startswith("selfremind_event_caltoday:"):')
     pickdate_start = snooze_source.index('if data.startswith("selfremind_pickdate:") or data.startswith("selfremind_event_pickdate:"):', today_start)
@@ -53,7 +53,7 @@ def test_selfremind_event_cancel_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -73,14 +73,14 @@ def test_selfremind_event_cancel_uses_required_id_parser():
     assert "parse_required_int_callback_id=parse_required_int_callback_id" in event_cancel_source
     assert '_, rid_str = data.split(":", 1)' not in event_cancel_source
     assert "rid = int(rid_str)" not in event_cancel_source
-    simple_flows_source = Path("callback_simple_flows.py").read_text()
+    simple_flows_source = Path("dkreminders_bot/callbacks/callback_simple_flows.py").read_text()
     assert "await query.answer(msg_invalid_reminder_id, show_alert=True)" in simple_flows_source
 
 def test_selfremind_cancel_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -100,14 +100,14 @@ def test_selfremind_cancel_uses_required_id_parser():
     assert "parse_required_int_callback_id=parse_required_int_callback_id" in cancel_source
     assert '_, rid_str = data.split(":", 1)' not in cancel_source
     assert "rid = int(rid_str)" not in cancel_source
-    simple_flows_source = Path("callback_simple_flows.py").read_text()
+    simple_flows_source = Path("dkreminders_bot/callbacks/callback_simple_flows.py").read_text()
     assert "await query.answer(msg_invalid_reminder_id, show_alert=True)" in simple_flows_source
 
 def test_snooze_caltoday_uses_required_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -172,7 +172,7 @@ def test_snooze_picktime_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -212,7 +212,7 @@ def test_snooze_pickdate_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -255,7 +255,7 @@ def test_snooze_calendar_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -295,7 +295,7 @@ def test_snooze_action_uses_callback_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -321,7 +321,7 @@ def test_snooze_callback_uses_done_callback_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -348,7 +348,7 @@ def test_snooze_cancel_uses_callback_id_parser():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [

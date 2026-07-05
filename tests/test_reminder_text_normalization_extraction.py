@@ -1,5 +1,5 @@
 import main
-import reminder_text_normalization
+import dkreminders_bot.workers.reminder_text_normalization as reminder_text_normalization
 
 
 def test_main_normalize_reminder_text_fallback_delegates_to_impl(monkeypatch):
@@ -41,7 +41,7 @@ def test_normalize_reminder_text_fallback_wrapper_is_thin():
 
 
 def test_reminder_text_normalization_module_contains_impl_and_no_main_import():
-    source = open("reminder_text_normalization.py").read()
+    source = open("dkreminders_bot/workers/reminder_text_normalization.py").read()
 
     assert "def normalize_reminder_text_fallback_impl(" in source
     assert "_apply_deps(deps)" in source

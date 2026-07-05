@@ -1,4 +1,4 @@
-from presentation import format_empty_active_reminders_list_text
+from dkreminders_bot.ui.presentation import format_empty_active_reminders_list_text
 
 
 def test_empty_active_reminders_list_text_without_alias():

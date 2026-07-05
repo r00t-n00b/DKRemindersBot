@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import main
-from parser_month_name_date import _parse_month_name_date
+from dkreminders_bot.parsing.parser_month_name_date import _parse_month_name_date
 
 
 TZ = ZoneInfo("Europe/Madrid")

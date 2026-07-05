@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from time_utils import BOT_TZ, aware_now, ensure_aware, from_iso, to_iso
+from dkreminders_bot.utils.time_utils import BOT_TZ, aware_now, ensure_aware, from_iso, to_iso
 
 
 def test_aware_now_returns_timezone_aware_datetime():

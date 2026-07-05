@@ -27,7 +27,7 @@ def _callback_data(markup):
 
 
 def test_simple_keyboard_builders_are_exposed_via_main_proxy(main_module):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
 
     assert hasattr(keyboards, "build_created_reminder_actions_keyboard")
     assert hasattr(keyboards, "build_created_reschedule_keyboard")
@@ -53,7 +53,7 @@ def test_simple_keyboard_builders_are_exposed_via_main_proxy(main_module):
 
 
 def test_simple_keyboard_builders_generate_expected_callback_data(main_module):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
     _patch_keyboard_classes(keyboards)
 
     generated = []

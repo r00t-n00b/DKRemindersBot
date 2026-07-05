@@ -1,7 +1,7 @@
 import pytest
 
 import main
-from parser_split import _split_expr_and_text
+from dkreminders_bot.parsing.parser_split import _split_expr_and_text
 
 
 def test_split_expr_and_text_dash_format():

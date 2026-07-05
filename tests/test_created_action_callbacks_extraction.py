@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import created_action_callbacks
+import dkreminders_bot.callbacks.created_action_callbacks as created_action_callbacks
 import main
 
 
@@ -91,7 +91,7 @@ def test_created_action_wrappers_are_thin():
 
 
 def test_created_action_callbacks_module_contains_expected_paths_and_no_main_import():
-    source = open("created_action_callbacks.py").read()
+    source = open("dkreminders_bot/callbacks/created_action_callbacks.py").read()
 
     assert "async def answer_created_action_reminder_missing_impl(" in source
     assert "async def ensure_created_action_reminder_exists_impl(" in source

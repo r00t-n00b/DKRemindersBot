@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import main
-from parser_relative_day import _parse_standalone_vague_time, _parse_today_tomorrow
+from dkreminders_bot.parsing.parser_relative_day import _parse_standalone_vague_time, _parse_today_tomorrow
 
 
 TZ = ZoneInfo("Europe/Madrid")

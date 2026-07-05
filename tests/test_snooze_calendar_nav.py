@@ -1,7 +1,7 @@
 import asyncio
 
 import main
-from snooze_calendar_nav import show_custom_snooze_calendar
+from dkreminders_bot.callbacks.snooze_calendar_nav import show_custom_snooze_calendar
 
 
 class Query:
@@ -77,7 +77,7 @@ def test_snooze_callback_uses_calendar_nav_helper():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [

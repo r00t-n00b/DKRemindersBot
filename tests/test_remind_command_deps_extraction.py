@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import main
-import remind_command_deps
+import dkreminders_bot.commands.remind_command_deps as remind_command_deps
 
 
 def test_main_remind_command_deps_builder_delegates_to_factory(monkeypatch):
@@ -53,7 +53,7 @@ def test_remind_command_deps_module_contains_expected_dependency_names():
 
 
 def test_remind_command_deps_module_does_not_import_main():
-    source = open("remind_command_deps.py").read()
+    source = open("dkreminders_bot/commands/remind_command_deps.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

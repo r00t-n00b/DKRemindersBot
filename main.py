@@ -17,8 +17,8 @@ from typing import Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from time_utils import BOT_TZ, ensure_aware
-from timezone_features import build_first_timezone_prompt, build_timezone_picker_keyboard, handle_settings_callback, handle_settings_command, handle_timezone_callback, handle_timezone_location_message
+from dkreminders_bot.utils.time_utils import BOT_TZ, ensure_aware
+from dkreminders_bot.settings.timezone_features import build_first_timezone_prompt, build_timezone_picker_keyboard, handle_settings_callback, handle_settings_command, handle_timezone_callback, handle_timezone_location_message
 
 # --- Telegram imports ---
 # Во время тестов telegram не установлен, поэтому:
@@ -104,7 +104,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-from callback_contracts import (
+from dkreminders_bot.callbacks.callback_contracts import (
     CREATED_COMPLETE_PATTERN,
     CREATED_DELETE_PATTERN,
     CREATED_SNOOZE_CUSTOM_PATTERN,
@@ -139,8 +139,8 @@ from callback_contracts import (
     cb_undo,
 )
 
-import keyboards as keyboard_builders
-from keyboard_builder_proxy import (
+import dkreminders_bot.ui.keyboards as keyboard_builders
+from dkreminders_bot.ui.keyboard_builder_proxy import (
     _sync_keyboard_builder_classes_impl,
     build_created_reminder_actions_keyboard_for_reminder_impl,
     build_created_reminder_actions_keyboard_impl,
@@ -155,7 +155,7 @@ from keyboard_builder_proxy import (
     build_self_remind_mode_keyboard_impl,
     build_snooze_keyboard_impl,
 )
-from presentation import (
+from dkreminders_bot.ui.presentation import (
     build_active_reminders_list_response,
     build_target_user_presentation_rows,
     build_target_user_reminders_list_response,
@@ -177,7 +177,7 @@ def get_now() -> datetime:
 
 
 # ===== User-facing messages =====
-from messages import (
+from dkreminders_bot.ui.messages import (
     MSG_DELETE_FAILED_SHORT,
     MSG_DELETE_FAILED_TEXT,
     MSG_DELETE_SERIES_FAILED,
@@ -209,47 +209,47 @@ from messages import (
     msg_user_has_not_started_bot,
 )
 
-from parser_split import _split_expr_and_text
-from parser_time_tokens import TIME_TOKEN_RE, VAGUE_TIME_WORDS, _extract_time_from_tokens
-from parser_in_expression import _add_months, _parse_in_expression
-from parser_relative_day import _parse_standalone_vague_time, _parse_today_tomorrow
-from parser_normalization import _normalize_on_at_phrase
-from parser_next_expression import _parse_next_expression
-from parser_weekend_weekday import _parse_weekend_weekday
-from parser_month_name_date import _parse_month_name_date
-from parser_absolute import _parse_absolute
-from parser_date_time_smart import parse_date_time_smart
-from parser_recurring_detection import looks_like_recurring
-from bulk_header_detection import drop_optional_bulk_header
-from bulk_single_reminder import create_single_reminder_from_line
-from single_recurring_reminder import try_handle_single_recurring_reminder
-from single_oneoff_reminder import handle_single_oneoff_reminder
-from snooze_apply import apply_snooze_to_reminder
-from snooze_custom_flow import enter_custom_snooze_flow
-from snooze_calendar_nav import show_custom_snooze_calendar
-from snooze_time_picker import enter_custom_snooze_time_picker
-from snooze_picktime_flow import handle_custom_snooze_picktime
-from snooze_cancel_flow import handle_custom_snooze_cancel
-from snooze_direct_flow import handle_direct_snooze_action
-from reminder_done_flow import handle_done_callback
-from callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
-from self_remind_cancel_flow import handle_self_remind_cancel
-from self_remind_event_cancel_flow import handle_self_remind_event_cancel
-from self_remind_calendar_flow import handle_self_remind_calendar_month, handle_self_remind_calendar_today, handle_self_remind_pickdate
-from self_remind_picktime_flow import handle_self_remind_picktime
-from self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
-from self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
-from app_lifecycle import (
+from dkreminders_bot.parsing.parser_split import _split_expr_and_text
+from dkreminders_bot.parsing.parser_time_tokens import TIME_TOKEN_RE, VAGUE_TIME_WORDS, _extract_time_from_tokens
+from dkreminders_bot.parsing.parser_in_expression import _add_months, _parse_in_expression
+from dkreminders_bot.parsing.parser_relative_day import _parse_standalone_vague_time, _parse_today_tomorrow
+from dkreminders_bot.parsing.parser_normalization import _normalize_on_at_phrase
+from dkreminders_bot.parsing.parser_next_expression import _parse_next_expression
+from dkreminders_bot.parsing.parser_weekend_weekday import _parse_weekend_weekday
+from dkreminders_bot.parsing.parser_month_name_date import _parse_month_name_date
+from dkreminders_bot.parsing.parser_absolute import _parse_absolute
+from dkreminders_bot.parsing.parser_date_time_smart import parse_date_time_smart
+from dkreminders_bot.parsing.parser_recurring_detection import looks_like_recurring
+from dkreminders_bot.commands.bulk_header_detection import drop_optional_bulk_header
+from dkreminders_bot.commands.bulk_single_reminder import create_single_reminder_from_line
+from dkreminders_bot.commands.single_recurring_reminder import try_handle_single_recurring_reminder
+from dkreminders_bot.commands.single_oneoff_reminder import handle_single_oneoff_reminder
+from dkreminders_bot.callbacks.snooze_apply import apply_snooze_to_reminder
+from dkreminders_bot.callbacks.snooze_custom_flow import enter_custom_snooze_flow
+from dkreminders_bot.callbacks.snooze_calendar_nav import show_custom_snooze_calendar
+from dkreminders_bot.callbacks.snooze_time_picker import enter_custom_snooze_time_picker
+from dkreminders_bot.callbacks.snooze_picktime_flow import handle_custom_snooze_picktime
+from dkreminders_bot.callbacks.snooze_cancel_flow import handle_custom_snooze_cancel
+from dkreminders_bot.callbacks.snooze_direct_flow import handle_direct_snooze_action
+from dkreminders_bot.callbacks.reminder_done_flow import handle_done_callback
+from dkreminders_bot.callbacks.callback_data_parsing import parse_optional_int_callback_id, parse_snooze_action_callback_data, parse_snooze_calendar_callback_data, parse_snooze_pickdate_callback_data, parse_snooze_picktime_callback_data, parse_required_int_callback_id
+from dkreminders_bot.callbacks.self_remind_cancel_flow import handle_self_remind_cancel
+from dkreminders_bot.callbacks.self_remind_event_cancel_flow import handle_self_remind_event_cancel
+from dkreminders_bot.callbacks.self_remind_calendar_flow import handle_self_remind_calendar_month, handle_self_remind_calendar_today, handle_self_remind_pickdate
+from dkreminders_bot.callbacks.self_remind_picktime_flow import handle_self_remind_picktime
+from dkreminders_bot.callbacks.self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
+from dkreminders_bot.callbacks.self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
+from dkreminders_bot.utils.app_lifecycle import (
     _cancel_background_worker_impl,
     _start_background_worker_impl,
     post_init_impl,
     post_shutdown_impl,
 )
-from callback_simple_flows import handle_done_callback_data, handle_noop_callback, handle_pastdate_callback, handle_self_remind_cancel_callback, handle_self_remind_event_cancel_callback, handle_snooze_cancel_callback_data, handle_snooze_current_month_callback
-from reminder_callback_router import handle_reminder_callback
-from reminder_callback_deps import build_reminder_callback_deps
-from created_snooze_router import handle_created_snooze_callback
-from created_action_callbacks import (
+from dkreminders_bot.callbacks.callback_simple_flows import handle_done_callback_data, handle_noop_callback, handle_pastdate_callback, handle_self_remind_cancel_callback, handle_self_remind_event_cancel_callback, handle_snooze_cancel_callback_data, handle_snooze_current_month_callback
+from dkreminders_bot.callbacks.reminder_callback_router import handle_reminder_callback
+from dkreminders_bot.callbacks.reminder_callback_deps import build_reminder_callback_deps
+from dkreminders_bot.callbacks.created_snooze_router import handle_created_snooze_callback
+from dkreminders_bot.callbacks.created_action_callbacks import (
     answer_created_action_reminder_missing_impl,
     ensure_created_action_reminder_exists_impl,
     handle_created_back_callback,
@@ -257,21 +257,21 @@ from created_action_callbacks import (
     handle_created_snooze_cancel_callback,
     handle_created_snooze_custom_callback,
 )
-from created_snooze_deps import build_created_snooze_callback_deps
-from delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
-from delete_undo_deps import build_delete_undo_callback_deps
-from created_delete_router import handle_created_delete_callback
-from reminders_workers import _safe_get_chat_type as _worker_safe_get_chat_type, run_reminders_nudge_worker, run_reminders_worker
-from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
-from parser_recurring import parse_recurring
-from parser_default_time_adapter import parse_with_optional_default_time
-from self_remind_time import compute_self_remind_time
-from reply_utils import safe_reply
-from reminder_message_proxy import NormalizedReminderMessageProxy
-from voice_file_io import download_telegram_file_bytes
-from plain_text_local_normalization import normalize_plain_text_reminder_locally
-from plain_text_gemini_normalization import normalize_plain_text_reminder_with_gemini_impl
-from voice_text_normalization import (
+from dkreminders_bot.callbacks.created_snooze_deps import build_created_snooze_callback_deps
+from dkreminders_bot.callbacks.delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
+from dkreminders_bot.callbacks.delete_undo_deps import build_delete_undo_callback_deps
+from dkreminders_bot.callbacks.created_delete_router import handle_created_delete_callback
+from dkreminders_bot.workers.reminders_workers import _safe_get_chat_type as _worker_safe_get_chat_type, run_reminders_nudge_worker, run_reminders_worker
+from dkreminders_bot.parsing.parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
+from dkreminders_bot.parsing.parser_recurring import parse_recurring
+from dkreminders_bot.parsing.parser_default_time_adapter import parse_with_optional_default_time
+from dkreminders_bot.callbacks.self_remind_time import compute_self_remind_time
+from dkreminders_bot.ui.reply_utils import safe_reply
+from dkreminders_bot.workers.reminder_message_proxy import NormalizedReminderMessageProxy
+from dkreminders_bot.integrations.voice_file_io import download_telegram_file_bytes
+from dkreminders_bot.commands.plain_text_local_normalization import normalize_plain_text_reminder_locally
+from dkreminders_bot.integrations.plain_text_gemini_normalization import normalize_plain_text_reminder_with_gemini_impl
+from dkreminders_bot.integrations.voice_text_normalization import (
     _normalize_plain_text_relative_reminder_locally,
     _normalize_voice_ru_months,
     _normalize_voice_spoken_numbers,
@@ -279,64 +279,64 @@ from voice_text_normalization import (
     normalize_gemini_reminder_command_text,
     normalize_voice_reminder_text,
 )
-from gemini_transcription import gemini_transcribe_audio_with_retries
-from gemini_errors import (
+from dkreminders_bot.integrations.gemini_transcription import gemini_transcribe_audio_with_retries
+from dkreminders_bot.integrations.gemini_errors import (
     _is_gemini_quota_error,
     _is_transient_gemini_error,
     _is_unsupported_gemini_model_error,
 )
-from voice_alias_prompt import format_known_aliases_for_voice_prompt
-from command_messages import HELP_TEXT, START_TEXT
-from models import Reminder
-from default_time import _default_time_or, format_default_time_value, parse_default_time_value
-from remind_arg_utils import strip_first_token_from_first_line
-from remind_group_routing import reject_group_remind_target_prefix_if_needed
-from remind_target_resolution import resolve_remind_target_and_args
-from remind_dispatch import dispatch_remind_creation
-from remind_command_router import handle_remind_command
-from remind_command_deps import build_remind_command_deps
-from list_command_flow import handle_list_command_flow
-from command_helper_utils import (
+from dkreminders_bot.integrations.voice_alias_prompt import format_known_aliases_for_voice_prompt
+from dkreminders_bot.ui.command_messages import HELP_TEXT, START_TEXT
+from dkreminders_bot.domain.models import Reminder
+from dkreminders_bot.settings.default_time import _default_time_or, format_default_time_value, parse_default_time_value
+from dkreminders_bot.commands.remind_arg_utils import strip_first_token_from_first_line
+from dkreminders_bot.commands.remind_group_routing import reject_group_remind_target_prefix_if_needed
+from dkreminders_bot.commands.remind_target_resolution import resolve_remind_target_and_args
+from dkreminders_bot.commands.remind_dispatch import dispatch_remind_creation
+from dkreminders_bot.commands.remind_command_router import handle_remind_command
+from dkreminders_bot.commands.remind_command_deps import build_remind_command_deps
+from dkreminders_bot.commands.list_command_flow import handle_list_command_flow
+from dkreminders_bot.utils.command_helper_utils import (
     _format_bulk_result_impl,
     _rest_starts_like_datetime_impl,
     _strip_leading_token_in_group_impl,
     parse_renamealias_args_impl,
 )
-from alias_settings_commands import handle_aliases_command, handle_defaulttime_command, handle_linkchat_command, handle_linkuser_command, handle_renamealias_command, handle_unalias_command
-from plain_text_remind_flow import handle_plain_text_remind_command
-from voice_remind_flow import handle_voice_remind_command
-from voice_transcription import transcribe_voice_message_impl
-from reminder_text_normalization import normalize_reminder_text_fallback_impl
-from reminder_message_store import clear_reminder_message_keyboards_impl, delete_old_snoozed_reminder_messages_impl, delete_other_reminder_messages_impl, delete_reminder_messages_by_kind_impl, get_reminder_messages_impl, register_reminder_message_impl
-from storage_user_chats import get_user_chat_id_by_user_id_impl, get_user_chat_id_by_username_impl, upsert_user_chat_impl
-from storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
-from storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
-from storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
-from storage_user_settings import clear_user_default_time_impl, count_active_reminders_for_chat_impl, count_active_reminders_for_user_impl, count_active_recurring_templates_for_chat_impl, count_active_recurring_templates_for_user_impl, get_user_default_time_impl, get_user_timezone_name_impl, move_active_reminders_timezone_for_user_impl, set_user_default_time_impl, set_user_timezone_name_impl
-from storage_write import add_reminder_impl, claim_due_reminders_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_delivery_failed_impl, mark_reminder_sent_impl, reset_stale_processing_reminders_impl, update_reminder_time_impl
-from storage_nudges import _nudge_threshold_minutes_impl, exhaust_nudges_impl, get_due_nudges_impl, increment_nudge_count_impl
-from storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
-from alias_settings_deps import build_alias_settings_command_deps
-from voice_transcription_deps import build_voice_transcription_deps
-from reminder_text_normalization_deps import build_reminder_text_normalization_deps
-from voice_remind_deps import build_voice_remind_command_deps
-from plain_text_remind_deps import build_plain_text_remind_command_deps
-from list_command_deps import build_list_command_deps
-from created_delete_deps import build_created_delete_callback_deps
-from reminders_worker_deps import build_reminders_worker_deps
-from command_text import (
+from dkreminders_bot.settings.alias_settings_commands import handle_aliases_command, handle_defaulttime_command, handle_linkchat_command, handle_linkuser_command, handle_renamealias_command, handle_unalias_command
+from dkreminders_bot.commands.plain_text_remind_flow import handle_plain_text_remind_command
+from dkreminders_bot.integrations.voice_remind_flow import handle_voice_remind_command
+from dkreminders_bot.integrations.voice_transcription import transcribe_voice_message_impl
+from dkreminders_bot.workers.reminder_text_normalization import normalize_reminder_text_fallback_impl
+from dkreminders_bot.storage.reminder_message_store import clear_reminder_message_keyboards_impl, delete_old_snoozed_reminder_messages_impl, delete_other_reminder_messages_impl, delete_reminder_messages_by_kind_impl, get_reminder_messages_impl, register_reminder_message_impl
+from dkreminders_bot.storage.storage_user_chats import get_user_chat_id_by_user_id_impl, get_user_chat_id_by_username_impl, upsert_user_chat_impl
+from dkreminders_bot.storage.storage_schema import _ensure_column_impl, init_db_impl, migrate_alias_tables_to_owner_scope_impl
+from dkreminders_bot.storage.storage_delete_restore import activate_recurring_template_impl, deactivate_recurring_template_impl, delete_recurring_one_instance_and_reschedule_impl, delete_recurring_series_impl, delete_recurring_series_with_snapshot_impl, delete_reminder_with_snapshot_impl, delete_reminders_impl, delete_single_reminder_row_impl, delete_single_reminder_with_snapshot_impl, restore_deleted_snapshot_impl
+from dkreminders_bot.storage.storage_aliases import delete_chat_alias_impl, delete_user_alias_impl, get_all_aliases_impl, get_all_user_aliases_impl, get_chat_id_by_alias_impl, get_private_chat_id_by_username_impl, get_user_alias_chat_id_impl, get_user_alias_impl, rename_chat_alias_impl, rename_user_alias_impl, set_chat_alias_for_user_impl, set_chat_alias_impl, set_user_alias_impl
+from dkreminders_bot.storage.storage_user_settings import clear_user_default_time_impl, count_active_reminders_for_chat_impl, count_active_reminders_for_user_impl, count_active_recurring_templates_for_chat_impl, count_active_recurring_templates_for_user_impl, get_user_default_time_impl, get_user_timezone_name_impl, move_active_reminders_timezone_for_user_impl, set_user_default_time_impl, set_user_timezone_name_impl
+from dkreminders_bot.storage.storage_write import add_reminder_impl, claim_due_reminders_impl, create_recurring_template_impl, mark_nudge_sent_impl, mark_reminder_acked_impl, mark_reminder_delivery_failed_impl, mark_reminder_sent_impl, reset_stale_processing_reminders_impl, update_reminder_time_impl
+from dkreminders_bot.storage.storage_nudges import _nudge_threshold_minutes_impl, exhaust_nudges_impl, get_due_nudges_impl, increment_nudge_count_impl
+from dkreminders_bot.storage.storage_read import get_active_reminders_created_by_for_chat_impl, get_active_reminders_for_chat_impl, get_due_reminders_impl, get_recurring_template_impl, get_recurring_template_row_impl, get_reminder_impl, get_reminder_row_impl, get_reminders_by_template_id_impl, get_unacked_sent_before_impl
+from dkreminders_bot.settings.alias_settings_deps import build_alias_settings_command_deps
+from dkreminders_bot.integrations.voice_transcription_deps import build_voice_transcription_deps
+from dkreminders_bot.workers.reminder_text_normalization_deps import build_reminder_text_normalization_deps
+from dkreminders_bot.integrations.voice_remind_deps import build_voice_remind_command_deps
+from dkreminders_bot.commands.plain_text_remind_deps import build_plain_text_remind_command_deps
+from dkreminders_bot.commands.list_command_deps import build_list_command_deps
+from dkreminders_bot.callbacks.created_delete_deps import build_created_delete_callback_deps
+from dkreminders_bot.workers.reminders_worker_deps import build_reminders_worker_deps
+from dkreminders_bot.utils.command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
     extract_after_command,
     first_token_looks_like_reminder_start,
     maybe_split_alias_first_token,
 )
-from self_remind_source import (
+from dkreminders_bot.callbacks.self_remind_source import (
     format_self_remind_text,
     get_query_source_chat_title,
     get_source_chat_title_for_self_remind,
 )
-from event_datetime import (
+from dkreminders_bot.parsing.event_datetime import (
     _build_event_datetime,
     _nearest_future_time_from_base,
     _parse_time_match,
@@ -345,7 +345,7 @@ from event_datetime import (
     get_self_remind_event_base,
     normalize_relative_event_date_in_text,
 )
-from parser_lexicon import (
+from dkreminders_bot.parsing.parser_lexicon import (
     VOICE_SPOKEN_NUMBER_REPLACEMENTS,
     VOICE_RU_MONTH_NORMALIZATION_MAP,
     MONTH_EN,

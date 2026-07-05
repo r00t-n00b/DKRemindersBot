@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from presentation import build_active_reminders_list_response
+from dkreminders_bot.ui.presentation import build_active_reminders_list_response
 
 
 def _callback_data(markup):
@@ -23,7 +23,7 @@ def test_active_list_response_empty():
 
 
 def test_active_list_response_formats_plain_and_recurring_rows(monkeypatch):
-    import presentation
+    import dkreminders_bot.ui.presentation as presentation
 
     class DummyInlineKeyboardButton:
         def __init__(self, text, callback_data=None, **kwargs):
@@ -36,7 +36,7 @@ def test_active_list_response_formats_plain_and_recurring_rows(monkeypatch):
             self.inline_keyboard = inline_keyboard
             self.keyboard = inline_keyboard
 
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
     monkeypatch.setattr(keyboards, "InlineKeyboardButton", DummyInlineKeyboardButton)
     monkeypatch.setattr(keyboards, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)
 

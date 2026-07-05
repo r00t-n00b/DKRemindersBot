@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import main
-from snooze_apply import apply_snooze_to_reminder
+from dkreminders_bot.callbacks.snooze_apply import apply_snooze_to_reminder
 
 
 class Query:
@@ -106,7 +106,7 @@ def test_snooze_callback_uses_extracted_apply_helper():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -118,8 +118,8 @@ def test_snooze_callback_uses_extracted_apply_helper():
 
     snooze_source = ast.get_source_segment(source, nodes[0])
     assert snooze_source.count("apply_snooze_to_reminder(") == 0
-    assert "apply_snooze_to_reminder(" in Path("snooze_direct_flow.py").read_text()
-    assert "apply_snooze_to_reminder(" in Path("snooze_picktime_flow.py").read_text()
+    assert "apply_snooze_to_reminder(" in Path("dkreminders_bot/callbacks/snooze_direct_flow.py").read_text()
+    assert "apply_snooze_to_reminder(" in Path("dkreminders_bot/callbacks/snooze_picktime_flow.py").read_text()
     assert "format_snoozed_reminder_text(r.text, when_str)" not in snooze_source
     assert "format_snoozed_answer_text(when_str)" not in snooze_source
 
@@ -179,7 +179,7 @@ def test_apply_snooze_to_reminder_deletes_old_snoozed_messages_before_current_up
 
 def test_done_callback_deletes_old_snoozed_messages_before_completion():
     import asyncio
-    from reminder_done_flow import handle_done_callback
+    from dkreminders_bot.callbacks.reminder_done_flow import handle_done_callback
 
     calls = []
     reminder = SimpleNamespace(
@@ -233,7 +233,7 @@ def test_done_callback_deletes_old_snoozed_messages_before_completion():
 
 def test_done_callback_data_passes_delete_old_snoozed_messages():
     import asyncio
-    from callback_simple_flows import handle_done_callback_data
+    from dkreminders_bot.callbacks.callback_simple_flows import handle_done_callback_data
 
     seen = {}
 
@@ -269,7 +269,7 @@ def test_apply_snooze_deletes_other_messages_from_same_reminder():
     import asyncio
     from types import SimpleNamespace
 
-    from snooze_apply import apply_snooze_to_reminder
+    from dkreminders_bot.callbacks.snooze_apply import apply_snooze_to_reminder
 
     calls = []
 
@@ -331,7 +331,7 @@ def test_apply_snooze_ignores_already_acked_reminder():
     import asyncio
     from types import SimpleNamespace
 
-    from snooze_apply import apply_snooze_to_reminder
+    from dkreminders_bot.callbacks.snooze_apply import apply_snooze_to_reminder
 
     calls = []
 

@@ -2,7 +2,7 @@ import sqlite3
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-import storage_user_chats
+import dkreminders_bot.storage.storage_user_chats as storage_user_chats
 
 
 TARGETS = [
@@ -60,7 +60,7 @@ def test_storage_user_chats_wrappers_in_main_are_thin():
 
 
 def test_storage_user_chats_module_contains_impls_and_no_main_import():
-    source = open("storage_user_chats.py").read()
+    source = open("dkreminders_bot/storage/storage_user_chats.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

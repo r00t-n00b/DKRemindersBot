@@ -4,7 +4,7 @@ import os
 import pytest
 
 import main
-from voice_file_io import download_telegram_file_bytes
+from dkreminders_bot.integrations.voice_file_io import download_telegram_file_bytes
 
 
 class FakeTelegramFile:
@@ -48,7 +48,7 @@ def test_main_uses_voice_file_io_helper_instead_of_tempfile_directly():
     from pathlib import Path
 
     main_source = Path("main.py").read_text()
-    transcription_source = Path("voice_transcription.py").read_text()
+    transcription_source = Path("dkreminders_bot/integrations/voice_transcription.py").read_text()
 
     assert main.download_telegram_file_bytes is download_telegram_file_bytes
     assert "download_telegram_file_bytes(tg_file, suffix=\".ogg\")" in transcription_source

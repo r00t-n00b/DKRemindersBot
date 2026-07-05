@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-from plain_text_gemini_normalization import normalize_plain_text_reminder_with_gemini_impl
+from dkreminders_bot.integrations.plain_text_gemini_normalization import normalize_plain_text_reminder_with_gemini_impl
 
 
 class Logger:

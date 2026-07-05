@@ -5,7 +5,7 @@ def test_main_has_no_empty_event_parser_section_after_extraction():
     content = Path("main.py").read_text()
 
     assert "# ===== Парсинг даты события из текста напоминания =====" not in content
-    assert "from event_datetime import (" in content
+    assert "from dkreminders_bot.parsing.event_datetime import (" in content
 
 
 def test_main_has_no_blank_line_artifacts_around_keyboard_wrapper_boundary():
@@ -42,7 +42,7 @@ def test_main_has_no_empty_model_section_after_model_extraction():
     content = Path("main.py").read_text()
 
     assert "# ===== Модель данных =====" not in content
-    assert "from models import Reminder" in content
+    assert "from dkreminders_bot.domain.models import Reminder" in content
 
 
 def test_main_does_not_import_calendar_after_keyboard_extraction():

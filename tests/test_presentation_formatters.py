@@ -1,4 +1,4 @@
-from presentation import format_deleted_human, format_recurring_human
+from dkreminders_bot.ui.presentation import format_deleted_human, format_recurring_human
 
 
 def test_format_recurring_human_known_patterns():

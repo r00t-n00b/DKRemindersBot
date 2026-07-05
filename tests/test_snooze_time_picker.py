@@ -1,7 +1,7 @@
 import asyncio
 
 import main
-from snooze_time_picker import enter_custom_snooze_time_picker
+from dkreminders_bot.callbacks.snooze_time_picker import enter_custom_snooze_time_picker
 
 
 class Query:
@@ -39,7 +39,7 @@ def test_snooze_callback_uses_time_picker_helper():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import keyboard_builder_proxy
+import dkreminders_bot.ui.keyboard_builder_proxy as keyboard_builder_proxy
 
 
 TARGETS = [
@@ -107,7 +107,7 @@ def test_keyboard_builder_proxy_wrappers_in_main_are_thin():
 
 
 def test_keyboard_builder_proxy_module_contains_impls_and_no_main_import():
-    source = open("keyboard_builder_proxy.py").read()
+    source = open("dkreminders_bot/ui/keyboard_builder_proxy.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

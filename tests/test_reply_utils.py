@@ -1,7 +1,7 @@
 import asyncio
 
 import main
-from reply_utils import safe_reply
+from dkreminders_bot.ui.reply_utils import safe_reply
 
 
 class SyncMessage:

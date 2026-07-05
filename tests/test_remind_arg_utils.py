@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import main
-from remind_arg_utils import strip_first_token_from_first_line
+from dkreminders_bot.commands.remind_arg_utils import strip_first_token_from_first_line
 
 
 def test_strip_first_token_from_single_line():
@@ -28,8 +28,8 @@ def test_strip_first_token_returns_rest_lines_when_first_line_only_token():
 def test_main_uses_extracted_first_token_helper():
     source = Path("main.py").read_text()
 
-    assert "from remind_arg_utils import strip_first_token_from_first_line" in source
-    resolver_source = Path("remind_target_resolution.py").read_text()
+    assert "from dkreminders_bot.commands.remind_arg_utils import strip_first_token_from_first_line" in source
+    resolver_source = Path("dkreminders_bot/commands/remind_target_resolution.py").read_text()
     assert "strip_first_token_from_first_line(raw_args, first_token)" in resolver_source
     assert "rest_first_line = first_line[len(first_token):].lstrip()" not in source
 

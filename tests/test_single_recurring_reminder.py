@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import main
-from single_recurring_reminder import try_handle_single_recurring_reminder
+from dkreminders_bot.commands.single_recurring_reminder import try_handle_single_recurring_reminder
 
 
 class Logger:
@@ -156,8 +156,8 @@ def test_main_uses_single_recurring_handler_in_remind_command():
     assert len(remind_nodes) == 1
 
     remind_source = ast.get_source_segment(source, remind_nodes[0])
-    router_source = Path("remind_command_router.py").read_text()
-    dispatch_source = Path("remind_dispatch.py").read_text()
+    router_source = Path("dkreminders_bot/commands/remind_command_router.py").read_text()
+    dispatch_source = Path("dkreminders_bot/commands/remind_dispatch.py").read_text()
 
     assert "handle_remind_command(update, context, _build_remind_command_deps())" in remind_source
     assert "dispatch_remind_creation(" in router_source

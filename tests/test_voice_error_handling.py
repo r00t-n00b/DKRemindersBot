@@ -1,13 +1,13 @@
 import asyncio
 from types import SimpleNamespace
 
-from messages import (
+from dkreminders_bot.ui.messages import (
     MSG_VOICE_FAILED_GENERIC,
     MSG_VOICE_TELEGRAM_FILE_FAILED,
     MSG_VOICE_TRANSCRIPTION_FAILED,
 )
-from voice_errors import VoiceTelegramFileError, VoiceTranscriptionServiceError
-from voice_remind_flow import handle_voice_remind_command
+from dkreminders_bot.integrations.voice_errors import VoiceTelegramFileError, VoiceTranscriptionServiceError
+from dkreminders_bot.integrations.voice_remind_flow import handle_voice_remind_command
 
 
 class FakeChat:

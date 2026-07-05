@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-from reminder_done_flow import handle_done_callback
+from dkreminders_bot.callbacks.reminder_done_flow import handle_done_callback
 
 
 class Query:
@@ -105,7 +105,7 @@ def test_snooze_callback_uses_done_flow_helper():
     import ast
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
     tree = ast.parse(source)
 
     nodes = [
@@ -152,7 +152,7 @@ def test_done_callback_deletes_sibling_messages_when_clicked_message_is_known():
 def test_done_router_threads_delete_other_messages():
     from pathlib import Path
 
-    source = Path("reminder_callback_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/reminder_callback_router.py").read_text()
 
     done_start = source.index('if data.startswith("done:"):')
     snooze_start = source.index('if data.startswith("snooze:"):', done_start)

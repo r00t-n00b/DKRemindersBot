@@ -1,7 +1,7 @@
 import asyncio
 
 import main
-from remind_group_routing import reject_group_remind_target_prefix_if_needed
+from dkreminders_bot.commands.remind_group_routing import reject_group_remind_target_prefix_if_needed
 
 
 class Message:
@@ -106,8 +106,8 @@ def test_group_prefix_guard_body_is_no_longer_in_main_source():
     from pathlib import Path
 
     source = Path("main.py").read_text()
-    router_source = Path("remind_command_router.py").read_text()
+    router_source = Path("dkreminders_bot/commands/remind_command_router.py").read_text()
 
-    assert "from remind_group_routing import reject_group_remind_target_prefix_if_needed" in source
+    assert "from dkreminders_bot.commands.remind_group_routing import reject_group_remind_target_prefix_if_needed" in source
     assert "reject_group_remind_target_prefix_if_needed(" in router_source
     assert "# В group-чате запрещаем" not in source

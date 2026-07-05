@@ -1,19 +1,19 @@
 import ast
 from pathlib import Path
 
-import messages
+import dkreminders_bot.ui.messages as messages
 
 
 TARGET_FILES = [
-    "delete_undo_router.py",
-    "list_command_flow.py",
-    "remind_target_resolution.py",
-    "reminder_done_flow.py",
-    "reminder_message_proxy.py",
-    "reminders_workers.py",
-    "self_remind_source.py",
-    "single_oneoff_reminder.py",
-    "voice_remind_flow.py",
+    "dkreminders_bot/callbacks/delete_undo_router.py",
+    "dkreminders_bot/commands/list_command_flow.py",
+    "dkreminders_bot/commands/remind_target_resolution.py",
+    "dkreminders_bot/callbacks/reminder_done_flow.py",
+    "dkreminders_bot/workers/reminder_message_proxy.py",
+    "dkreminders_bot/workers/reminders_workers.py",
+    "dkreminders_bot/callbacks/self_remind_source.py",
+    "dkreminders_bot/commands/single_oneoff_reminder.py",
+    "dkreminders_bot/integrations/voice_remind_flow.py",
 ]
 
 

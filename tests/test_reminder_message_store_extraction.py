@@ -4,7 +4,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import main
-import reminder_message_store
+import dkreminders_bot.storage.reminder_message_store as reminder_message_store
 
 
 def test_main_register_reminder_message_delegates_to_impl(monkeypatch):
@@ -78,7 +78,7 @@ def test_main_clear_reminder_message_keyboards_passes_replacement_text(monkeypat
 
 
 def test_reminder_message_store_module_does_not_import_main():
-    source = open("reminder_message_store.py").read()
+    source = open("dkreminders_bot/storage/reminder_message_store.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

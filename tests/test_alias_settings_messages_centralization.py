@@ -1,7 +1,7 @@
 import ast
 from pathlib import Path
 
-import messages
+import dkreminders_bot.ui.messages as messages
 
 
 def test_alias_settings_messages_are_exported():
@@ -70,7 +70,7 @@ def test_alias_settings_dynamic_messages_preserve_current_text():
 
 
 def test_alias_settings_commands_do_not_embed_direct_safe_reply_literals():
-    source = Path("alias_settings_commands.py").read_text()
+    source = Path("dkreminders_bot/settings/alias_settings_commands.py").read_text()
     tree = ast.parse(source)
 
     cyrillic = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")

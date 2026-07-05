@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from remind_dispatch import dispatch_remind_creation
+from dkreminders_bot.commands.remind_dispatch import dispatch_remind_creation
 
 
 async def safe_reply(message, text):
@@ -229,7 +229,7 @@ def test_remind_command_uses_dispatch_helper():
     import ast
     from pathlib import Path
 
-    source = Path("remind_command_router.py").read_text()
+    source = Path("dkreminders_bot/commands/remind_command_router.py").read_text()
     tree = ast.parse(source)
 
     node = [

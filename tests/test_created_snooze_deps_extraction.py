@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import created_snooze_deps
+import dkreminders_bot.callbacks.created_snooze_deps as created_snooze_deps
 import main
 
 
@@ -55,7 +55,7 @@ def test_created_snooze_deps_module_contains_expected_dependency_names():
 
 
 def test_created_snooze_deps_module_does_not_import_main():
-    source = open("created_snooze_deps.py").read()
+    source = open("dkreminders_bot/callbacks/created_snooze_deps.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

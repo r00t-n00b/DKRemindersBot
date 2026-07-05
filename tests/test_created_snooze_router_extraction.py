@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import created_snooze_router
+import dkreminders_bot.callbacks.created_snooze_router as created_snooze_router
 import main
 
 
@@ -53,7 +53,7 @@ def test_created_snooze_router_contains_all_created_snooze_routes():
     import ast
     from pathlib import Path
 
-    source = Path("created_snooze_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/created_snooze_router.py").read_text()
     tree = ast.parse(source)
 
     node = [
@@ -79,7 +79,7 @@ def test_created_snooze_router_contains_all_created_snooze_routes():
 
 
 def test_created_snooze_router_does_not_import_main():
-    source = open("created_snooze_router.py").read()
+    source = open("dkreminders_bot/callbacks/created_snooze_router.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

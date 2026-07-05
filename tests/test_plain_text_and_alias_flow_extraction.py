@@ -1,9 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
-import alias_settings_commands
+import dkreminders_bot.settings.alias_settings_commands as alias_settings_commands
 import main
-import plain_text_remind_flow
+import dkreminders_bot.commands.plain_text_remind_flow as plain_text_remind_flow
 
 
 def make_update_and_context():
@@ -95,7 +95,7 @@ def test_main_wrappers_are_thin():
 
 
 def test_plain_text_flow_contains_expected_paths():
-    source = open("plain_text_remind_flow.py").read()
+    source = open("dkreminders_bot/commands/plain_text_remind_flow.py").read()
 
     assert "async def handle_plain_text_remind_command(" in source
     assert "normalize_plain_text_reminder_with_gemini(" in source
@@ -109,7 +109,7 @@ def test_plain_text_flow_contains_expected_paths():
 
 
 def test_alias_settings_flow_contains_expected_paths():
-    source = open("alias_settings_commands.py").read()
+    source = open("dkreminders_bot/settings/alias_settings_commands.py").read()
 
     assert "async def handle_linkchat_command(" in source
     assert "async def handle_aliases_command(" in source

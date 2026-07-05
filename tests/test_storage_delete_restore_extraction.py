@@ -2,9 +2,9 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-import storage_delete_restore
-import storage_read
-import storage_write
+import dkreminders_bot.storage.storage_delete_restore as storage_delete_restore
+import dkreminders_bot.storage.storage_read as storage_read
+import dkreminders_bot.storage.storage_write as storage_write
 
 
 TARGETS = [
@@ -135,7 +135,7 @@ def test_storage_delete_restore_wrappers_in_main_are_thin():
 
 
 def test_storage_delete_restore_module_contains_impls_and_no_main_import():
-    source = open("storage_delete_restore.py").read()
+    source = open("dkreminders_bot/storage/storage_delete_restore.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

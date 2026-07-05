@@ -1,5 +1,5 @@
 import main
-from parser_recurring_detection import looks_like_recurring
+from dkreminders_bot.parsing.parser_recurring_detection import looks_like_recurring
 
 
 def test_looks_like_recurring_detects_first_tokens():

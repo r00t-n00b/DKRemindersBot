@@ -1,4 +1,4 @@
-import messages
+import dkreminders_bot.ui.messages as messages
 
 
 def test_messages_catalog_exports_known_user_facing_messages(main_module):

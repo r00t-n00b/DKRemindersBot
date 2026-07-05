@@ -1,4 +1,4 @@
-import command_helper_utils
+import dkreminders_bot.utils.command_helper_utils as command_helper_utils
 
 
 TARGETS = [
@@ -33,7 +33,7 @@ def test_command_helper_utils_wrappers_in_main_are_thin():
 
 
 def test_command_helper_utils_module_contains_impls_and_no_main_import():
-    source = open("command_helper_utils.py").read()
+    source = open("dkreminders_bot/utils/command_helper_utils.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

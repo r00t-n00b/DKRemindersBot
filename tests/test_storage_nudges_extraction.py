@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-import storage_nudges
+import dkreminders_bot.storage.storage_nudges as storage_nudges
 
 
 TARGETS = [
@@ -66,7 +66,7 @@ def test_storage_nudges_wrappers_in_main_are_thin():
 
 
 def test_storage_nudges_module_contains_impls_and_no_main_import():
-    source = open("storage_nudges.py").read()
+    source = open("dkreminders_bot/storage/storage_nudges.py").read()
 
     for name in TARGETS:
         assert f"def {name}_impl(" in source

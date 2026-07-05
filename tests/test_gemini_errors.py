@@ -1,5 +1,5 @@
 import main
-from gemini_errors import (
+from dkreminders_bot.integrations.gemini_errors import (
     _is_gemini_quota_error,
     _is_transient_gemini_error,
     _is_unsupported_gemini_model_error,
@@ -46,4 +46,4 @@ def test_gemini_error_classifiers_are_no_longer_defined_in_main_source():
     assert "def _is_transient_gemini_error(" not in source
     assert "def _is_unsupported_gemini_model_error(" not in source
     assert "def _is_gemini_quota_error(" not in source
-    assert "from gemini_errors import (" in source
+    assert "from dkreminders_bot.integrations.gemini_errors import (" in source

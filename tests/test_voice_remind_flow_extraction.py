@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-import voice_remind_flow
+import dkreminders_bot.integrations.voice_remind_flow as voice_remind_flow
 
 
 def test_main_voice_remind_command_delegates_to_flow(monkeypatch):
@@ -53,7 +53,7 @@ def test_voice_remind_wrapper_is_thin():
 
 
 def test_voice_remind_flow_contains_expected_paths():
-    source = open("voice_remind_flow.py").read()
+    source = open("dkreminders_bot/integrations/voice_remind_flow.py").read()
 
     assert "async def handle_voice_remind_command(" in source
     assert "transcribe_voice_message(update, context)" in source

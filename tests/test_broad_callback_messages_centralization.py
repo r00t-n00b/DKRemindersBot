@@ -1,23 +1,23 @@
 import ast
 from pathlib import Path
 
-import messages
+import dkreminders_bot.ui.messages as messages
 
 
 TARGET_FILES = [
-    "created_action_callbacks.py",
-    "created_delete_router.py",
-    "created_snooze_router.py",
-    "delete_undo_router.py",
-    "snooze_custom_flow.py",
-    "snooze_time_picker.py",
-    "snooze_cancel_flow.py",
-    "self_remind_cancel_flow.py",
-    "self_remind_event_cancel_flow.py",
-    "self_remind_initial_flow.py",
-    "self_remind_create_flow.py",
-    "self_remind_calendar_flow.py",
-    "self_remind_picktime_flow.py",
+    "dkreminders_bot/callbacks/created_action_callbacks.py",
+    "dkreminders_bot/callbacks/created_delete_router.py",
+    "dkreminders_bot/callbacks/created_snooze_router.py",
+    "dkreminders_bot/callbacks/delete_undo_router.py",
+    "dkreminders_bot/callbacks/snooze_custom_flow.py",
+    "dkreminders_bot/callbacks/snooze_time_picker.py",
+    "dkreminders_bot/callbacks/snooze_cancel_flow.py",
+    "dkreminders_bot/callbacks/self_remind_cancel_flow.py",
+    "dkreminders_bot/callbacks/self_remind_event_cancel_flow.py",
+    "dkreminders_bot/callbacks/self_remind_initial_flow.py",
+    "dkreminders_bot/callbacks/self_remind_create_flow.py",
+    "dkreminders_bot/callbacks/self_remind_calendar_flow.py",
+    "dkreminders_bot/callbacks/self_remind_picktime_flow.py",
 ]
 
 

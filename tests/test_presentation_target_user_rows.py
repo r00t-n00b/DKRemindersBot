@@ -1,4 +1,4 @@
-from presentation import build_target_user_presentation_rows
+from dkreminders_bot.ui.presentation import build_target_user_presentation_rows
 
 
 def test_target_user_presentation_rows_enriches_recurring_template_from_loader():

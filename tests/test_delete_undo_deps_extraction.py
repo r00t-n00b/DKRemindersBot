@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import delete_undo_deps
+import dkreminders_bot.callbacks.delete_undo_deps as delete_undo_deps
 import main
 
 
@@ -55,7 +55,7 @@ def test_delete_undo_deps_module_contains_expected_dependency_names():
 
 
 def test_delete_undo_deps_module_does_not_import_main():
-    source = open("delete_undo_deps.py").read()
+    source = open("dkreminders_bot/callbacks/delete_undo_deps.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

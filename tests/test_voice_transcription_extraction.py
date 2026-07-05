@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-import voice_transcription
+import dkreminders_bot.integrations.voice_transcription as voice_transcription
 
 
 def test_main_transcribe_voice_message_delegates_to_impl(monkeypatch):
@@ -48,7 +48,7 @@ def test_transcribe_voice_message_wrapper_is_thin():
 
 
 def test_voice_transcription_module_contains_impl_and_no_main_import():
-    source = open("voice_transcription.py").read()
+    source = open("dkreminders_bot/integrations/voice_transcription.py").read()
 
     assert "async def transcribe_voice_message_impl(" in source
     assert "_apply_deps(deps)" in source

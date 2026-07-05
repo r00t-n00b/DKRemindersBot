@@ -1,5 +1,5 @@
 import main
-from parser_time_tokens import TIME_TOKEN_RE, VAGUE_TIME_WORDS, _extract_time_from_tokens
+from dkreminders_bot.parsing.parser_time_tokens import TIME_TOKEN_RE, VAGUE_TIME_WORDS, _extract_time_from_tokens
 
 
 def test_time_token_re_accepts_colon_and_dot_time():

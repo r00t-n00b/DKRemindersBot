@@ -312,7 +312,7 @@ def test_plain_text_relative_local_normalizer_does_not_call_gemini(main_module, 
 
 
 def test_linkchat_and_alias_examples_include_natural_language(main_module):
-    import messages
+    import dkreminders_bot.ui.messages as messages
 
     message = messages.msg_linkchat_success("football")
 

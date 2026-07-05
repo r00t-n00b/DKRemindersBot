@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import list_command_flow
+import dkreminders_bot.commands.list_command_flow as list_command_flow
 import main
 
 
@@ -273,7 +273,7 @@ def test_list_command_flow_contains_expected_routes():
     import ast
     from pathlib import Path
 
-    source = Path("list_command_flow.py").read_text()
+    source = Path("dkreminders_bot/commands/list_command_flow.py").read_text()
     tree = ast.parse(source)
 
     node = [

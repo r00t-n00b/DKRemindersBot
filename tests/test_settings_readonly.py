@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from timezone_features import build_settings_text, handle_settings_command
+from dkreminders_bot.settings.timezone_features import build_settings_text, handle_settings_command
 
 
 class Message:
@@ -199,7 +199,7 @@ def test_settings_keyboard_has_default_time_button():
 
 
 def test_settings_defaulttime_callback_opens_picker():
-    from timezone_features import handle_settings_callback
+    from dkreminders_bot.settings.timezone_features import handle_settings_callback
 
     query = Query("settings:defaulttime")
     update = SimpleNamespace(
@@ -225,7 +225,7 @@ def test_settings_defaulttime_callback_opens_picker():
 
 
 def test_settings_defaulttime_set_saves_and_returns_to_settings():
-    from timezone_features import handle_settings_callback
+    from dkreminders_bot.settings.timezone_features import handle_settings_callback
 
     saved = []
 
@@ -255,7 +255,7 @@ def test_settings_defaulttime_set_saves_and_returns_to_settings():
 
 
 def test_settings_defaulttime_reset_clears_and_returns_to_settings():
-    from timezone_features import handle_settings_callback
+    from dkreminders_bot.settings.timezone_features import handle_settings_callback
 
     cleared = []
 
@@ -302,7 +302,7 @@ def test_settings_text_does_not_include_big_timezone_help_block():
 
 
 def test_settings_timezone_callback_opens_timezone_dialog():
-    from timezone_features import handle_settings_callback
+    from dkreminders_bot.settings.timezone_features import handle_settings_callback
 
     query = Query("settings:timezone")
     update = SimpleNamespace(
@@ -347,7 +347,7 @@ def test_settings_text_uses_compact_default_time_line_and_no_defaulttime_command
 
 
 def test_settings_timezone_dialog_opened_from_settings_has_back_button():
-    from timezone_features import handle_settings_callback
+    from dkreminders_bot.settings.timezone_features import handle_settings_callback
 
     query = Query("settings:timezone")
     update = SimpleNamespace(
@@ -368,7 +368,7 @@ def test_settings_timezone_dialog_opened_from_settings_has_back_button():
 
 
 def test_timezone_preset_from_settings_returns_to_settings_when_no_migration_needed():
-    from timezone_features import handle_settings_callback, handle_timezone_callback
+    from dkreminders_bot.settings.timezone_features import handle_settings_callback, handle_timezone_callback
 
     saved = []
     context = SimpleNamespace(user_data={})
@@ -417,7 +417,7 @@ def test_timezone_preset_from_settings_returns_to_settings_when_no_migration_nee
 
 
 def test_timezone_migration_from_settings_returns_to_settings_after_answer():
-    from timezone_features import handle_timezone_callback
+    from dkreminders_bot.settings.timezone_features import handle_timezone_callback
 
     calls = []
     context = SimpleNamespace(
@@ -467,7 +467,7 @@ def test_timezone_migration_from_settings_returns_to_settings_after_answer():
 
 
 def test_timezone_migration_question_from_settings_uses_settings_chat_count():
-    from timezone_features import handle_timezone_callback
+    from dkreminders_bot.settings.timezone_features import handle_timezone_callback
 
     saved = []
     context = SimpleNamespace(user_data={"timezone_started_from_settings": True})
@@ -500,7 +500,7 @@ def test_timezone_migration_question_from_settings_uses_settings_chat_count():
 
 
 def test_timezone_migration_prompt_from_settings_edits_same_message_not_reply():
-    from timezone_features import handle_timezone_callback
+    from dkreminders_bot.settings.timezone_features import handle_timezone_callback
 
     context = SimpleNamespace(user_data={"timezone_started_from_settings": True})
 

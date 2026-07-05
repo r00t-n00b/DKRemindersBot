@@ -2,8 +2,8 @@ import ast
 import asyncio
 from pathlib import Path
 
-import messages
-from callback_simple_flows import handle_pastdate_callback
+import dkreminders_bot.ui.messages as messages
+from dkreminders_bot.callbacks.callback_simple_flows import handle_pastdate_callback
 
 
 class DummyQuery:
@@ -27,7 +27,7 @@ def test_pastdate_message_is_exported():
 
 
 def test_callback_simple_flows_has_no_inline_pastdate_alert_literal():
-    source = Path("callback_simple_flows.py").read_text()
+    source = Path("dkreminders_bot/callbacks/callback_simple_flows.py").read_text()
     tree = ast.parse(source)
 
     findings = []

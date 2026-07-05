@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from reminders_workers import run_reminders_worker
+from dkreminders_bot.workers.reminders_workers import run_reminders_worker
 
 
 class StopWorker(Exception):

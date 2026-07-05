@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import main
-from parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
+from dkreminders_bot.parsing.parser_recurring_schedule import _add_months_clamped, compute_next_occurrence
 
 
 TZ = ZoneInfo("Europe/Madrid")

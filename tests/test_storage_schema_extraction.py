@@ -1,7 +1,7 @@
 import sqlite3
 from types import SimpleNamespace
 
-import storage_schema
+import dkreminders_bot.storage.storage_schema as storage_schema
 
 
 TARGETS = [
@@ -65,7 +65,7 @@ def test_storage_schema_wrappers_in_main_are_thin():
 
 
 def test_storage_schema_module_contains_impls_and_no_main_import():
-    source = open("storage_schema.py").read()
+    source = open("dkreminders_bot/storage/storage_schema.py").read()
 
     assert "def _ensure_column_impl(" in source
     assert "def init_db_impl(" in source

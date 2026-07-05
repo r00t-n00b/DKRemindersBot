@@ -1,4 +1,4 @@
-from presentation import build_target_user_reminders_list_response
+from dkreminders_bot.ui.presentation import build_target_user_reminders_list_response
 
 
 def _callback_data(markup):

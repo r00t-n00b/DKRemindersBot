@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from presentation import format_created_recurring_reminder_text
+from dkreminders_bot.ui.presentation import format_created_recurring_reminder_text
 
 
 def test_format_created_recurring_reminder_text_without_alias():
@@ -44,9 +44,9 @@ def test_format_created_recurring_reminder_text_without_human_suffix():
 
 def test_recurring_created_text_is_used_from_presentation():
     main_source = Path("main.py").read_text()
-    recurring_source = Path("single_recurring_reminder.py").read_text()
+    recurring_source = Path("dkreminders_bot/commands/single_recurring_reminder.py").read_text()
 
-    assert '"format_created_recurring_reminder_text"' in Path("remind_command_deps.py").read_text()
+    assert '"format_created_recurring_reminder_text"' in Path("dkreminders_bot/commands/remind_command_deps.py").read_text()
     assert "format_created_recurring_reminder_text(" in recurring_source
     assert 'f"Ок, создал повторяющееся напоминание в чате' not in main_source
     assert 'f"Ок, создал повторяющееся напоминание.\\\\n"' not in main_source

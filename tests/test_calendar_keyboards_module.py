@@ -16,7 +16,7 @@ class DummyInlineKeyboardMarkup:
 
 
 def _patch_keyboard_classes(main_module, monkeypatch):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
 
     monkeypatch.setattr(main_module, "InlineKeyboardButton", DummyInlineKeyboardButton)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)
@@ -38,7 +38,7 @@ def _callback_data(markup):
 
 
 def test_calendar_keyboard_builders_are_exposed_via_main_proxy(main_module):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
 
     assert hasattr(keyboards, "build_custom_date_keyboard")
     assert hasattr(keyboards, "build_custom_time_keyboard")
@@ -48,7 +48,7 @@ def test_calendar_keyboard_builders_are_exposed_via_main_proxy(main_module):
 
 def test_custom_date_keyboard_generates_snooze_callbacks(main_module, monkeypatch):
     _patch_keyboard_classes(main_module, monkeypatch)
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
     fixed_now = datetime(2026, 6, 15, 12, 0, tzinfo=ZoneInfo("Europe/Madrid"))
     monkeypatch.setattr(keyboards, "aware_now", lambda tz: fixed_now)
 
@@ -70,7 +70,7 @@ def test_custom_date_keyboard_generates_snooze_callbacks(main_module, monkeypatc
 
 def test_custom_date_keyboard_generates_selfremind_event_callbacks(main_module, monkeypatch):
     _patch_keyboard_classes(main_module, monkeypatch)
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
     fixed_now = datetime(2026, 6, 15, 12, 0, tzinfo=ZoneInfo("Europe/Madrid"))
     monkeypatch.setattr(keyboards, "aware_now", lambda tz: fixed_now)
 
@@ -107,7 +107,7 @@ def test_custom_time_keyboard_generates_expected_time_callbacks(main_module, mon
 
 
 def test_keyboard_timezone_matches_main_timezone(main_module):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
     from datetime import datetime
 
     assert getattr(keyboards.TZ, "key", None) == getattr(main_module.TZ, "key", None)

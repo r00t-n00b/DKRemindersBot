@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import main
-from command_messages import HELP_TEXT, START_TEXT
+from dkreminders_bot.ui.command_messages import HELP_TEXT, START_TEXT
 
 
 def test_start_text_contains_existing_core_examples():

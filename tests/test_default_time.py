@@ -1,7 +1,7 @@
 import pytest
 
 import main
-from default_time import (
+from dkreminders_bot.settings.default_time import (
     _default_time_or,
     format_default_time_value,
     parse_default_time_value,
@@ -58,4 +58,4 @@ def test_default_time_helpers_are_no_longer_defined_in_main_source():
     assert "def parse_default_time_value(" not in source
     assert "def format_default_time_value(" not in source
     assert "def _default_time_or(" not in source
-    assert "from default_time import" in source
+    assert "from dkreminders_bot.settings.default_time import" in source

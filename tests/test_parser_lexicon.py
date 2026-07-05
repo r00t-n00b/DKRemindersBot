@@ -1,4 +1,4 @@
-import parser_lexicon as lex
+import dkreminders_bot.parsing.parser_lexicon as lex
 
 
 def test_simple_recurring_aliases_are_first_tokens_for_routing(main_module):

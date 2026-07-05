@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import main
-from parser_weekend_weekday import _parse_weekend_weekday
+from dkreminders_bot.parsing.parser_weekend_weekday import _parse_weekend_weekday
 
 
 TZ = ZoneInfo("Europe/Madrid")

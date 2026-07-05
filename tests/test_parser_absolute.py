@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import main
-from parser_absolute import _parse_absolute
+from dkreminders_bot.parsing.parser_absolute import _parse_absolute
 
 
 TZ = ZoneInfo("Europe/Madrid")

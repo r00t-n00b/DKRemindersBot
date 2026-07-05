@@ -157,7 +157,7 @@ def test_recurring_aliases_without_dash_show_recurring_hint(main_module):
 
 
 def _expected_for_simple_alias(alias, main_module):
-    from parser_lexicon import (
+    from dkreminders_bot.parsing.parser_lexicon import (
         RECURRING_DAILY_ALIASES,
         RECURRING_HOURLY_ALIASES,
         RECURRING_MONTHLY_ALIASES,
@@ -180,7 +180,7 @@ def _expected_for_simple_alias(alias, main_module):
 
 
 def test_all_simple_recurring_aliases_from_lexicon_route_through_remind_command(main_module, monkeypatch):
-    from parser_lexicon import RECURRING_SIMPLE_ALIASES
+    from dkreminders_bot.parsing.parser_lexicon import RECURRING_SIMPLE_ALIASES
 
     m = main_module
 
@@ -222,7 +222,7 @@ def test_all_simple_recurring_aliases_from_lexicon_route_through_remind_command(
 
 
 def test_all_simple_recurring_aliases_from_lexicon_without_dash_show_hint(main_module):
-    from parser_lexicon import RECURRING_SIMPLE_ALIASES
+    from dkreminders_bot.parsing.parser_lexicon import RECURRING_SIMPLE_ALIASES
 
     m = main_module
 

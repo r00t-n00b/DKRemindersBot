@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import main
-from self_remind_time import compute_self_remind_time
+from dkreminders_bot.callbacks.self_remind_time import compute_self_remind_time
 
 
 TZ = ZoneInfo("Europe/Madrid")

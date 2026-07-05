@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import main
-import reminder_callback_router
+import dkreminders_bot.callbacks.reminder_callback_router as reminder_callback_router
 
 
 def test_main_snooze_callback_delegates_to_router(monkeypatch):

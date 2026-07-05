@@ -1,5 +1,5 @@
 import main
-from voice_alias_prompt import format_known_aliases_for_voice_prompt
+from dkreminders_bot.integrations.voice_alias_prompt import format_known_aliases_for_voice_prompt
 
 
 class DummyLogger:
@@ -85,13 +85,13 @@ def test_voice_alias_prompt_body_is_no_longer_defined_in_main_source():
     source = Path("main.py").read_text()
 
     assert "Known aliases. Use these only if the spoken target clearly matches one of them." not in source
-    assert "from voice_alias_prompt import format_known_aliases_for_voice_prompt" in source
+    assert "from dkreminders_bot.integrations.voice_alias_prompt import format_known_aliases_for_voice_prompt" in source
 
 
 def test_voice_alias_prompt_uses_standard_four_space_indentation():
     from pathlib import Path
 
-    source = Path("voice_alias_prompt.py").read_text()
+    source = Path("dkreminders_bot/integrations/voice_alias_prompt.py").read_text()
 
     assert '        """\n        Собираем известные aliases' not in source
     assert '    """\n    Собираем известные aliases' in source

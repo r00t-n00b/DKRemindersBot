@@ -7,15 +7,19 @@ from types import SimpleNamespace
 import main
 
 
+def _module_file_path(module_name):
+    return Path(*module_name.split(".")).with_suffix(".py")
+
+
 SPECS = [
-    ("_build_alias_settings_command_deps", "alias_settings_deps", "build_alias_settings_command_deps", "ALIAS_SETTINGS_COMMAND_DEP_SPECS"),
-    ("_build_voice_transcription_deps", "voice_transcription_deps", "build_voice_transcription_deps", "VOICE_TRANSCRIPTION_DEP_SPECS"),
-    ("_build_reminder_text_normalization_deps", "reminder_text_normalization_deps", "build_reminder_text_normalization_deps", "REMINDER_TEXT_NORMALIZATION_DEP_SPECS"),
-    ("_build_voice_remind_command_deps", "voice_remind_deps", "build_voice_remind_command_deps", "VOICE_REMIND_COMMAND_DEP_SPECS"),
-    ("_build_plain_text_remind_command_deps", "plain_text_remind_deps", "build_plain_text_remind_command_deps", "PLAIN_TEXT_REMIND_COMMAND_DEP_SPECS"),
-    ("_build_list_command_deps", "list_command_deps", "build_list_command_deps", "LIST_COMMAND_DEP_SPECS"),
-    ("_build_created_delete_callback_deps", "created_delete_deps", "build_created_delete_callback_deps", "CREATED_DELETE_CALLBACK_DEP_SPECS"),
-    ("_build_reminders_worker_deps", "reminders_worker_deps", "build_reminders_worker_deps", "REMINDERS_WORKER_DEP_SPECS"),
+    ("_build_alias_settings_command_deps", "dkreminders_bot.settings.alias_settings_deps", "build_alias_settings_command_deps", "ALIAS_SETTINGS_COMMAND_DEP_SPECS"),
+    ("_build_voice_transcription_deps", "dkreminders_bot.integrations.voice_transcription_deps", "build_voice_transcription_deps", "VOICE_TRANSCRIPTION_DEP_SPECS"),
+    ("_build_reminder_text_normalization_deps", "dkreminders_bot.workers.reminder_text_normalization_deps", "build_reminder_text_normalization_deps", "REMINDER_TEXT_NORMALIZATION_DEP_SPECS"),
+    ("_build_voice_remind_command_deps", "dkreminders_bot.integrations.voice_remind_deps", "build_voice_remind_command_deps", "VOICE_REMIND_COMMAND_DEP_SPECS"),
+    ("_build_plain_text_remind_command_deps", "dkreminders_bot.commands.plain_text_remind_deps", "build_plain_text_remind_command_deps", "PLAIN_TEXT_REMIND_COMMAND_DEP_SPECS"),
+    ("_build_list_command_deps", "dkreminders_bot.commands.list_command_deps", "build_list_command_deps", "LIST_COMMAND_DEP_SPECS"),
+    ("_build_created_delete_callback_deps", "dkreminders_bot.callbacks.created_delete_deps", "build_created_delete_callback_deps", "CREATED_DELETE_CALLBACK_DEP_SPECS"),
+    ("_build_reminders_worker_deps", "dkreminders_bot.workers.reminders_worker_deps", "build_reminders_worker_deps", "REMINDERS_WORKER_DEP_SPECS"),
 ]
 
 
@@ -47,7 +51,7 @@ def test_remaining_small_deps_factories_are_imported_in_main():
 
 def test_remaining_small_deps_modules_do_not_import_main():
     for _builder_name, module_name, _factory_name, _tuple_name in SPECS:
-        source = Path(f"{module_name}.py").read_text()
+        source = _module_file_path(module_name).read_text()
 
         assert "import main" not in source
         assert "from main import" not in source

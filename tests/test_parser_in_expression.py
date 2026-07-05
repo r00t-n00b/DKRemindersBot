@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import main
-from parser_in_expression import _add_months, _parse_in_expression
+from dkreminders_bot.parsing.parser_in_expression import _add_months, _parse_in_expression
 
 
 TZ = ZoneInfo("Europe/Madrid")

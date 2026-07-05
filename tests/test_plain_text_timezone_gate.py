@@ -1,8 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
-import plain_text_remind_deps
-import plain_text_remind_flow
+import dkreminders_bot.commands.plain_text_remind_deps as plain_text_remind_deps
+import dkreminders_bot.commands.plain_text_remind_flow as plain_text_remind_flow
 
 
 class FakeChat:

@@ -38,7 +38,7 @@ class FakeQuery:
 
 
 def _patch_keyboard_classes(main_module, monkeypatch):
-    import keyboards
+    import dkreminders_bot.ui.keyboards as keyboards
 
     monkeypatch.setattr(main_module, "InlineKeyboardButton", DummyInlineKeyboardButton)
     monkeypatch.setattr(main_module, "InlineKeyboardMarkup", DummyInlineKeyboardMarkup)

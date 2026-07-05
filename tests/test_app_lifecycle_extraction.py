@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import app_lifecycle
+import dkreminders_bot.utils.app_lifecycle as app_lifecycle
 
 
 TARGETS = [
@@ -37,7 +37,7 @@ def test_app_lifecycle_wrappers_in_main_are_thin():
 
 
 def test_app_lifecycle_module_contains_impls_and_no_main_import():
-    source = open("app_lifecycle.py").read()
+    source = open("dkreminders_bot/utils/app_lifecycle.py").read()
 
     assert "def _start_background_worker_impl(" in source
     assert "async def _cancel_background_worker_impl(" in source

@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import delete_undo_router
+import dkreminders_bot.callbacks.delete_undo_router as delete_undo_router
 import main
 
 
@@ -101,7 +101,7 @@ def test_delete_undo_router_contains_expected_routes():
     import ast
     from pathlib import Path
 
-    source = Path("delete_undo_router.py").read_text()
+    source = Path("dkreminders_bot/callbacks/delete_undo_router.py").read_text()
     tree = ast.parse(source)
 
     handlers = {
@@ -118,7 +118,7 @@ def test_delete_undo_router_contains_expected_routes():
 
 
 def test_delete_undo_router_does_not_import_main():
-    source = open("delete_undo_router.py").read()
+    source = open("dkreminders_bot/callbacks/delete_undo_router.py").read()
 
     assert "import main" not in source
     assert "from main import" not in source

@@ -29,19 +29,19 @@ def test_8x_helper_imports_are_present():
 
     source = _source()
 
-    assert "from bulk_header_detection import drop_optional_bulk_header" in source
+    assert "from dkreminders_bot.commands.bulk_header_detection import drop_optional_bulk_header" in source
 
-    assert "from bulk_single_reminder import create_single_reminder_from_line" in source
+    assert "from dkreminders_bot.commands.bulk_single_reminder import create_single_reminder_from_line" in source
 
-    assert "from parser_default_time_adapter import parse_with_optional_default_time" in source
+    assert "from dkreminders_bot.parsing.parser_default_time_adapter import parse_with_optional_default_time" in source
 
-    assert "from remind_arg_utils import strip_first_token_from_first_line" in source
+    assert "from dkreminders_bot.commands.remind_arg_utils import strip_first_token_from_first_line" in source
 
-    assert "from remind_group_routing import reject_group_remind_target_prefix_if_needed" in source
+    assert "from dkreminders_bot.commands.remind_group_routing import reject_group_remind_target_prefix_if_needed" in source
 
-    assert "from single_oneoff_reminder import handle_single_oneoff_reminder" in source
+    assert "from dkreminders_bot.commands.single_oneoff_reminder import handle_single_oneoff_reminder" in source
 
-    assert "from single_recurring_reminder import try_handle_single_recurring_reminder" in source
+    assert "from dkreminders_bot.commands.single_recurring_reminder import try_handle_single_recurring_reminder" in source
 
 def test_remind_command_delegates_extracted_flows():
 
@@ -51,9 +51,9 @@ def test_remind_command_delegates_extracted_flows():
 
     remind_source = ast.get_source_segment(source, remind)
 
-    dispatch_source = Path("remind_dispatch.py").read_text()
+    dispatch_source = Path("dkreminders_bot/commands/remind_dispatch.py").read_text()
 
-    router_source = Path("remind_command_router.py").read_text()
+    router_source = Path("dkreminders_bot/commands/remind_command_router.py").read_text()
 
     assert "handle_remind_command(update, context, _build_remind_command_deps())" in remind_source
     assert "reject_group_remind_target_prefix_if_needed(" in router_source

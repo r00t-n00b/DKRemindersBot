@@ -3,7 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-import storage_aliases
+import dkreminders_bot.storage.storage_aliases as storage_aliases
 
 
 TARGETS = [
@@ -107,7 +107,7 @@ def test_storage_aliases_wrappers_in_main_are_thin():
 
 
 def test_storage_aliases_module_contains_impls_and_no_main_import():
-    source = open("storage_aliases.py").read()
+    source = open("dkreminders_bot/storage/storage_aliases.py").read()
 
     assert "def _find_existing_alias_casefold(" in source
 

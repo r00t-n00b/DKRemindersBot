@@ -1,5 +1,5 @@
 import main
-from parser_normalization import _normalize_on_at_phrase
+from dkreminders_bot.parsing.parser_normalization import _normalize_on_at_phrase
 
 
 def test_normalize_on_at_phrase_removes_english_on_and_at():

@@ -14,7 +14,7 @@ EXCLUDED_DIR_PARTS = {
 }
 
 EXCLUDED_FILES = {
-    "time_utils.py",
+    "dkreminders_bot/utils/time_utils.py",
 }
 
 
@@ -33,8 +33,9 @@ def test_production_code_uses_shared_bot_timezone_constant():
 
     for path in _production_py_files():
         text = path.read_text()
-        if 'ZoneInfo("Europe/Madrid")' in text:
-            offenders.append(str(path.relative_to(ROOT)))
+        rel = str(path.relative_to(ROOT))
+        if 'ZoneInfo("Europe/Madrid")' in text and rel != "dkreminders_bot/utils/time_utils.py":
+            offenders.append(rel)
 
     assert offenders == []
 
@@ -44,8 +45,9 @@ def test_production_code_uses_shared_now_provider_instead_of_datetime_now_tz():
 
     for path in _production_py_files():
         text = path.read_text()
-        if "datetime.now(TZ)" in text and path.name not in {"main.py", "reminder_callback_router.py"}:
-            offenders.append(str(path.relative_to(ROOT)))
+        rel = str(path.relative_to(ROOT))
+        if "datetime.now(TZ)" in text and rel not in {"main.py", "dkreminders_bot/callbacks/reminder_callback_router.py"}:
+            offenders.append(rel)
 
     assert offenders == []
 

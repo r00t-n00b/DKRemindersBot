@@ -1,5 +1,5 @@
 import main
-from command_text import (
+from dkreminders_bot.utils.command_text import (
     MONTH_REMINDER_PREFIXES,
     SMART_REMINDER_PREFIXES,
     extract_after_command,

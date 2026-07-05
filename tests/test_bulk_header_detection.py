@@ -1,4 +1,4 @@
-from bulk_header_detection import (
+from dkreminders_bot.commands.bulk_header_detection import (
     bulk_line_looks_like_reminder_start,
     drop_optional_bulk_header,
 )
@@ -54,9 +54,9 @@ def test_bulk_header_detection_body_is_no_longer_in_main_source():
 
     source = Path("main.py").read_text()
 
-    dispatch_source = Path("remind_dispatch.py").read_text()
+    dispatch_source = Path("dkreminders_bot/commands/remind_dispatch.py").read_text()
 
     assert "is_reminder_like = False" not in source
     assert "month-name формата" not in source
     assert "drop_optional_bulk_header(" in dispatch_source
-    assert "from bulk_header_detection import drop_optional_bulk_header" in source
+    assert "from dkreminders_bot.commands.bulk_header_detection import drop_optional_bulk_header" in source

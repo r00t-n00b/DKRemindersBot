@@ -1,7 +1,7 @@
 import asyncio
 
 import main
-from self_remind_source import (
+from dkreminders_bot.callbacks.self_remind_source import (
     format_self_remind_text,
     get_query_source_chat_title,
     get_source_chat_title_for_self_remind,

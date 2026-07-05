@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import timezone_features
+import dkreminders_bot.settings.timezone_features as timezone_features
 
 
 class FakeMessage:

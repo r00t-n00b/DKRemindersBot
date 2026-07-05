@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-import gemini_transcription
+import dkreminders_bot.integrations.gemini_transcription as gemini_transcription
 
 
 class FakeLogger:

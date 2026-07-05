@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import voice_transcription
-from voice_errors import VoiceTelegramFileError
-from voice_transcription import transcribe_voice_message_impl
+import dkreminders_bot.integrations.voice_transcription as voice_transcription
+from dkreminders_bot.integrations.voice_errors import VoiceTelegramFileError
+from dkreminders_bot.integrations.voice_transcription import transcribe_voice_message_impl
 
 
 class FakeLogger:
