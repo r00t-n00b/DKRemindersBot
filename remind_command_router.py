@@ -49,6 +49,7 @@ async def handle_remind_command(update, context, deps) -> None:
     parse_recurring = deps.parse_recurring
     parse_with_optional_default_time = deps.parse_with_optional_default_time
     reject_group_remind_target_prefix_if_needed = deps.reject_group_remind_target_prefix_if_needed
+    register_reminder_message = deps.register_reminder_message
     resolve_remind_target_and_args = deps.resolve_remind_target_and_args
     safe_reply = deps.safe_reply
     strip_first_token_from_first_line = deps.strip_first_token_from_first_line
@@ -185,5 +186,6 @@ async def handle_remind_command(update, context, deps) -> None:
         msg_parse_date_text_failed=MSG_PARSE_DATE_TEXT_FAILED,
         safe_reply=safe_reply,
         logger=logger,
+        register_reminder_message=register_reminder_message,
     )
     return

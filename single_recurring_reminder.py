@@ -3,6 +3,35 @@
 from timezone_features import timezone_label
 
 
+def _sent_chat_id(sent_message, fallback_message):
+    chat_id = getattr(sent_message, "chat_id", None)
+    if chat_id is not None:
+        return chat_id
+    chat = getattr(sent_message, "chat", None)
+    chat_id = getattr(chat, "id", None)
+    if chat_id is not None:
+        return chat_id
+    chat = getattr(fallback_message, "chat", None)
+    return getattr(chat, "id", None)
+
+
+def _register_created_message(register_reminder_message, *, reminder_id, sent_message, fallback_message):
+    if not callable(register_reminder_message) or sent_message is None:
+        return
+
+    message_id = getattr(sent_message, "message_id", None)
+    chat_id = _sent_chat_id(sent_message, fallback_message)
+    if message_id is None or chat_id is None:
+        return
+
+    register_reminder_message(
+        reminder_id=reminder_id,
+        chat_id=chat_id,
+        message_id=message_id,
+        kind="created",
+    )
+
+
 async def try_handle_single_recurring_reminder(
     *,
     raw_single: str,
@@ -25,6 +54,7 @@ async def try_handle_single_recurring_reminder(
     msg_recurring_parse_failed,
     safe_reply,
     logger,
+    register_reminder_message=None,
 ) -> bool:
     if not looks_like_recurring(raw_single):
         return False
@@ -85,7 +115,7 @@ async def try_handle_single_recurring_reminder(
         reminder_id,
         is_recurring=True,
     )
-    await safe_reply(
+    sent_message = await safe_reply(
         message,
         format_created_recurring_reminder_text(
             when_str,
@@ -94,5 +124,12 @@ async def try_handle_single_recurring_reminder(
             chat_alias=used_alias,
         ),
         reply_markup=created_actions_keyboard,
+    )
+
+    _register_created_message(
+        register_reminder_message,
+        reminder_id=reminder_id,
+        sent_message=sent_message,
+        fallback_message=message,
     )
     return True

@@ -9,6 +9,35 @@ import os
 from timezone_features import timezone_label
 
 
+def _sent_chat_id(sent_message, fallback_message):
+    chat_id = getattr(sent_message, "chat_id", None)
+    if chat_id is not None:
+        return chat_id
+    chat = getattr(sent_message, "chat", None)
+    chat_id = getattr(chat, "id", None)
+    if chat_id is not None:
+        return chat_id
+    chat = getattr(fallback_message, "chat", None)
+    return getattr(chat, "id", None)
+
+
+def _register_created_message(register_reminder_message, *, reminder_id, sent_message, fallback_message):
+    if not callable(register_reminder_message) or sent_message is None:
+        return
+
+    message_id = getattr(sent_message, "message_id", None)
+    chat_id = _sent_chat_id(sent_message, fallback_message)
+    if message_id is None or chat_id is None:
+        return
+
+    register_reminder_message(
+        reminder_id=reminder_id,
+        chat_id=chat_id,
+        message_id=message_id,
+        kind="created",
+    )
+
+
 async def handle_single_oneoff_reminder(
     *,
     raw_single: str,
@@ -31,6 +60,7 @@ async def handle_single_oneoff_reminder(
     msg_parse_date_text_failed: str,
     safe_reply,
     logger,
+    register_reminder_message=None,
 ):
     try:
         remind_at, text = parse_with_optional_default_time(
@@ -114,22 +144,30 @@ async def handle_single_oneoff_reminder(
     display_dt = remind_at.astimezone(display_tz) if display_tz is not None else remind_at
     when_str = f"{display_dt.strftime('%d.%m %H:%M')} {timezone_label(display_tz_name)}"
     created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id)
+    sent_message = None
     if used_alias:
-        await safe_reply(
+        sent_message = await safe_reply(
             message,
             msg_created_for_alias_chat(used_alias, when_str, text),
             reply_markup=created_actions_keyboard,
         )
     else:
         if target_chat_id != chat.id and chat.type == private_chat_type:
-            await safe_reply(
+            sent_message = await safe_reply(
                 message,
                 msg_created_for_other_user(when_str, text),
                 reply_markup=created_actions_keyboard,
             )
         else:
-            await safe_reply(
+            sent_message = await safe_reply(
                 message,
                 format_created_reminder_text(when_str, text),
                 reply_markup=created_actions_keyboard,
             )
+
+    _register_created_message(
+        register_reminder_message,
+        reminder_id=reminder_id,
+        sent_message=sent_message,
+        fallback_message=message,
+    )

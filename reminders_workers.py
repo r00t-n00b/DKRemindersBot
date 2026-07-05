@@ -14,6 +14,7 @@ _DEP_NAMES = [
     "build_snooze_keyboard",
     "claim_due_reminders",
     "compute_next_occurrence",
+    "delete_reminder_messages_by_kind",
     "get_due_nudges",
     "get_due_reminders",
     "get_now",
@@ -27,8 +28,21 @@ _DEP_NAMES = [
 ]
 
 
+def _optional_noop(*args, **kwargs):
+    return None
+
+
+async def _maybe_await(value):
+    if hasattr(value, "__await__"):
+        return await value
+    return value
+
+
 def _apply_deps(deps) -> None:
     for name in _DEP_NAMES:
+        if name == "delete_reminder_messages_by_kind" and not hasattr(deps, name):
+            globals()[name] = _optional_noop
+            continue
         globals()[name] = getattr(deps, name)
 
 
@@ -83,6 +97,14 @@ async def run_reminders_worker(app, deps) -> None:
                             message_id=sent_message_id,
                             kind="delivery",
                         )
+
+                    await _maybe_await(
+                        delete_reminder_messages_by_kind(
+                            app.bot,
+                            reminder_id=r.id,
+                            kind="created",
+                        )
+                    )
 
                     mark_reminder_sent(r.id, sent_at=now)
 

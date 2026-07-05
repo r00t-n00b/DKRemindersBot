@@ -9,4 +9,5 @@ async def safe_reply(message, text: str, **kwargs):
 
     res = message.reply_text(text, **kwargs)
     if inspect.isawaitable(res):
-        await res
+        return await res
+    return res

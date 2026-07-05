@@ -43,6 +43,7 @@ REMIND_COMMAND_DEP_NAMES = (
     "parse_recurring",
     "parse_with_optional_default_time",
     "reject_group_remind_target_prefix_if_needed",
+    "register_reminder_message",
     "resolve_remind_target_and_args",
     "safe_reply",
     "strip_first_token_from_first_line",

@@ -341,3 +341,67 @@ async def delete_other_reminder_messages_impl(
                 chat_id,
                 message_id,
             )
+
+
+
+async def delete_reminder_messages_by_kind_impl(
+    bot,
+    *,
+    reminder_id: int,
+    kind: str,
+    deps,
+) -> None:
+    """Delete/deactivate tracked Telegram messages for one reminder and kind."""
+    _apply_deps(deps)
+
+    def _drop_message_tracking(row_id: int) -> None:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM reminder_messages WHERE id = ?", (int(row_id),))
+        conn.commit()
+        conn.close()
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, chat_id, message_id
+        FROM reminder_messages
+        WHERE reminder_id = ?
+          AND kind = ?
+        ORDER BY id ASC
+        """,
+        (int(reminder_id), str(kind)),
+    )
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+
+    for row in rows:
+        row_id = int(row["id"])
+        chat_id = int(row["chat_id"])
+        message_id = int(row["message_id"])
+
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            _drop_message_tracking(row_id)
+            continue
+        except Exception:
+            pass
+
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=None,
+            )
+            _drop_message_tracking(row_id)
+        except Exception:
+            logger.warning(
+                "Failed to delete/deactivate reminder message by kind "
+                "reminder_id=%s kind=%s chat_id=%s message_id=%s",
+                reminder_id,
+                kind,
+                chat_id,
+                message_id,
+            )

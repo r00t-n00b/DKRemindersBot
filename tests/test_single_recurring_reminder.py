@@ -21,6 +21,7 @@ class Message:
 
 async def safe_reply(message, text, **kwargs):
     message.replies.append((text, kwargs))
+    return SimpleNamespace(chat_id=555, message_id=9000 + len(message.replies))
 
 
 def run_handler(**overrides):
@@ -49,6 +50,7 @@ def run_handler(**overrides):
             msg_recurring_parse_failed=overrides.pop("msg_recurring_parse_failed", lambda is_private: f"parse failed private={is_private}"),
             safe_reply=safe_reply,
             logger=logger,
+            register_reminder_message=overrides.pop("register_reminder_message", None),
         )
         assert not overrides, f"unused overrides: {overrides}"
         return result
@@ -166,3 +168,32 @@ def test_main_uses_single_recurring_handler_in_remind_command():
 
 def test_main_reexports_single_recurring_handler():
     assert main.try_handle_single_recurring_reminder is try_handle_single_recurring_reminder
+
+
+
+def test_single_recurring_handler_registers_created_action_message():
+    register_calls = []
+    first_dt = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
+
+    def parse_with_optional_default_time(parser, raw, now, *, default_time):
+        return first_dt, "water", "daily", {"interval": 1}, 10, 0
+
+    result, message, _ = run_handler(
+        parse_with_optional_default_time=parse_with_optional_default_time,
+        create_recurring_template=lambda **kwargs: 77,
+        add_reminder=lambda **kwargs: 101,
+        register_reminder_message=lambda **kwargs: register_calls.append(kwargs),
+    )
+
+    assert result is True
+    assert message.replies == [
+        ("created 02.01 10:00 CET water каждый день None", {"reply_markup": "kb:101:True"})
+    ]
+    assert register_calls == [
+        {
+            "reminder_id": 101,
+            "chat_id": 555,
+            "message_id": 9001,
+            "kind": "created",
+        }
+    ]

@@ -38,6 +38,7 @@ async def dispatch_remind_creation(
     msg_parse_date_text_failed,
     safe_reply,
     logger,
+    register_reminder_message=None,
 ) -> None:
     if had_newline:
         raw_lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
@@ -111,6 +112,7 @@ async def dispatch_remind_creation(
         msg_recurring_parse_failed=msg_recurring_parse_failed,
         safe_reply=safe_reply,
         logger=logger,
+        register_reminder_message=register_reminder_message,
     )
     if recurring_handled:
         return
@@ -136,4 +138,5 @@ async def dispatch_remind_creation(
         msg_parse_date_text_failed=msg_parse_date_text_failed,
         safe_reply=safe_reply,
         logger=logger,
+        register_reminder_message=register_reminder_message,
     )

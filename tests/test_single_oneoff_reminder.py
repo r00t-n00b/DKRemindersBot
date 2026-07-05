@@ -21,6 +21,7 @@ class Message:
 
 async def safe_reply(message, text, **kwargs):
     message.replies.append((text, kwargs))
+    return SimpleNamespace(chat_id=555, message_id=9000 + len(message.replies))
 
 
 def run_handler(**overrides):
@@ -49,6 +50,7 @@ def run_handler(**overrides):
             msg_parse_date_text_failed=overrides.pop("msg_parse_date_text_failed", "parse failed"),
             safe_reply=safe_reply,
             logger=logger,
+            register_reminder_message=overrides.pop("register_reminder_message", None),
         )
         assert not overrides, f"unused overrides: {overrides}"
 
@@ -195,3 +197,28 @@ def test_main_uses_single_oneoff_handler_in_remind_command():
 
 def test_main_reexports_single_oneoff_handler():
     assert main.handle_single_oneoff_reminder is handle_single_oneoff_reminder
+
+
+
+def test_single_oneoff_handler_registers_created_action_message():
+    register_calls = []
+    remind_at = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
+
+    def parse_with_optional_default_time(parser, raw, now, *, default_time):
+        return remind_at, "milk"
+
+    message, _ = run_handler(
+        parse_with_optional_default_time=parse_with_optional_default_time,
+        add_reminder=lambda **kwargs: 101,
+        register_reminder_message=lambda **kwargs: register_calls.append(kwargs),
+    )
+
+    assert message.replies == [("created 02.01 10:00 CET: milk", {"reply_markup": "kb:101"})]
+    assert register_calls == [
+        {
+            "reminder_id": 101,
+            "chat_id": 555,
+            "message_id": 9001,
+            "kind": "created",
+        }
+    ]
