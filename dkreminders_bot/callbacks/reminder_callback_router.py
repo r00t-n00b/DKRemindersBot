@@ -203,6 +203,7 @@ async def handle_reminder_callback(update, context, deps):
                 get_user_chat_id_by_user_id=get_user_chat_id_by_user_id,
                 get_reminder=get_reminder,
                 compute_self_remind_time=compute_self_remind_time,
+                get_user_default_time=get_user_default_time,
                 get_source_chat_title_for_self_remind=get_source_chat_title_for_self_remind,
                 format_self_remind_text=format_self_remind_text,
                 add_reminder=add_reminder,

@@ -739,6 +739,7 @@ def _build_keyboard_builder_proxy_deps():
         InlineKeyboardButton=InlineKeyboardButton,
         InlineKeyboardMarkup=InlineKeyboardMarkup,
         get_reminder=get_reminder,
+        get_user_default_time=get_user_default_time,
         keyboard_builders=keyboard_builders,
     )
 
@@ -1053,7 +1054,7 @@ def compute_snooze_target_time(action: str, now: datetime, default_time: Optiona
         if delta == 0:
             delta = 7
         target = base + timedelta(days=delta)
-        return datetime(target.year, target.month, target.day, 10, 0, tzinfo=TZ)
+        return datetime(target.year, target.month, target.day, *_default_time_or(default_time, 10, 0), tzinfo=TZ)
 
     raise ValueError(f"Unknown snooze action: {action}")
 

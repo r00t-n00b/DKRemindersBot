@@ -8,6 +8,21 @@ from typing import List, Optional
 
 TZ = BOT_TZ
 
+
+def _default_time_or(default_time, fallback_hour: int = 10, fallback_minute: int = 0) -> tuple[int, int]:
+    if default_time is None:
+        return fallback_hour, fallback_minute
+    try:
+        hour, minute = default_time
+        return int(hour), int(minute)
+    except Exception:
+        return fallback_hour, fallback_minute
+
+
+def _format_default_time_label(default_time) -> str:
+    hour, minute = _default_time_or(default_time)
+    return f"{hour:02d}:{minute:02d}"
+
 try:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 except ModuleNotFoundError:
@@ -84,8 +99,9 @@ def build_created_reminder_actions_keyboard(reminder_id: int, is_recurring: bool
     except TypeError:
         return None
 
-def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+def build_created_reschedule_keyboard(reminder_id: int, default_time=None) -> Optional[InlineKeyboardMarkup]:
     try:
+        default_label = _format_default_time_label(default_time)
         buttons: List[List[InlineKeyboardButton]] = [
             [
                 InlineKeyboardButton("⏰ +20 минут", callback_data=f"created_snooze:{reminder_id}:20m"),
@@ -93,10 +109,10 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
             ],
             [
                 InlineKeyboardButton("⏰ +3 часа", callback_data=f"created_snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"created_snooze:{reminder_id}:tomorrow"),
+                InlineKeyboardButton(f"📅 Завтра ({default_label})", callback_data=f"created_snooze:{reminder_id}:tomorrow"),
             ],
             [
-                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"created_snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton(f"📅 Следующий понедельник ({default_label})", callback_data=f"created_snooze:{reminder_id}:nextmon"),
                 InlineKeyboardButton("📝 Кастом", callback_data=cb_created_snooze_custom(reminder_id)),
             ],
             [
@@ -107,8 +123,9 @@ def build_created_reschedule_keyboard(reminder_id: int) -> Optional[InlineKeyboa
     except TypeError:
         return None
 
-def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
+def build_snooze_keyboard(reminder_id: int, default_time=None) -> Optional[InlineKeyboardMarkup]:
     try:
+        default_label = _format_default_time_label(default_time)
         buttons: List[List[InlineKeyboardButton]] = [
             [
                 InlineKeyboardButton("⏰ +20 минут", callback_data=f"snooze:{reminder_id}:20m"),
@@ -116,10 +133,10 @@ def build_snooze_keyboard(reminder_id: int) -> Optional[InlineKeyboardMarkup]:
             ],
             [
                 InlineKeyboardButton("⏰ +3 часа", callback_data=f"snooze:{reminder_id}:3h"),
-                InlineKeyboardButton("📅 Завтра (10:00)", callback_data=f"snooze:{reminder_id}:tomorrow"),
+                InlineKeyboardButton(f"📅 Завтра ({default_label})", callback_data=f"snooze:{reminder_id}:tomorrow"),
             ],
             [
-                InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=f"snooze:{reminder_id}:nextmon"),
+                InlineKeyboardButton(f"📅 Следующий понедельник ({default_label})", callback_data=f"snooze:{reminder_id}:nextmon"),
                 InlineKeyboardButton("📝 Кастом", callback_data=f"snooze:{reminder_id}:custom"),
             ],
             [
@@ -169,7 +186,8 @@ def build_self_remind_mode_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(buttons)
 
-def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+def build_self_remind_choice_keyboard(reminder_id: int, default_time=None) -> InlineKeyboardMarkup:
+    default_label = _format_default_time_label(default_time)
     buttons: List[List[InlineKeyboardButton]] = [
         [
             InlineKeyboardButton("⏰ +20 минут", callback_data=cb_selfremind_set(reminder_id, "20m")),
@@ -177,10 +195,10 @@ def build_self_remind_choice_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("⏰ +3 часа", callback_data=cb_selfremind_set(reminder_id, "3h")),
-            InlineKeyboardButton("📅 Завтра (10:00)", callback_data=cb_selfremind_set(reminder_id, "tomorrow11")),
+            InlineKeyboardButton(f"📅 Завтра ({default_label})", callback_data=cb_selfremind_set(reminder_id, "tomorrow11")),
         ],
         [
-            InlineKeyboardButton("📅 Следующий понедельник (10:00)", callback_data=cb_selfremind_set(reminder_id, "nextmon")),
+            InlineKeyboardButton(f"📅 Следующий понедельник ({default_label})", callback_data=cb_selfremind_set(reminder_id, "nextmon")),
             InlineKeyboardButton("📝 Кастом", callback_data=cb_selfremind_set(reminder_id, "custom")),
         ],
         [

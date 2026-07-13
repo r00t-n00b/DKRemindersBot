@@ -12,13 +12,35 @@ _DEP_NAMES = (
     "InlineKeyboardButton",
     "InlineKeyboardMarkup",
     "get_reminder",
+    "get_user_default_time",
     "keyboard_builders",
 )
 
 
 def _apply_deps(deps) -> None:
     for name in _DEP_NAMES:
-        globals()[name] = getattr(deps, name)
+        if name == "get_user_default_time" and not hasattr(deps, name):
+            globals()[name] = lambda user_id: None
+        else:
+            globals()[name] = getattr(deps, name)
+
+
+def _default_time_for_reminder_id(reminder_id: int):
+    reminder = get_reminder(reminder_id)
+    if reminder is None:
+        return None
+    return get_user_default_time(getattr(reminder, "created_by", None))
+
+
+def _call_builder_with_optional_default_time(builder, reminder_id: int, default_time):
+    try:
+        return builder(reminder_id, default_time=default_time)
+    except TypeError as exc:
+        # Backward-compatible for old tests/fakes that still expose
+        # build_xxx_keyboard(reminder_id) without default_time.
+        if "default_time" in str(exc) or "unexpected keyword argument" in str(exc):
+            return builder(reminder_id)
+        raise
 
 
 def build_created_reminder_actions_keyboard_for_reminder_impl(reminder_id: int, *, deps) -> Optional[InlineKeyboardMarkup]:
@@ -57,13 +79,21 @@ def build_created_reminder_actions_keyboard_impl(reminder_id: int, is_recurring:
 def build_created_reschedule_keyboard_impl(reminder_id: int, *, deps):
     _apply_deps(deps)
     _sync_keyboard_builder_classes_impl(deps=deps)
-    return keyboard_builders.build_created_reschedule_keyboard(reminder_id)
+    return _call_builder_with_optional_default_time(
+        keyboard_builders.build_created_reschedule_keyboard,
+        reminder_id,
+        _default_time_for_reminder_id(reminder_id),
+    )
 
 
 def build_snooze_keyboard_impl(reminder_id: int, *, deps):
     _apply_deps(deps)
     _sync_keyboard_builder_classes_impl(deps=deps)
-    return keyboard_builders.build_snooze_keyboard(reminder_id)
+    return _call_builder_with_optional_default_time(
+        keyboard_builders.build_snooze_keyboard,
+        reminder_id,
+        _default_time_for_reminder_id(reminder_id),
+    )
 
 
 def build_group_reminder_keyboard_impl(reminder_id: int, *, deps):
@@ -81,7 +111,11 @@ def build_self_remind_mode_keyboard_impl(reminder_id: int, *, deps):
 def build_self_remind_choice_keyboard_impl(reminder_id: int, *, deps):
     _apply_deps(deps)
     _sync_keyboard_builder_classes_impl(deps=deps)
-    return keyboard_builders.build_self_remind_choice_keyboard(reminder_id)
+    return _call_builder_with_optional_default_time(
+        keyboard_builders.build_self_remind_choice_keyboard,
+        reminder_id,
+        _default_time_for_reminder_id(reminder_id),
+    )
 
 
 def build_self_remind_event_before_keyboard_impl(reminder_id: int, *, deps):

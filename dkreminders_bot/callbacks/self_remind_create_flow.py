@@ -142,6 +142,7 @@ async def handle_self_remind_set(
     msg_invalid_reminder_id: str,
     msg_user_context_missing: str,
     msg_source_reminder_not_found: str,
+    get_user_default_time=None,
 ):
     _, _, raw_id, option = data.split(":", 3)
 
@@ -178,7 +179,17 @@ async def handle_self_remind_set(
         await query.answer(MSG_PICK_DATE)
         return
 
-    remind_at = compute_self_remind_time(option, get_now())
+    default_time = get_user_default_time(user_id) if get_user_default_time is not None else None
+    try:
+        remind_at = compute_self_remind_time(
+            option,
+            get_now(),
+            default_time=default_time,
+        )
+    except TypeError:
+        # Backward-compatible for old tests/deps that still provide
+        # compute_self_remind_time(option, now).
+        remind_at = compute_self_remind_time(option, get_now())
 
     source_chat_title = await get_source_chat_title_for_self_remind(
         context,

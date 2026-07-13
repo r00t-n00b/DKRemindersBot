@@ -3,12 +3,13 @@
 from datetime import datetime, timedelta
 
 from dkreminders_bot.utils.time_utils import BOT_TZ, ensure_aware
+from dkreminders_bot.settings.default_time import _default_time_or
 
 
 TZ = BOT_TZ
 
 
-def compute_self_remind_time(option: str, now: datetime) -> datetime:
+def compute_self_remind_time(option: str, now: datetime, default_time=None) -> datetime:
     now = ensure_aware(now).astimezone(TZ)
 
     if option == "20m":
@@ -26,8 +27,7 @@ def compute_self_remind_time(option: str, now: datetime) -> datetime:
             tomorrow.year,
             tomorrow.month,
             tomorrow.day,
-            10,
-            0,
+            *_default_time_or(default_time, 10, 0),
             tzinfo=TZ,
         )
 
@@ -42,8 +42,7 @@ def compute_self_remind_time(option: str, now: datetime) -> datetime:
             target.year,
             target.month,
             target.day,
-            10,
-            0,
+            *_default_time_or(default_time, 10, 0),
             tzinfo=TZ,
         )
 

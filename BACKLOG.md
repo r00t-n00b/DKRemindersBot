@@ -55,6 +55,7 @@ Production reminder-worker должен стабильно:
 - собрать настройки в более полноценное меню, а не просто read-only summary + отдельные кнопки;
 - editable aliases из /settings, а не только summary;
 - nudge policy: включить/выключить nudges, интервал, максимум повторов;
+- quick snooze “Завтра” / “Следующий понедельник” must use user default reminder time and show that time in button labels;
 - язык кнопок / language preference;
 - формат времени: 24h / verbose;
 - тестовое напоминание из /settings;
