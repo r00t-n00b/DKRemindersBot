@@ -11,6 +11,15 @@ RU_MONTHS = (
     "сентября|октября|ноября|декабря"
 )
 
+RU_RELATIVE_UNITS = (
+    "минуту|минуты|минут|"
+    "час|часа|часов|"
+    "день|дня|дней|"
+    "неделю|недели|недель|"
+    "месяц|месяца|месяцев|"
+    "год|года|лет"
+)
+
 
 def _strip_plain_text_reminder_prefix(raw_text: str) -> str:
     return re.sub(
@@ -65,6 +74,46 @@ def normalize_plain_text_reminder_locally(
     candidate = _strip_plain_text_reminder_prefix(candidate)
     if not candidate:
         return None
+
+    # Deterministic Russian relative reminders without dash:
+    # - "напомни через неделю трансфернуть всех кто ценный"
+    # - "напомни добить трейды через час"
+    relative_expr = rf"через\s+(?:(?:\d+|одну|один|два|две|три|четыре|пять)\s+)?(?:{RU_RELATIVE_UNITS})"
+    relative_expr_without_minutes = (
+        r"через\s+(?:(?:\d+|одну|один|два|две|три|четыре|пять)\s+)?(?:"
+        r"час|часа|часов|"
+        r"день|дня|дней|"
+        r"неделю|недели|недель|"
+        r"месяц|месяца|месяцев|"
+        r"год|года|лет"
+        r")"
+    )
+
+    m = re.match(
+        rf"^\s*(?P<expr>{relative_expr_without_minutes})\s+(?P<text>.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return _validated(
+            m.group("expr"),
+            m.group("text"),
+            parse_date_time_smart=parse_date_time_smart,
+            get_now=get_now,
+        )
+
+    m = re.match(
+        rf"^\s*(?P<text>.+?)\s+(?P<expr>{relative_expr})\s*$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return _validated(
+            m.group("expr"),
+            m.group("text"),
+            parse_date_time_smart=parse_date_time_smart,
+            get_now=get_now,
+        )
 
     m = re.match(
         r"^\s*(?P<date>сегодня|завтра|послезавтра|today|tomorrow|day after tomorrow)\s+"
