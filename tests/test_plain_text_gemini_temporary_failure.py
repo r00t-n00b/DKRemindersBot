@@ -1,6 +1,5 @@
+import asyncio
 from types import SimpleNamespace
-
-import pytest
 
 from dkreminders_bot.commands.plain_text_remind_flow import handle_plain_text_remind_command
 from dkreminders_bot.integrations.plain_text_gemini_normalization import (
@@ -26,8 +25,7 @@ async def _safe_reply(message, text, **kwargs):
     message.replies.append(text)
 
 
-@pytest.mark.asyncio
-async def test_plain_text_temporary_gemini_failure_is_not_not_understood():
+def test_plain_text_temporary_gemini_failure_is_not_not_understood():
     message = FakeMessage("напомни что-нибудь сложное")
     message.replies = []
 
@@ -68,7 +66,7 @@ async def test_plain_text_temporary_gemini_failure_is_not_not_understood():
         type=type,
     )
 
-    await handle_plain_text_remind_command(update, context, deps)
+    asyncio.run(handle_plain_text_remind_command(update, context, deps))
 
     assert message.replies == [MSG_PLAIN_TEXT_AI_TEMPORARY_FAILURE]
     assert "Я не понял" not in message.replies[0]
