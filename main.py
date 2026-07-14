@@ -186,6 +186,7 @@ from dkreminders_bot.ui.messages import (
     MSG_GROUP_USERNAME_PREFIX_FORBIDDEN,
     MSG_INVALID_REMINDER_ID,
     MSG_NOT_UNDERSTOOD_PLAIN_TEXT,
+    MSG_PLAIN_TEXT_AI_TEMPORARY_FAILURE,
     MSG_PARSE_DATE_TEXT_FAILED,
     MSG_REMINDER_ALREADY_DELETED_ALERT,
     MSG_REMINDER_ALREADY_DELETED_TEXT,
@@ -270,7 +271,7 @@ from dkreminders_bot.ui.reply_utils import safe_reply
 from dkreminders_bot.workers.reminder_message_proxy import NormalizedReminderMessageProxy
 from dkreminders_bot.integrations.voice_file_io import download_telegram_file_bytes
 from dkreminders_bot.commands.plain_text_local_normalization import normalize_plain_text_reminder_locally
-from dkreminders_bot.integrations.plain_text_gemini_normalization import normalize_plain_text_reminder_with_gemini_impl
+from dkreminders_bot.integrations.plain_text_gemini_normalization import GeminiTextNormalizationTemporaryError, normalize_plain_text_reminder_with_gemini_impl
 from dkreminders_bot.integrations.voice_text_normalization import (
     _normalize_plain_text_relative_reminder_locally,
     _normalize_voice_ru_months,

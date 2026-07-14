@@ -4,6 +4,10 @@ import asyncio
 import os
 
 
+class GeminiTextNormalizationTemporaryError(RuntimeError):
+    """Gemini text normalization failed because of a temporary/transient issue."""
+
+
 async def normalize_plain_text_reminder_with_gemini_impl(
     text: str,
     created_by: int,
@@ -37,6 +41,7 @@ async def normalize_plain_text_reminder_with_gemini_impl(
     aliases_prompt = format_known_aliases_for_voice_prompt(created_by)
     client = genai.Client(api_key=token)
     last_error = None
+    had_temporary_failure = False
 
     prompt = (
         "You are normalizing a Telegram text message into a reminder command.\n"
@@ -102,6 +107,7 @@ async def normalize_plain_text_reminder_with_gemini_impl(
             last_error = RuntimeError(f"Gemini model {model} returned empty text normalization")
         except asyncio.TimeoutError as e:
             last_error = e
+            had_temporary_failure = True
             logger.warning(
                 "GEMINI_TEXT_NORMALIZE_TIMEOUT model=%s timeout=%s raw_len=%s",
                 model,
@@ -135,10 +141,19 @@ async def normalize_plain_text_reminder_with_gemini_impl(
                     "Проверь лимиты проекта или включи billing для Gemini API."
                 ) from e
 
-            if not transient:
-                raise
+            if transient:
+                had_temporary_failure = True
+                continue
+
+            raise
+
+    if had_temporary_failure:
+        raise GeminiTextNormalizationTemporaryError(
+            "Gemini временно не смог нормализовать текст после fallback. "
+            f"Последняя ошибка: {type(last_error).__name__}: {last_error}"
+        ) from last_error
 
     raise RuntimeError(
-        "Gemini временно не смог нормализовать текст после fallback. "
+        "Gemini не смог нормализовать текст после fallback. "
         f"Последняя ошибка: {type(last_error).__name__}: {last_error}"
     )
