@@ -115,6 +115,49 @@ def normalize_plain_text_reminder_locally(
             get_now=get_now,
         )
 
+    # Deterministic weekday reminders without explicit time:
+    # - "напомни в воскресенье подумать, что делать с рейд днем"
+    # - "напомни воскресенье подумать, что делать с рейд днем"
+    # - "remind me next Sunday plan raids"
+    m = re.match(
+        r"^\s*(?:в\s+)?(?P<next>следующий|следующая|следующее|следующие|next)\s+"
+        r"(?P<weekday>[a-zа-яё]+)\s+"
+        r"(?P<text>.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        weekday = m.group("weekday").lower()
+        reminder_text = m.group("text").strip()
+        if (
+            weekday in WEEKDAY_EN or weekday in WEEKDAY_RU
+        ) and not re.match(r"^(?:(?:в|at)\s+)?\d{1,2}(?:(?:[:.])\d{2})?(?:\s+|$)", reminder_text):
+            return _validated(
+                f"{m.group('next')} {weekday}",
+                reminder_text,
+                parse_date_time_smart=parse_date_time_smart,
+                get_now=get_now,
+            )
+
+    m = re.match(
+        r"^\s*(?:в\s+)?(?P<weekday>[a-zа-яё]+)\s+"
+        r"(?P<text>.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        weekday = m.group("weekday").lower()
+        reminder_text = m.group("text").strip()
+        if (
+            weekday in WEEKDAY_EN or weekday in WEEKDAY_RU
+        ) and not re.match(r"^(?:(?:в|at)\s+)?\d{1,2}(?:(?:[:.])\d{2})?(?:\s+|$)", reminder_text):
+            return _validated(
+                f"в {weekday}",
+                reminder_text,
+                parse_date_time_smart=parse_date_time_smart,
+                get_now=get_now,
+            )
+
     m = re.match(
         r"^\s*(?P<date>сегодня|завтра|послезавтра|today|tomorrow|day after tomorrow)\s+"
         r"(?:(?:в|at)\s+)?"
