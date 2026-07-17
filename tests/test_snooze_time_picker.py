@@ -16,7 +16,7 @@ class Query:
         self.answers.append(text)
 
 
-def test_enter_custom_snooze_time_picker_marks_acked_and_opens_time_picker():
+def test_enter_custom_snooze_time_picker_does_not_ack_and_opens_time_picker():
     calls = []
     query = Query()
 
@@ -30,7 +30,7 @@ def test_enter_custom_snooze_time_picker_marks_acked_and_opens_time_picker():
         )
     )
 
-    assert calls == [("acked", 123)]
+    assert calls == []
     assert query.markups == ["time-kb:123:2026-07-15"]
     assert query.answers == ["Выбери время"]
 

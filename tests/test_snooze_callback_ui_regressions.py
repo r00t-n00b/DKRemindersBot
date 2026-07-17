@@ -171,7 +171,7 @@ def test_snooze_nextmon_sets_next_monday_10_00(main_module, monkeypatch):
     assert query.answers == [("Отложено до 15.06 10:00", False)]
 
 
-def test_snooze_custom_replaces_markup_with_calendar_and_acks(main_module, monkeypatch):
+def test_snooze_custom_replaces_markup_with_calendar_without_ack(main_module, monkeypatch):
     m = main_module
     fake_kb = object()
     acked = []
@@ -186,7 +186,7 @@ def test_snooze_custom_replaces_markup_with_calendar_and_acks(main_module, monke
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert acked == [101]
+    assert acked == []
     assert query.edited_reply_markup == [fake_kb]
     assert query.answers == [("Выбери дату", False)]
 
@@ -267,7 +267,7 @@ def test_snooze_caltoday_replaces_calendar_with_current_month(main_module, monke
     assert query.answers == [(None, False)]
 
 
-def test_snooze_pickdate_acks_and_replaces_markup_with_time_keyboard(main_module, monkeypatch):
+def test_snooze_pickdate_replaces_markup_with_time_keyboard_without_ack(main_module, monkeypatch):
     m = main_module
     fake_kb = object()
     acked = []
@@ -286,7 +286,7 @@ def test_snooze_pickdate_acks_and_replaces_markup_with_time_keyboard(main_module
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert acked == [101]
+    assert acked == []
     assert calls == [(101, "2026-06-12")]
     assert query.edited_reply_markup == [fake_kb]
     assert query.answers == [("Выбери время", False)]
@@ -361,7 +361,7 @@ def test_snooze_picktime_past_datetime_shows_alert(main_module, monkeypatch):
     assert query.answers == [("Это время уже прошло. Выбери другое время.", True)]
 
 
-def test_snooze_cancel_valid_id_restores_snooze_keyboard_and_acks(main_module, monkeypatch):
+def test_snooze_cancel_valid_id_restores_snooze_keyboard_without_ack(main_module, monkeypatch):
     m = main_module
     fake_kb = object()
     acked = []
@@ -375,7 +375,7 @@ def test_snooze_cancel_valid_id_restores_snooze_keyboard_and_acks(main_module, m
 
     asyncio.run(m.snooze_callback(update, context))
 
-    assert acked == [101]
+    assert acked == []
     assert query.edited_reply_markup == [fake_kb]
     assert query.answers == [("Вернул варианты", False)]
 

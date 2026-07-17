@@ -13,8 +13,8 @@ async def enter_custom_snooze_flow(
     clear_reminder_message_keyboards=None,
     delete_other_reminder_messages=None,
 ):
-    mark_reminder_acked(reminder_id)
-
+    # Opening the custom picker is only navigation, not handling the reminder.
+    # Keep the reminder unacked so Cancel can return to the original options.
     clicked_message = getattr(query, "message", None)
     clicked_chat_id = getattr(clicked_message, "chat_id", None)
     clicked_message_id = getattr(clicked_message, "message_id", None)

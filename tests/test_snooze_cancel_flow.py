@@ -16,7 +16,7 @@ class Query:
         self.answers.append((text, show_alert))
 
 
-def test_custom_snooze_cancel_marks_acked_and_restores_keyboard():
+def test_custom_snooze_cancel_does_not_ack_and_restores_keyboard():
     calls = []
     query = Query()
 
@@ -30,7 +30,7 @@ def test_custom_snooze_cancel_marks_acked_and_restores_keyboard():
         )
     )
 
-    assert calls == [("acked", 123)]
+    assert calls == []
     assert query.markups == ["snooze-kb:123"]
     assert query.answers == [("Вернул варианты", None)]
 
@@ -52,6 +52,44 @@ def test_custom_snooze_cancel_replies_invalid_id_when_id_is_none():
     assert calls == []
     assert query.markups == []
     assert query.answers == [("invalid id", True)]
+
+
+def test_custom_snooze_cancel_allows_delivered_unacked_reminder():
+    query = Query()
+    reminder = type("Reminder", (), {"acked": 0, "delivered": 1})()
+
+    asyncio.run(
+        handle_custom_snooze_cancel(
+            reminder_id=123,
+            query=query,
+            mark_reminder_acked=lambda rid: (_ for _ in ()).throw(AssertionError("must not ack")),
+            build_snooze_keyboard=lambda rid: f"snooze-kb:{rid}",
+            msg_invalid_reminder_id="invalid id",
+            get_reminder=lambda rid: reminder,
+        )
+    )
+
+    assert query.markups == ["snooze-kb:123"]
+    assert query.answers == [("Вернул варианты", None)]
+
+
+def test_custom_snooze_cancel_blocks_already_acked_reminder():
+    query = Query()
+    reminder = type("Reminder", (), {"acked": 1, "delivered": 1})()
+
+    asyncio.run(
+        handle_custom_snooze_cancel(
+            reminder_id=123,
+            query=query,
+            mark_reminder_acked=lambda rid: (_ for _ in ()).throw(AssertionError("must not ack")),
+            build_snooze_keyboard=lambda rid: f"snooze-kb:{rid}",
+            msg_invalid_reminder_id="invalid id",
+            get_reminder=lambda rid: reminder,
+        )
+    )
+
+    assert query.markups == [None]
+    assert query.answers == [("Это напоминание уже обработано", True)]
 
 
 def test_snooze_callback_uses_cancel_flow_helper():

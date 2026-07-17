@@ -17,7 +17,7 @@ class Query:
         self.answers.append((text, show_alert))
 
 
-def test_enter_custom_snooze_flow_marks_acked_clears_related_messages_and_opens_date_picker():
+def test_enter_custom_snooze_flow_does_not_ack_and_opens_date_picker():
     calls = []
     query = Query()
 
@@ -35,7 +35,7 @@ def test_enter_custom_snooze_flow_marks_acked_clears_related_messages_and_opens_
         )
     )
 
-    assert calls == [("acked", 123), ("clear", "bot", 123)]
+    assert calls == [("clear", "bot", 123)]
     assert query.markups == ["date-kb:123"]
     assert query.answers == [("Выбери дату", False)]
 
@@ -53,7 +53,7 @@ def test_enter_custom_snooze_flow_without_context_keeps_backward_compatible_beha
         )
     )
 
-    assert calls == [("acked", 123)]
+    assert calls == []
     assert query.markups == ["date-kb:123"]
     assert query.answers == [("Выбери дату", False)]
 

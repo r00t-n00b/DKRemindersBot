@@ -14,16 +14,12 @@ async def handle_custom_snooze_cancel(
 ):
     if reminder_id is not None:
         reminder = get_reminder(reminder_id) if callable(get_reminder) else None
-        if reminder is not None and (
-            int(getattr(reminder, "acked", 0) or 0)
-            or int(getattr(reminder, "delivered", 0) or 0)
-        ):
+        if reminder is not None and int(getattr(reminder, "acked", 0) or 0):
             await query.edit_message_reply_markup(reply_markup=None)
             await query.answer("Это напоминание уже обработано", show_alert=True)
             return
 
-        mark_reminder_acked(reminder_id)
-
+        # Cancel means "return from custom picker", not "handle the reminder".
         await query.edit_message_reply_markup(
             reply_markup=build_snooze_keyboard(reminder_id),
         )

@@ -11,9 +11,8 @@ async def enter_custom_snooze_time_picker(
     mark_reminder_acked,
     build_custom_time_keyboard,
 ):
-    # выбор даты - реакция
-    mark_reminder_acked(reminder_id)
-
+    # Date selection is only navigation inside custom snooze.
+    # Ack only when the user actually picks a final snooze time.
     kb = build_custom_time_keyboard(reminder_id, date_str)
     await query.edit_message_reply_markup(reply_markup=kb)
     await query.answer(MSG_PICK_TIME)

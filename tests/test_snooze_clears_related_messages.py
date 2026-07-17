@@ -158,7 +158,7 @@ def test_snooze_picktime_updates_all_related_reminder_messages(main_module, monk
     assert query.edited_text == [expected_text]
 
 
-def test_snooze_pickdate_does_not_clear_related_messages_yet(main_module, monkeypatch):
+def test_snooze_pickdate_does_not_ack_or_clear_related_messages_yet(main_module, monkeypatch):
     cleared = []
     acked = []
 
@@ -175,7 +175,7 @@ def test_snooze_pickdate_does_not_clear_related_messages_yet(main_module, monkey
 
     asyncio.run(main_module.snooze_callback(update, context))
 
-    assert acked == [101]
+    assert acked == []
     assert cleared == []
     assert query.answers == [("Выбери время", False)]
     assert query.edited_reply_markup == ["time-kb"]
