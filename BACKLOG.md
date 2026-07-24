@@ -63,7 +63,47 @@ Production reminder-worker должен стабильно:
 - diagnostics/debug entry point только для себя;
 - возможно показывать текущие user settings/debug summary только для себя.
 
-## 4. Inbox / незакрытые напоминания — TODO
+## 4. Reply-context reminders — TODO
+
+Научить бота создавать полезные напоминания из reply на Telegram-сообщение.
+
+Базовый UX:
+- фразы «напомни об этом», «напомни про это сообщение», «напомни через полчаса об этом» должны использовать сообщение, на которое ответил пользователь;
+- не сохранять бесполезный текст вроде «об этом сообщении» без контекста;
+- при доставке reminder должен содержать понятное описание исходного сообщения;
+- по возможности сохранять связь с исходным Telegram-сообщением и отправлять reminder как reply либо давать ссылку/указание на источник.
+
+Локальная обработка без Gemini:
+- использовать `reply_to_message.text`;
+- использовать caption вложения;
+- использовать имя документа/файла;
+- учитывать фото, видео, voice и другие типы вложений;
+- для forwarded message учитывать автора/источник, если Telegram его предоставляет;
+- делать короткий deterministic reminder text для простых случаев.
+
+Gemini fallback:
+- подключать только для длинных или неоднозначных сообщений;
+- кратко суммаризировать действие, а не пересказывать весь текст;
+- ограничивать длину итогового reminder text;
+- при timeout/503 честно сообщать о временной ошибке;
+- не терять исходный контекст при ошибке Gemini.
+
+Пример:
+- reply на PDF с подписью «потом посмотришь со мной job description, Tab 1 их, Tab 2 мой»;
+- команда: «напомни через полчаса об этом сообщении»;
+- ожидаемый reminder: «посмотреть с Наташей JD PMM PLG July 2026.pdf: Tab 1 — их JD, Tab 2 — мой».
+
+Обязательно покрыть тестами:
+- reply на обычный текст;
+- reply на документ с caption;
+- reply на документ без caption;
+- reply на forwarded message;
+- отсутствие reply;
+- длинный текст с Gemini;
+- Gemini temporary failure;
+- исходное сообщение удалено к моменту доставки.
+
+## 5. Inbox / незакрытые напоминания — TODO
 
 Нужен отдельный inbox для delivered, но ещё не закрытых reminders:
 
@@ -72,7 +112,7 @@ Production reminder-worker должен стабильно:
 - не показывать удалённое/завершённое;
 - понятный UX для “висящих” напоминаний.
 
-## 5. SQLite scalability hardening — TODO
+## 6. SQLite scalability hardening — TODO
 
 Усилить SQLite под рост данных:
 
@@ -82,7 +122,7 @@ Production reminder-worker должен стабильно:
 - безопасные миграции без ручной боли;
 - production DB backup discipline.
 
-## 6. Batch preview — TODO
+## 7. Batch preview — TODO
 
 Перед массовым созданием reminders нужен preview:
 
@@ -92,7 +132,7 @@ Production reminder-worker должен стабильно:
 - понятное отображение строк, которые не распарсились;
 - защита от случайного массового создания.
 
-## 7. Help/onboarding — TODO
+## 8. Help/onboarding — TODO
 
 Нормальный help и onboarding:
 
@@ -107,7 +147,7 @@ Production reminder-worker должен стабильно:
 - кнопки не должны вести в тупик;
 - старые кнопки должны либо работать, либо объяснять, что устарели.
 
-## 8. Repo/package structure cleanup — DONE
+## 9. Repo/package structure cleanup — DONE
 
 Корневую свалку `.py` файлов перенесли в нормальный package layout:
 
@@ -118,7 +158,7 @@ Production reminder-worker должен стабильно:
 - behavior changes не смешивались с refactor;
 - full test suite green after move.
 
-## 9. Убрать _apply_deps/globals постепенно — TODO
+## 10. Убрать _apply_deps/globals постепенно — TODO
 
 Постепенный технический рефакторинг:
 
@@ -129,7 +169,7 @@ Production reminder-worker должен стабильно:
 - перейти к явным deps/dataclass deps;
 - не делать одним большим рискованным рефактором.
 
-## 10. Улучшить wording invalid recurring ordinals — TODO
+## 11. Улучшить wording invalid recurring ordinals — TODO
 
 Сделать понятные ошибки для невалидных recurring формулировок:
 
@@ -138,7 +178,7 @@ Production reminder-worker должен стабильно:
 - RU/EN wording;
 - подсказки с правильными примерами.
 
-## 11. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
+## 12. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
 
 Довести lifecycle до консистентного состояния.
 
@@ -163,7 +203,7 @@ Production reminder-worker должен стабильно:
 - nudge lifecycle;
 - production sanity-check после lifecycle patches.
 
-## 12. Callback/data consistency — TODO
+## 13. Callback/data consistency — TODO
 
 Закрепить тестами, что router pattern совпадает с callback_data:
 
@@ -177,7 +217,7 @@ Production reminder-worker должен стабильно:
 - старые callback-и должны либо работать, либо честно говорить, что устарели;
 - не должно быть unknown-option из-за несовпадения callback_data и pattern.
 
-## 13. Групповые напоминания и self-remind — TODO
+## 14. Групповые напоминания и self-remind — TODO
 
 Отдельный крупный функциональный блок.
 
@@ -198,7 +238,7 @@ Edge-cases:
 - cancel/back в self-remind flow;
 - обычное напоминание vs напоминание до события внутри self-remind.
 
-## 14. Access control audit — TODO
+## 15. Access control audit — TODO
 
 Общий security/pass по всем флоу:
 
@@ -211,7 +251,7 @@ Edge-cases:
 - reminder создан в группе, действие нажато в личке или наоборот;
 - нельзя удалить/сдвинуть чужой reminder через старую кнопку.
 
-## 15. Voice UX polish — TODO
+## 16. Voice UX polish — TODO
 
 Отдельный большой блок по voice reminders:
 
@@ -234,7 +274,7 @@ Edge-cases:
 Следующий вероятный приоритет:
 - проверить, что voice reminders не обходят timezone onboarding и не создают reminder в implicit CET.
 
-## 16. Plain text / Gemini / fallback — TODO
+## 17. Plain text / Gemini / fallback — TODO
 
 Plain text уже работает с timezone, но остаётся полировка:
 
@@ -249,7 +289,7 @@ Plain text уже работает с timezone, но остаётся полир
 - alias в plain text;
 - конфликт alias vs дата/время.
 
-## 17. Recurring reminders — TODO
+## 18. Recurring reminders — TODO
 
 Повторяющиеся reminders — один из самых рискованных кусков.
 
@@ -282,7 +322,7 @@ Recurring management UX:
 - access control для group/private/created_by;
 - тесты на private/group/created_by/undo/stale callbacks.
 
-## 18. Snooze / reschedule UX — TODO
+## 19. Snooze / reschedule UX — TODO
 
 Полировка snooze/reschedule:
 
@@ -294,7 +334,7 @@ Recurring management UX:
 - не показывать бесполезные кнопки после удаления/выполнения;
 - понятные тексты после переноса.
 
-## 19. List / delete / undo — TODO
+## 20. List / delete / undo — TODO
 
 Довести до железобетона:
 
@@ -319,7 +359,7 @@ Diagnostics / debug history:
 - не раскрывать чужие reminders;
 - тесты на private chat, group chat, alias/created_by boundaries, empty history.
 
-## 20. Алисы чатов и пользователей — TODO
+## 21. Алисы чатов и пользователей — TODO
 
 Бэклог по aliases:
 
@@ -333,7 +373,7 @@ Diagnostics / debug history:
 - конфликт alias vs дата/время;
 - alias в voice/plain text.
 
-## 21. “Напоминание до события” — TODO
+## 22. “Напоминание до события” — TODO
 
 Флоу:
 - обычное напоминание;
@@ -351,7 +391,7 @@ Diagnostics / debug history:
 - тесты на RU/EN даты;
 - интеграция с self-remind flow.
 
-## 22. Production observability — TODO
+## 23. Production observability — TODO
 
 Логирование и prod visibility:
 
@@ -371,7 +411,7 @@ Diagnostics / debug history:
 - аккуратная debug-команда только для себя;
 - health-ish prod checks после deploy.
 
-## 23. Тестовая инфраструктура — RULE
+## 24. Тестовая инфраструктура — RULE
 
 Постоянное правило:
 
@@ -391,7 +431,7 @@ Diagnostics / debug history:
 - access control;
 - prod-risk edge cases.
 
-## 24. DB migration discipline — RULE
+## 25. DB migration discipline — RULE
 
 Постоянное правило:
 
