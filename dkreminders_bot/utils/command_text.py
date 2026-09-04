@@ -66,6 +66,7 @@ SMART_REMINDER_PREFIXES = {
     "on",
     "at",
     "в",
+    "на",
 }
 
 

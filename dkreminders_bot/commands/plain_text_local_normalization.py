@@ -102,18 +102,12 @@ def normalize_plain_text_reminder_locally(
             get_now=get_now,
         )
 
-    m = re.match(
-        rf"^\s*(?P<text>.+?)\s+(?P<expr>{relative_expr})\s*$",
-        candidate,
-        flags=re.IGNORECASE,
-    )
-    if m:
-        return _validated(
-            m.group("expr"),
-            m.group("text"),
-            parse_date_time_smart=parse_date_time_smart,
-            get_now=get_now,
-        )
+    # Do not let a trailing relative phrase steal priority from an explicit
+    # date/weekday at the beginning:
+    # - "в пятницу попросить ... через неделю"
+    # - "9 сентября понять ... через неделю"
+    #
+    # The trailing-relative fallback is intentionally handled later.
 
     # Deterministic weekday reminders without explicit time:
     # - "напомни в воскресенье подумать, что делать с рейд днем"
@@ -320,5 +314,20 @@ def normalize_plain_text_reminder_locally(
                 parse_date_time_smart=parse_date_time_smart,
                 get_now=get_now,
             )
+
+    # Trailing relative expression is a fallback only after all explicit
+    # date/time-at-the-start forms have had a chance to match.
+    m = re.match(
+        rf"^\s*(?P<text>.+?)\s+(?P<expr>{relative_expr})\s*$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return _validated(
+            m.group("expr"),
+            m.group("text"),
+            parse_date_time_smart=parse_date_time_smart,
+            get_now=get_now,
+        )
 
     return None

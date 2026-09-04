@@ -46,3 +46,20 @@ def _normalize(raw_text: str):
 )
 def test_plain_text_russian_relative_without_dash_is_local(raw_text, expected):
     assert _normalize(raw_text) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected"),
+    [
+        (
+            "напомни в пятницу попросить Панду пойти в офис через неделю",
+            "в пятницу - попросить Панду пойти в офис через неделю",
+        ),
+        (
+            "Напомни 9 сентября понять, надо ли переносить уборку через неделю",
+            "9 сентября - понять, надо ли переносить уборку через неделю",
+        ),
+    ],
+)
+def test_explicit_leading_date_wins_over_trailing_relative_expression(raw_text, expected):
+    assert _normalize(raw_text) == expected
