@@ -52,3 +52,27 @@ def test_parse_in_one_hour_ru(main_module):
 
     assert remind_at == datetime(2026, 6, 8, 18, 12, tzinfo=TZ)
     assert text == "проверить духовку"
+
+
+def test_parse_in_half_hour_ru(main_module):
+    now = datetime(2026, 9, 5, 21, 15, tzinfo=TZ)
+
+    remind_at, text = main_module.parse_date_time_smart(
+        "через полчаса - заказать соль",
+        now,
+    )
+
+    assert remind_at == datetime(2026, 9, 5, 21, 45, tzinfo=TZ)
+    assert text == "заказать соль"
+
+
+def test_parse_in_half_hour_ru_without_dash(main_module):
+    now = datetime(2026, 9, 5, 21, 15, tzinfo=TZ)
+
+    remind_at, text = main_module.parse_date_time_smart(
+        "через полчаса заказать соль",
+        now,
+    )
+
+    assert remind_at == datetime(2026, 9, 5, 21, 45, tzinfo=TZ)
+    assert text == "заказать соль"

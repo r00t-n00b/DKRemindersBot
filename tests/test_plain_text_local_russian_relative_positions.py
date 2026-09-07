@@ -63,3 +63,9 @@ def test_plain_text_russian_relative_without_dash_is_local(raw_text, expected):
 )
 def test_explicit_leading_date_wins_over_trailing_relative_expression(raw_text, expected):
     assert _normalize(raw_text) == expected
+
+
+def test_plain_text_half_hour_is_normalized_locally():
+    assert _normalize(
+        "Напомни через полчаса заказать соль"
+    ) == "через полчаса - заказать соль"

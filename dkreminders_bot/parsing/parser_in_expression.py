@@ -23,6 +23,12 @@ def _parse_in_expression(tokens: List[str], now: datetime) -> Optional[datetime]
     if len(tokens) < 2:
         return None
 
+    # Common Russian shorthand:
+    # "через полчаса" == "через 30 минут"
+    if first == "через" and len(tokens) == 2 and tokens[1] == "полчаса":
+        dt = now + timedelta(minutes=30)
+        return dt.replace(second=0, microsecond=0)
+
     if len(tokens) >= 3:
         try:
             amount = int(tokens[1])
