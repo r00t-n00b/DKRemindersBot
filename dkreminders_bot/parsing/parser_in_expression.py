@@ -29,6 +29,30 @@ def _parse_in_expression(tokens: List[str], now: datetime) -> Optional[datetime]
         dt = now + timedelta(minutes=30)
         return dt.replace(second=0, microsecond=0)
 
+    # Compound Russian duration:
+    # "через 11 часов 20 минут"
+    # "через 11 часов и 20 минут"
+    if first == "через":
+        duration_tokens = tokens[1:]
+        if "и" in duration_tokens:
+            duration_tokens = [token for token in duration_tokens if token != "и"]
+
+        if len(duration_tokens) == 4:
+            hours_raw, hours_unit, minutes_raw, minutes_unit = duration_tokens
+
+            ru_hours = {"час", "часа", "часов", "ч"}
+            ru_minutes = {"минуту", "минуты", "минут", "мин", "м"}
+
+            try:
+                hours = int(hours_raw)
+                minutes = int(minutes_raw)
+            except ValueError:
+                pass
+            else:
+                if hours_unit in ru_hours and minutes_unit in ru_minutes:
+                    dt = now + timedelta(hours=hours, minutes=minutes)
+                    return dt.replace(second=0, microsecond=0)
+
     if len(tokens) >= 3:
         try:
             amount = int(tokens[1])

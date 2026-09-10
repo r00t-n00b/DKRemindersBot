@@ -87,6 +87,17 @@ def _split_expr_and_text(s: str) -> Tuple[str, str]:
     if m:
         return m.group(1).strip(), m.group(2).strip()
 
+    # Compound Russian relative duration without dash:
+    # "через 11 часов и 20 минут проверить рейс"
+    m = re.match(
+        r"^\s*(через\s+\d+\s+(?:час|часа|часов|ч)\s+"
+        r"(?:и\s+)?\d+\s+(?:минуту|минуты|минут|мин|м))\s+(.+)\s*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+
     # 5) in/через N units, плюс русские формы с подразумеваемой единицей:
     # "через час", "через неделю", "через день", "через минуту"
     m = re.match(

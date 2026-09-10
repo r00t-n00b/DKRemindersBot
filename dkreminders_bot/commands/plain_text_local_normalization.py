@@ -91,6 +91,55 @@ def normalize_plain_text_reminder_locally(
         r")"
     )
 
+    # Compound Russian duration:
+    # - "через 11 часов и 20 минут зачекинить всех на рейс"
+    # - "через 11 часов 20 минут зачекинить всех на рейс"
+    #
+    # This must run before the single-unit relative matcher below,
+    # otherwise it would consume only "через 11 часов".
+    m = re.match(
+        r"^\s*через\s+"
+        r"(?P<hours>\d+)\s+(?P<hours_unit>час|часа|часов|ч)\s+"
+        r"(?:и\s+)?"
+        r"(?P<minutes>\d+)\s+(?P<minutes_unit>минуту|минуты|минут|мин|м)\s+"
+        r"(?P<text>.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        expr = (
+            f"через {m.group('hours')} {m.group('hours_unit')} "
+            f"{m.group('minutes')} {m.group('minutes_unit')}"
+        )
+        return _validated(
+            expr,
+            m.group("text"),
+            parse_date_time_smart=parse_date_time_smart,
+            get_now=get_now,
+        )
+
+    # Short duration notation after "через":
+    # "через 11.20 ..." / "через 11:20 ..." means
+    # 11 hours and 20 minutes, not clock time 11:20.
+    m = re.match(
+        r"^\s*через\s+"
+        r"(?P<hours>\d{1,3})[.:](?P<minutes>\d{2})\s+"
+        r"(?P<text>.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        hours = int(m.group("hours"))
+        minutes = int(m.group("minutes"))
+
+        if 0 <= minutes < 60:
+            return _validated(
+                f"через {hours} часов {minutes} минут",
+                m.group("text"),
+                parse_date_time_smart=parse_date_time_smart,
+                get_now=get_now,
+            )
+
     m = re.match(
         rf"^\s*(?P<expr>{relative_expr_without_minutes})\s+(?P<text>.+)$",
         candidate,

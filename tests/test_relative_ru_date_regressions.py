@@ -76,3 +76,39 @@ def test_parse_in_half_hour_ru_without_dash(main_module):
 
     assert remind_at == datetime(2026, 9, 5, 21, 45, tzinfo=TZ)
     assert text == "заказать соль"
+
+
+def test_parse_compound_hours_minutes_ru(main_module):
+    now = datetime(2026, 9, 11, 0, 53, tzinfo=TZ)
+
+    remind_at, text = main_module.parse_date_time_smart(
+        "через 11 часов и 20 минут - зачекинить всех на рейс",
+        now,
+    )
+
+    assert remind_at == datetime(2026, 9, 11, 12, 13, tzinfo=TZ)
+    assert text == "зачекинить всех на рейс"
+
+
+def test_parse_compound_hours_minutes_ru_without_conjunction(main_module):
+    now = datetime(2026, 9, 11, 0, 53, tzinfo=TZ)
+
+    remind_at, text = main_module.parse_date_time_smart(
+        "через 11 часов 20 минут - зачекинить всех на рейс",
+        now,
+    )
+
+    assert remind_at == datetime(2026, 9, 11, 12, 13, tzinfo=TZ)
+    assert text == "зачекинить всех на рейс"
+
+
+def test_parse_compound_hours_minutes_ru_without_dash(main_module):
+    now = datetime(2026, 9, 11, 0, 53, tzinfo=TZ)
+
+    remind_at, text = main_module.parse_date_time_smart(
+        "через 11 часов и 20 минут зачекинить всех на рейс",
+        now,
+    )
+
+    assert remind_at == datetime(2026, 9, 11, 12, 13, tzinfo=TZ)
+    assert text == "зачекинить всех на рейс"
