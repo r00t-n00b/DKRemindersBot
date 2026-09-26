@@ -3,7 +3,7 @@
 import re
 from typing import List, Optional, Tuple
 
-from dkreminders_bot.parsing.parser_lexicon import MONTH_EN
+from dkreminders_bot.parsing.parser_lexicon import MONTH_EN, WEEKDAY_EN, WEEKDAY_RU
 
 
 def extract_after_command(text: str) -> str:
@@ -96,6 +96,8 @@ def first_token_looks_like_reminder_start(first_token: str) -> bool:
         or re.match(r"^\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?$", token)
         or token_compact in SMART_REMINDER_PREFIXES
         or token_lower in MONTH_REMINDER_PREFIXES
+        or token_lower in WEEKDAY_EN
+        or token_lower in WEEKDAY_RU
     )
 
 
