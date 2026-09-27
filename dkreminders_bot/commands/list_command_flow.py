@@ -178,9 +178,18 @@ async def handle_list_command_flow(update, context, deps) -> None:
         )
         return
 
+    # Telegram messages are limited to 4096 characters. Keep /list usable
+    # even for chats with a large reminder backlog. The delete keyboard is
+    # positional, so slice rows before building both the text and list_ids.
+    list_page_size = 20
+    visible_rows = rows[:list_page_size]
+
     header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"
+    if len(rows) > list_page_size:
+        header += f"\nПоказаны первые {list_page_size} из {len(rows)}."
+
     reply, ids, keyboard = build_active_reminders_list_response(
-        rows,
+        visible_rows,
         header=header,
         now_local=get_now(),
         list_delete_keyboard_builder=build_list_delete_keyboard,

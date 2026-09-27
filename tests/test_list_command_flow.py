@@ -288,3 +288,87 @@ def test_list_command_flow_contains_expected_routes():
     assert "get_user_alias_chat_id_for_user(" in flow_source
     assert "get_chat_id_by_alias_for_user(" in flow_source
     assert "build_active_reminders_list_response(" in flow_source
+
+
+def test_list_large_backlog_limits_visible_rows_and_delete_ids():
+    rows = [
+        (
+            idx,
+            f"reminder {idx}",
+            f"2026-10-{((idx - 1) % 28) + 1:02d}T10:00:00+02:00",
+            None,
+            None,
+            None,
+            None,
+        )
+        for idx in range(1, 46)
+    ]
+    fake_sqlite = FakeSqlite3(rows)
+    seen = {}
+
+    def build_response(rows, header, now_local, list_delete_keyboard_builder):
+        rows = list(rows)
+        seen["rows"] = rows
+        seen["header"] = header
+        ids = [row[0] for row in rows]
+        return "page", ids, f"keyboard:{len(ids)}"
+
+    deps = make_deps(
+        sqlite3=fake_sqlite,
+        build_active_reminders_list_response=build_response,
+    )
+    update, context, message = make_update_and_context()
+
+    run_flow(deps, update, context)
+
+    assert len(seen["rows"]) == 20
+    assert [row[0] for row in seen["rows"]] == list(range(1, 21))
+    assert seen["header"] == (
+        "Активные напоминания:\n"
+        "Показаны первые 20 из 45."
+    )
+    assert context.user_data["list_ids"] == list(range(1, 21))
+    assert context.user_data["list_chat_id"] == 100
+    assert message.replies == [("page", "keyboard:20")]
+
+
+def test_list_large_backlog_limits_visible_rows_and_delete_ids():
+    rows = [
+        (
+            idx,
+            f"reminder {idx}",
+            f"2026-10-{((idx - 1) % 28) + 1:02d}T10:00:00+02:00",
+            None,
+            None,
+            None,
+            None,
+        )
+        for idx in range(1, 46)
+    ]
+    fake_sqlite = FakeSqlite3(rows)
+    seen = {}
+
+    def build_response(rows, header, now_local, list_delete_keyboard_builder):
+        rows = list(rows)
+        seen["rows"] = rows
+        seen["header"] = header
+        ids = [row[0] for row in rows]
+        return "page", ids, f"keyboard:{len(ids)}"
+
+    deps = make_deps(
+        sqlite3=fake_sqlite,
+        build_active_reminders_list_response=build_response,
+    )
+    update, context, message = make_update_and_context()
+
+    run_flow(deps, update, context)
+
+    assert len(seen["rows"]) == 20
+    assert [row[0] for row in seen["rows"]] == list(range(1, 21))
+    assert seen["header"] == (
+        "Активные напоминания:\n"
+        "Показаны первые 20 из 45."
+    )
+    assert context.user_data["list_ids"] == list(range(1, 21))
+    assert context.user_data["list_chat_id"] == 100
+    assert message.replies == [("page", "keyboard:20")]
