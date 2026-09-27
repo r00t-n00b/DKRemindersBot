@@ -58,10 +58,20 @@ def _sync_keyboard_builder_classes_impl(*, deps) -> None:
     keyboard_builders.InlineKeyboardMarkup = InlineKeyboardMarkup
 
 
-def build_list_delete_keyboard_impl(reminder_id: int, *, deps):
+def build_list_delete_keyboard_impl(
+    reminder_id: int,
+    *,
+    page: int = 0,
+    total_pages: int = 1,
+    deps,
+):
     _apply_deps(deps)
     _sync_keyboard_builder_classes_impl(deps=deps)
-    return keyboard_builders.build_list_delete_keyboard(reminder_id)
+    return keyboard_builders.build_list_delete_keyboard(
+        reminder_id,
+        page=page,
+        total_pages=total_pages,
+    )
 
 
 def build_recurring_delete_choice_keyboard_impl(reminder_id: int, template_id: int, *, deps):

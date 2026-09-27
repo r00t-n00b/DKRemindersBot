@@ -32,8 +32,14 @@ class FakeKeyboardBuilders:
     InlineKeyboardButton = None
     InlineKeyboardMarkup = None
 
-    def build_list_delete_keyboard(self, reminder_id):
-        return ("list_delete", reminder_id)
+    def build_list_delete_keyboard(
+        self,
+        reminder_id,
+        *,
+        page=0,
+        total_pages=1,
+    ):
+        return ("list_delete", reminder_id, page, total_pages)
 
     def build_recurring_delete_choice_keyboard(self, reminder_id, template_id):
         return ("recurring_delete_choice", reminder_id, template_id)
@@ -128,7 +134,17 @@ def test_keyboard_builder_proxy_syncs_classes():
 def test_keyboard_builder_proxy_simple_builders_delegate():
     deps = _deps()
 
-    assert keyboard_builder_proxy.build_list_delete_keyboard_impl(1, deps=deps) == ("list_delete", 1)
+    assert keyboard_builder_proxy.build_list_delete_keyboard_impl(
+        1,
+        deps=deps,
+    ) == ("list_delete", 1, 0, 1)
+
+    assert keyboard_builder_proxy.build_list_delete_keyboard_impl(
+        20,
+        page=1,
+        total_pages=3,
+        deps=deps,
+    ) == ("list_delete", 20, 1, 3)
     assert keyboard_builder_proxy.build_recurring_delete_choice_keyboard_impl(1, 2, deps=deps) == ("recurring_delete_choice", 1, 2)
     assert keyboard_builder_proxy.build_created_reminder_actions_keyboard_impl(1, True, deps=deps) == ("created_actions", 1, True)
     assert keyboard_builder_proxy.build_created_reschedule_keyboard_impl(1, deps=deps) == ("created_reschedule", 1)

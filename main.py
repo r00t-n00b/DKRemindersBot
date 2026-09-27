@@ -752,8 +752,8 @@ def build_created_reminder_actions_keyboard_for_reminder(reminder_id: int) -> Op
 def _sync_keyboard_builder_classes() -> None:
     return _sync_keyboard_builder_classes_impl(deps=_build_keyboard_builder_proxy_deps())
 
-def build_list_delete_keyboard(reminder_id: int):
-    return build_list_delete_keyboard_impl(reminder_id, deps=_build_keyboard_builder_proxy_deps())
+def build_list_delete_keyboard(reminder_id: int, *, page: int = 0, total_pages: int = 1):
+    return build_list_delete_keyboard_impl(reminder_id, page=page, total_pages=total_pages, deps=_build_keyboard_builder_proxy_deps())
 
 def build_recurring_delete_choice_keyboard(reminder_id: int, template_id: int):
     return build_recurring_delete_choice_keyboard_impl(reminder_id, template_id, deps=_build_keyboard_builder_proxy_deps())

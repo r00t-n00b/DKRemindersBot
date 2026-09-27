@@ -173,3 +173,26 @@ def test_page_callback_updates_visible_delete_ids():
     assert context.user_data["list_page"] == 1
     assert context.user_data["list_ids"] == list(range(21, 41))
     assert "Страница 2/3 · всего 52." in query.edits[0][0]
+
+
+def test_main_list_keyboard_proxy_preserves_pagination(monkeypatch):
+    import main
+    import dkreminders_bot.ui.keyboards as keyboards
+
+    monkeypatch.setattr(keyboards, "InlineKeyboardButton", CapturedButton)
+    monkeypatch.setattr(keyboards, "InlineKeyboardMarkup", CapturedMarkup)
+
+    # main's proxy synchronizes classes from main, so patch those too.
+    monkeypatch.setattr(main, "InlineKeyboardButton", CapturedButton)
+    monkeypatch.setattr(main, "InlineKeyboardMarkup", CapturedMarkup)
+
+    kb = main.build_list_delete_keyboard(
+        20,
+        page=0,
+        total_pages=3,
+    )
+    data = _callback_data(kb)
+
+    assert "list_page:1" in data
+    assert "noop" in data
+    assert "list_page:0" not in data
