@@ -55,7 +55,12 @@ from dkreminders_bot.callbacks.callback_contracts import (
 )
 
 
-def build_list_delete_keyboard(count: int) -> InlineKeyboardMarkup:
+def build_list_delete_keyboard(
+    count: int,
+    *,
+    page: int = 0,
+    total_pages: int = 1,
+) -> InlineKeyboardMarkup:
     buttons: List[List[InlineKeyboardButton]] = []
     row: List[InlineKeyboardButton] = []
 
@@ -72,6 +77,34 @@ def build_list_delete_keyboard(count: int) -> InlineKeyboardMarkup:
 
     if row:
         buttons.append(row)
+
+    if total_pages > 1:
+        nav: List[InlineKeyboardButton] = []
+
+        if page > 0:
+            nav.append(
+                InlineKeyboardButton(
+                    text="◀️",
+                    callback_data=f"list_page:{page - 1}",
+                )
+            )
+
+        nav.append(
+            InlineKeyboardButton(
+                text=f"{page + 1}/{total_pages}",
+                callback_data="noop",
+            )
+        )
+
+        if page < total_pages - 1:
+            nav.append(
+                InlineKeyboardButton(
+                    text="▶️",
+                    callback_data=f"list_page:{page + 1}",
+                )
+            )
+
+        buttons.append(nav)
 
     return InlineKeyboardMarkup(buttons)
 

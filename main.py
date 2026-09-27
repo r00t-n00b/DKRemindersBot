@@ -260,6 +260,7 @@ from dkreminders_bot.callbacks.created_action_callbacks import (
 )
 from dkreminders_bot.callbacks.created_snooze_deps import build_created_snooze_callback_deps
 from dkreminders_bot.callbacks.delete_undo_router import handle_delete_callback, handle_delete_choose_callback, handle_undo_callback
+from dkreminders_bot.callbacks.list_pagination import handle_list_page_callback
 from dkreminders_bot.callbacks.delete_undo_deps import build_delete_undo_callback_deps
 from dkreminders_bot.callbacks.created_delete_router import handle_created_delete_callback
 from dkreminders_bot.workers.reminders_workers import _safe_get_chat_type as _worker_safe_get_chat_type, run_reminders_nudge_worker, run_reminders_worker
@@ -1119,6 +1120,17 @@ async def delete_callback(update: Update, context: CTX) -> None:
     await handle_delete_callback(update, context, _build_delete_undo_callback_deps())
 
 
+async def list_page_callback(update: Update, context: CTX) -> None:
+    deps = SimpleNamespace(
+        DB_PATH=DB_PATH,
+        sqlite3=sqlite3,
+        get_now=get_now,
+        build_active_reminders_list_response=build_active_reminders_list_response,
+        build_list_delete_keyboard=build_list_delete_keyboard,
+    )
+    await handle_list_page_callback(update, context, deps)
+
+
 async def delete_choose_callback(update: Update, context: CTX) -> None:
     await handle_delete_choose_callback(update, context, _build_delete_undo_callback_deps())
 
@@ -1239,6 +1251,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(created_snooze_cancel_callback, pattern=r"^created_snooze_cancel:\d+$"))
     application.add_handler(CallbackQueryHandler(created_back_callback, pattern=r"^created_back:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:\d+$"))
+    application.add_handler(CallbackQueryHandler(list_page_callback, pattern=r"^list_page:\d+$"))
     application.add_handler(CallbackQueryHandler(delete_choose_callback, pattern=DELETE_CHOICE_PATTERN))
     application.add_handler(CallbackQueryHandler(undo_callback, pattern=UNDO_PATTERN))
     application.add_handler(

@@ -147,6 +147,7 @@ UNDO_PATTERN = r"^undo:"
 DONE_PATTERN = r"^done:"
 
 DELETE_CHOICE_PATTERN = r"^del_(one|series|cancel):"
+LIST_PAGE_PATTERN = r"^list_page:\\d+$"
 
 SELFREMIND_PATTERN = r"^selfremind:"
 SELFREMIND_EVENT_CUSTOM_PATTERN = r"^selfremind:event_custom:\d+$"

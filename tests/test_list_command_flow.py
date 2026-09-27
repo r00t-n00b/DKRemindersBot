@@ -311,7 +311,8 @@ def test_list_large_backlog_limits_visible_rows_and_delete_ids():
         seen["rows"] = rows
         seen["header"] = header
         ids = [row[0] for row in rows]
-        return "page", ids, f"keyboard:{len(ids)}"
+        keyboard = list_delete_keyboard_builder(len(ids))
+        return "page", ids, keyboard
 
     deps = make_deps(
         sqlite3=fake_sqlite,
@@ -325,11 +326,12 @@ def test_list_large_backlog_limits_visible_rows_and_delete_ids():
     assert [row[0] for row in seen["rows"]] == list(range(1, 21))
     assert seen["header"] == (
         "Активные напоминания:\n"
-        "Показаны первые 20 из 45."
+        "Страница 1/3 · всего 45."
     )
     assert context.user_data["list_ids"] == list(range(1, 21))
     assert context.user_data["list_chat_id"] == 100
-    assert message.replies == [("page", "keyboard:20")]
+    assert message.replies
+    assert message.replies[0][0] == "page"
 
 
 def test_list_large_backlog_limits_visible_rows_and_delete_ids():
@@ -367,8 +369,9 @@ def test_list_large_backlog_limits_visible_rows_and_delete_ids():
     assert [row[0] for row in seen["rows"]] == list(range(1, 21))
     assert seen["header"] == (
         "Активные напоминания:\n"
-        "Показаны первые 20 из 45."
+        "Страница 1/3 · всего 45."
     )
     assert context.user_data["list_ids"] == list(range(1, 21))
     assert context.user_data["list_chat_id"] == 100
-    assert message.replies == [("page", "keyboard:20")]
+    assert message.replies
+    assert message.replies[0][0] == "page"

@@ -178,24 +178,46 @@ async def handle_list_command_flow(update, context, deps) -> None:
         )
         return
 
-    # Telegram messages are limited to 4096 characters. Keep /list usable
-    # even for chats with a large reminder backlog. The delete keyboard is
-    # positional, so slice rows before building both the text and list_ids.
     list_page_size = 20
+    total_count = len(rows)
+    total_pages = max(1, (total_count + list_page_size - 1) // list_page_size)
+    page = 0
     visible_rows = rows[:list_page_size]
 
-    header = f"Активные напоминания для чата '{used_alias}':" if used_alias else "Активные напоминания:"
-    if len(rows) > list_page_size:
-        header += f"\nПоказаны первые {list_page_size} из {len(rows)}."
+    header = (
+        f"Активные напоминания для чата '{used_alias}':"
+        if used_alias
+        else "Активные напоминания:"
+    )
+    if total_pages > 1:
+        header += f"\nСтраница {page + 1}/{total_pages} · всего {total_count}."
+
+    def page_keyboard_builder(count):
+        try:
+            return build_list_delete_keyboard(
+                count,
+                page=page,
+                total_pages=total_pages,
+            )
+        except TypeError as exc:
+            # Compatibility with tests/custom builders that still expose
+            # the historical build_list_delete_keyboard(count) signature.
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return build_list_delete_keyboard(count)
 
     reply, ids, keyboard = build_active_reminders_list_response(
         visible_rows,
         header=header,
         now_local=get_now(),
-        list_delete_keyboard_builder=build_list_delete_keyboard,
+        list_delete_keyboard_builder=page_keyboard_builder,
     )
 
     context.user_data["list_ids"] = ids
+    context.user_data["list_all_ids"] = [int(row[0]) for row in rows]
+    context.user_data["list_page"] = page
+    context.user_data["list_page_size"] = list_page_size
     context.user_data["list_chat_id"] = target_chat_id
+    context.user_data["list_alias"] = used_alias
 
     await safe_reply(message, reply, reply_markup=keyboard)
