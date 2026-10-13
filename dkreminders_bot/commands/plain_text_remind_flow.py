@@ -198,6 +198,7 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
         message,
         f"/remind {normalized}",
         normalized,
+        suppress_normalized_prefix=reply_context is not None,
     )
 
     proxy_update = SimpleNamespace(

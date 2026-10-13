@@ -169,6 +169,18 @@ async def handle_single_oneoff_reminder(
     display_dt = remind_at.astimezone(display_tz) if display_tz is not None else remind_at
     when_str = f"{display_dt.strftime('%d.%m %H:%M')} {timezone_label(display_tz_name)}"
     created_actions_keyboard = build_created_reminder_actions_keyboard(reminder_id)
+
+    confirmation_reply_kwargs = {}
+    if (
+        source_message is not None
+        and target_chat_id == chat.id
+        and getattr(source_message, "message_id", None) is not None
+    ):
+        confirmation_reply_kwargs = {
+            "reply_to_message_id": int(source_message.message_id),
+            "allow_sending_without_reply": True,
+        }
+
     sent_message = None
     if used_alias:
         sent_message = await safe_reply(
@@ -188,6 +200,7 @@ async def handle_single_oneoff_reminder(
                 message,
                 format_created_reminder_text(when_str, text),
                 reply_markup=created_actions_keyboard,
+                **confirmation_reply_kwargs,
             )
 
     _register_created_message(

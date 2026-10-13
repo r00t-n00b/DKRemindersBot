@@ -546,3 +546,50 @@ async def test_forward_handler_adds_implicit_context_phrase(main_module, monkeyp
     assert seen["text"] == "напомни через полчаса об этом"
     assert seen["reply"] is forwarded
     assert "pending_forward_comment_reminder" not in context.user_data
+
+
+@pytest.mark.asyncio
+async def test_reply_context_suppresses_normalized_prefix(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через полчаса об этом")
+
+    source = SimpleNamespace(
+        text="заказать соль",
+        message_id=77,
+        chat=SimpleNamespace(id=update.effective_chat.id),
+    )
+    message.reply_to_message = source
+
+    seen = {}
+
+    async def fake_remind_command(proxy_update, proxy_context):
+        proxy_message = proxy_update.effective_message
+        seen["suppress"] = proxy_message.suppress_normalized_prefix
+        await proxy_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert seen["suppress"] is True
+    assert message.replies == [("Ок, напомню", {})]
+
+
+@pytest.mark.asyncio
+async def test_regular_plain_text_keeps_normalized_prefix(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через минуту купить соль")
+
+    seen = {}
+
+    async def fake_remind_command(proxy_update, proxy_context):
+        proxy_message = proxy_update.effective_message
+        seen["suppress"] = proxy_message.suppress_normalized_prefix
+        await proxy_message.reply_text("Ок, напомню")
+
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert seen["suppress"] is False
+    assert len(message.replies) == 1
+    assert "Я понял:" in message.replies[0][0]
+    assert "Ок, напомню" in message.replies[0][0]

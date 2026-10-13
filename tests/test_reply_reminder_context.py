@@ -438,3 +438,67 @@ def test_forwarded_video_without_caption_includes_sender():
 
     assert result is not None
     assert result.text == "видео от dacooker_"
+
+
+@pytest.mark.asyncio
+async def test_real_oneoff_confirmation_replies_to_source():
+    from datetime import datetime, timezone
+
+    from dkreminders_bot.commands.single_oneoff_reminder import (
+        handle_single_oneoff_reminder,
+    )
+
+    source = SimpleNamespace(
+        message_id=77,
+        chat=SimpleNamespace(id=456),
+    )
+    message = SimpleNamespace(
+        reply_to_message=source,
+        chat=SimpleNamespace(id=456),
+    )
+    chat = SimpleNamespace(id=456, type="private")
+    user = SimpleNamespace(id=123)
+
+    replies = []
+
+    async def fake_safe_reply(message_arg, text, **kwargs):
+        replies.append((text, kwargs))
+        return SimpleNamespace(
+            message_id=999,
+            chat=SimpleNamespace(id=456),
+        )
+
+    def fake_parse(*args, **kwargs):
+        return (
+            datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc),
+            "проверить фото",
+        )
+
+    await handle_single_oneoff_reminder(
+        raw_single="через час - проверить фото",
+        now=datetime(2026, 10, 13, 11, 0, tzinfo=timezone.utc),
+        target_chat_id=456,
+        used_alias=None,
+        chat=chat,
+        user=user,
+        message=message,
+        default_time=None,
+        private_chat_type="private",
+        parse_with_optional_default_time=fake_parse,
+        parse_date_time_smart=lambda *args, **kwargs: None,
+        normalize_plain_text_reminder_with_gemini=None,
+        normalize_gemini_reminder_command_text=lambda x: x,
+        normalize_reminder_text_fallback=lambda x: x,
+        add_reminder=lambda **kwargs: 123,
+        build_created_reminder_actions_keyboard=lambda reminder_id: "keyboard",
+        format_created_reminder_text=lambda when, text: f"{when}: {text}",
+        msg_parse_date_text_failed="failed",
+        safe_reply=fake_safe_reply,
+        logger=SimpleNamespace(info=lambda *args, **kwargs: None),
+    )
+
+    assert len(replies) == 1
+    _, kwargs = replies[0]
+    assert kwargs["reply_to_message_id"] == 77
+    assert kwargs["allow_sending_without_reply"] is True
+    assert kwargs["reply_markup"] == "keyboard"
