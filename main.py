@@ -307,6 +307,7 @@ from dkreminders_bot.utils.command_helper_utils import (
 )
 from dkreminders_bot.settings.alias_settings_commands import handle_aliases_command, handle_defaulttime_command, handle_linkchat_command, handle_linkuser_command, handle_renamealias_command, handle_unalias_command
 from dkreminders_bot.commands.plain_text_remind_flow import handle_plain_text_remind_command
+from dkreminders_bot.commands.reply_reminder_context import refers_to_reply_context
 from dkreminders_bot.integrations.voice_remind_flow import handle_voice_remind_command
 from dkreminders_bot.integrations.voice_transcription import transcribe_voice_message_impl
 from dkreminders_bot.workers.reminder_text_normalization import normalize_reminder_text_fallback_impl
@@ -983,6 +984,9 @@ async def forwarded_reminder_context_message(update: Update, context: CTX) -> No
     source_context = extract_message_reminder_context(message)
     if source_context is None:
         return
+
+    if not refers_to_reply_context(raw_text):
+        raw_text = f"{raw_text} об этом"
 
     proxy_command_message = NormalizedReminderMessageProxy(
         command_message,

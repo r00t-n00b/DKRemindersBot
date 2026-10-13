@@ -52,6 +52,17 @@ def extract_message_reminder_context(source) -> Optional[ReplyReminderContext]:
 
     source_message_id, source_chat_id = _source_ids(source)
 
+    forward_origin = getattr(source, "forward_origin", None)
+    sender_name = ""
+    if forward_origin is not None:
+        sender_name = _clean(getattr(forward_origin, "sender_user_name", None))
+        if not sender_name:
+            sender = getattr(forward_origin, "sender_user", None)
+            sender_name = _clean(
+                getattr(sender, "full_name", None)
+                or getattr(sender, "username", None)
+            )
+
     text = _clean(getattr(source, "text", None))
     if text:
         return ReplyReminderContext(
@@ -85,17 +96,8 @@ def extract_message_reminder_context(source) -> Optional[ReplyReminderContext]:
     else:
         description = "сообщение"
 
-    forward_origin = getattr(source, "forward_origin", None)
-    if forward_origin is not None:
-        sender_name = _clean(getattr(forward_origin, "sender_user_name", None))
-        if not sender_name:
-            sender = getattr(forward_origin, "sender_user", None)
-            sender_name = _clean(
-                getattr(sender, "full_name", None)
-                or getattr(sender, "username", None)
-            )
-        if sender_name:
-            description = f"{description} от {sender_name}"
+    if sender_name:
+        description = f"{description} от {sender_name}"
 
     return ReplyReminderContext(
         text=description,

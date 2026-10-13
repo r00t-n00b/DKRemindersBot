@@ -449,3 +449,100 @@ async def test_reply_context_document_caption_is_used_by_real_plain_text_flow(ma
         "/remind через полчаса - "
         "PMM PLG July 2026.pdf: Tab 1 их, Tab 2 мой"
     )
+
+
+@pytest.mark.asyncio
+async def test_incomplete_plain_text_reminder_waits_for_forward(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через полчаса")
+
+    monkeypatch.setattr(
+        main_module,
+        "_normalize_plain_text_reminder_locally",
+        lambda raw: "через полчаса - ",
+    )
+
+    called = False
+
+    async def fake_remind_command(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert called is False
+    assert message.replies == []
+    assert context.user_data["pending_forward_comment_reminder"]["raw_text"] == "напомни через полчаса"
+
+
+@pytest.mark.asyncio
+async def test_complete_plain_text_reminder_does_not_wait_for_forward(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через полчаса купить соль")
+
+    seen = {}
+
+    async def fake_remind_command(proxy_update, proxy_context):
+        seen["text"] = proxy_update.effective_message.text
+
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert seen["text"] == "/remind через полчаса - купить соль"
+    assert "pending_forward_comment_reminder" not in context.user_data
+import pytest
+from types import SimpleNamespace
+
+
+@pytest.mark.asyncio
+async def test_forward_handler_adds_implicit_context_phrase(main_module, monkeypatch):
+    command_message = SimpleNamespace(
+        text="напомни через полчаса",
+        reply_to_message=None,
+    )
+    forwarded = SimpleNamespace(
+        message_id=904,
+        chat=SimpleNamespace(id=123),
+        text="запости стол и стул в меркадо",
+        caption=None,
+        document=None,
+        photo=None,
+        video=None,
+        voice=None,
+        audio=None,
+        animation=None,
+        sticker=None,
+        forward_origin=SimpleNamespace(
+            sender_user_name="Dmitriy",
+            sender_user=None,
+        ),
+    )
+
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=123, type=main_module.Chat.PRIVATE),
+        effective_message=forwarded,
+        effective_user=SimpleNamespace(id=456),
+    )
+    context = SimpleNamespace(
+        user_data={
+            "pending_forward_comment_reminder": {
+                "raw_text": "напомни через полчаса",
+                "command_message": command_message,
+            }
+        }
+    )
+
+    seen = {}
+
+    async def fake_plain_text(proxy_update, proxy_context):
+        seen["text"] = proxy_update.effective_message.text
+        seen["reply"] = proxy_update.effective_message.reply_to_message
+
+    monkeypatch.setattr(main_module, "plain_text_remind_command", fake_plain_text)
+
+    await main_module.forwarded_reminder_context_message(update, context)
+
+    assert seen["text"] == "напомни через полчаса об этом"
+    assert seen["reply"] is forwarded
+    assert "pending_forward_comment_reminder" not in context.user_data

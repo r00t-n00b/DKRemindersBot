@@ -149,12 +149,28 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
             source_context_text,
         )
 
+    if (
+        reply_context is None
+        and not getattr(message, "reply_to_message", None)
+        and normalized
+        and normalized != "NO_REMINDER"
+        and normalized.rstrip().endswith("-")
+    ):
+        pending_when = normalized.rstrip()[:-1].strip()
+        if pending_when:
+            context.user_data["pending_forward_comment_reminder"] = {
+                "raw_text": raw_text,
+                "command_message": message,
+            }
+            return
+
     if normalized == "NO_REMINDER" or not normalized:
         await safe_reply(
             message,
             MSG_NOT_UNDERSTOOD_PLAIN_TEXT
         )
         return
+
 
     if normalized.startswith("/remind "):
         normalized = normalized[len("/remind "):].strip()
