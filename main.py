@@ -972,6 +972,13 @@ async def forwarded_reminder_context_message(update: Update, context: CTX) -> No
     if not pending:
         return
 
+    expires_at = pending.get("expires_at")
+    if expires_at is not None:
+        import time
+
+        if time.monotonic() > expires_at:
+            return
+
     command_message = pending.get("command_message")
     raw_text = (pending.get("raw_text") or "").strip()
     if command_message is None or not raw_text:

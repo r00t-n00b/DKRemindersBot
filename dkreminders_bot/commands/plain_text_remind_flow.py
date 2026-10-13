@@ -6,6 +6,7 @@ from dkreminders_bot.commands.reply_reminder_context import (
     extract_message_reminder_context,
     extract_reply_reminder_context,
     refers_to_reply_context,
+    looks_like_forward_comment_without_text,
     replace_reply_context_reference,
     summarize_reply_context,
 )
@@ -66,12 +67,29 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
         return
 
     reply_context = None
+
+    if (
+        not getattr(message, "reply_to_message", None)
+        and looks_like_forward_comment_without_text(raw_text)
+    ):
+        import time
+
+        context.user_data["pending_forward_comment_reminder"] = {
+            "raw_text": raw_text,
+            "command_message": message,
+            "expires_at": time.monotonic() + 30.0,
+        }
+        return
+
     if refers_to_reply_context(raw_text):
         reply_context = extract_reply_reminder_context(message)
         if reply_context is None:
+            import time
+
             context.user_data["pending_forward_comment_reminder"] = {
                 "raw_text": raw_text,
                 "command_message": message,
+                "expires_at": time.monotonic() + 30.0,
             }
             return
 
@@ -158,9 +176,12 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
     ):
         pending_when = normalized.rstrip()[:-1].strip()
         if pending_when:
+            import time
+
             context.user_data["pending_forward_comment_reminder"] = {
                 "raw_text": raw_text,
                 "command_message": message,
+                "expires_at": time.monotonic() + 30.0,
             }
             return
 

@@ -593,3 +593,124 @@ async def test_regular_plain_text_keeps_normalized_prefix(main_module, monkeypat
     assert len(message.replies) == 1
     assert "Я понял:" in message.replies[0][0]
     assert "Ок, напомню" in message.replies[0][0]
+
+
+@pytest.mark.asyncio
+async def test_forward_comment_fast_path_skips_gemini(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через минуту")
+
+    async def fail_gemini(*args, **kwargs):
+        raise AssertionError("Gemini must not be called for forward-comment fast path")
+
+    async def fail_remind(*args, **kwargs):
+        raise AssertionError("Reminder must wait for the forwarded source")
+
+    monkeypatch.setattr(
+        main_module,
+        "normalize_plain_text_reminder_with_gemini",
+        fail_gemini,
+    )
+    monkeypatch.setattr(main_module, "remind_command", fail_remind)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    pending = context.user_data["pending_forward_comment_reminder"]
+
+    assert pending["raw_text"] == "напомни через минуту"
+    assert pending["command_message"] is message
+    assert pending["expires_at"] > 0
+    assert message.replies == []
+
+
+@pytest.mark.asyncio
+async def test_forward_comment_with_text_does_not_enter_fast_path(
+    main_module,
+    monkeypatch,
+):
+    update, context, message = _mk_update(
+        "напомни через минуту купить соль"
+    )
+
+    seen = {}
+
+    async def fail_gemini(*args, **kwargs):
+        raise AssertionError(
+            "Normal simple relative reminder should use local normalization"
+        )
+
+    async def fake_remind(proxy_update, proxy_context):
+        seen["text"] = proxy_update.effective_message.text
+
+    monkeypatch.setattr(
+        main_module,
+        "normalize_plain_text_reminder_with_gemini",
+        fail_gemini,
+    )
+    monkeypatch.setattr(main_module, "remind_command", fake_remind)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert seen["text"] == "/remind in 1 minute - купить соль"
+    assert "pending_forward_comment_reminder" not in context.user_data
+
+
+@pytest.mark.asyncio
+async def test_expired_forward_comment_does_not_bind_forward(
+    main_module,
+    monkeypatch,
+):
+    import time
+
+    command_message = SimpleNamespace(
+        text="напомни через минуту",
+        reply_to_message=None,
+    )
+    forwarded = SimpleNamespace(
+        message_id=990,
+        chat=SimpleNamespace(id=123),
+        text="это уже другой случайный форвард",
+        caption=None,
+        document=None,
+        photo=None,
+        video=None,
+        voice=None,
+        audio=None,
+        animation=None,
+        sticker=None,
+        forward_origin=None,
+    )
+
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(
+            id=123,
+            type=main_module.Chat.PRIVATE,
+        ),
+        effective_message=forwarded,
+        effective_user=SimpleNamespace(id=456),
+    )
+    context = SimpleNamespace(
+        user_data={
+            "pending_forward_comment_reminder": {
+                "raw_text": "напомни через минуту",
+                "command_message": command_message,
+                "expires_at": time.monotonic() - 1,
+            }
+        }
+    )
+
+    called = False
+
+    async def fake_plain_text(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(
+        main_module,
+        "plain_text_remind_command",
+        fake_plain_text,
+    )
+
+    await main_module.forwarded_reminder_context_message(update, context)
+
+    assert called is False
+    assert "pending_forward_comment_reminder" not in context.user_data

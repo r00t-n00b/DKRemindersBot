@@ -617,3 +617,39 @@ def test_forward_origin_still_takes_priority_over_legacy_fields():
 
     assert result is not None
     assert result.text == "фото от Modern sender"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "напомни через минуту",
+        "напомни через полчаса",
+        "напомни через 2 часа",
+        "напомни через 15 минут",
+        "напомни мне через час",
+        "напомнить через 5 минут",
+    ],
+)
+def test_detects_fast_forward_comment_without_text(text):
+    from dkreminders_bot.commands.reply_reminder_context import (
+        looks_like_forward_comment_without_text,
+    )
+
+    assert looks_like_forward_comment_without_text(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "напомни через минуту купить соль",
+        "напомни через полчаса позвонить",
+        "просто через минуту",
+        "напомни завтра",
+    ],
+)
+def test_fast_forward_comment_rejects_commands_with_text_or_ambiguity(text):
+    from dkreminders_bot.commands.reply_reminder_context import (
+        looks_like_forward_comment_without_text,
+    )
+
+    assert not looks_like_forward_comment_without_text(text)

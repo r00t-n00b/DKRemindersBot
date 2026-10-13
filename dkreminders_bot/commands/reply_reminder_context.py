@@ -30,6 +30,26 @@ def refers_to_reply_context(text: str) -> bool:
     return bool(_CONTEXT_REFERENCE_RE.search(str(text or "")))
 
 
+def looks_like_forward_comment_without_text(text: str) -> bool:
+    """Detect deterministic reminder timing with intentionally missing text."""
+    value = _clean(text)
+
+    return bool(
+        re.fullmatch(
+            r"(?:напомни(?:\s+мне)?|напомнить(?:\s+мне)?)\s+"
+            r"через\s+"
+            r"(?:"
+            r"полчаса"
+            r"|(?:(?:\d{1,3}|одну|один|два|две|три|четыре|пять)\s+)?"
+            r"(?:минуту|минуты|минут|час|часа|часов)"
+            r")"
+            r"[.!?]?",
+            value,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _clean(value) -> str:
     return " ".join(str(value or "").split()).strip()
 
