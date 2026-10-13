@@ -502,3 +502,118 @@ async def test_real_oneoff_confirmation_replies_to_source():
     assert kwargs["reply_to_message_id"] == 77
     assert kwargs["allow_sending_without_reply"] is True
     assert kwargs["reply_markup"] == "keyboard"
+
+
+def _legacy_forwarded_photo(**forward_fields):
+    fields = dict(
+        message_id=950,
+        chat=SimpleNamespace(id=123),
+        text=None,
+        caption=None,
+        document=None,
+        photo=[object()],
+        video=None,
+        voice=None,
+        audio=None,
+        animation=None,
+        sticker=None,
+    )
+    fields.update(forward_fields)
+    return SimpleNamespace(**fields)
+
+
+def test_ptb20_7_forwarded_photo_uses_forward_from_user():
+    from dkreminders_bot.commands.reply_reminder_context import (
+        extract_message_reminder_context,
+    )
+
+    source = _legacy_forwarded_photo(
+        forward_from=SimpleNamespace(
+            full_name="Dmitriy Kornatovsky",
+            username="r00t_n00b",
+        ),
+    )
+
+    result = extract_message_reminder_context(source)
+
+    assert result is not None
+    assert result.text == "фото от Dmitriy Kornatovsky"
+
+
+def test_ptb20_7_forwarded_photo_uses_hidden_sender_name():
+    from dkreminders_bot.commands.reply_reminder_context import (
+        extract_message_reminder_context,
+    )
+
+    source = _legacy_forwarded_photo(
+        forward_from=None,
+        forward_sender_name="Natalia Zhukova",
+    )
+
+    result = extract_message_reminder_context(source)
+
+    assert result is not None
+    assert result.text == "фото от Natalia Zhukova"
+
+
+def test_ptb20_7_forwarded_photo_uses_forward_from_chat():
+    from dkreminders_bot.commands.reply_reminder_context import (
+        extract_message_reminder_context,
+    )
+
+    source = _legacy_forwarded_photo(
+        forward_from=None,
+        forward_sender_name=None,
+        forward_from_chat=SimpleNamespace(
+            title="Test Channel",
+            username="test_channel",
+        ),
+    )
+
+    result = extract_message_reminder_context(source)
+
+    assert result is not None
+    assert result.text == "фото от Test Channel"
+
+
+def test_ptb20_7_forwarded_photo_uses_forward_signature_as_last_fallback():
+    from dkreminders_bot.commands.reply_reminder_context import (
+        extract_message_reminder_context,
+    )
+
+    source = _legacy_forwarded_photo(
+        forward_from=None,
+        forward_sender_name=None,
+        forward_from_chat=None,
+        forward_signature="Dmitriy",
+    )
+
+    result = extract_message_reminder_context(source)
+
+    assert result is not None
+    assert result.text == "фото от Dmitriy"
+
+
+def test_forward_origin_still_takes_priority_over_legacy_fields():
+    from dkreminders_bot.commands.reply_reminder_context import (
+        extract_message_reminder_context,
+    )
+
+    source = _legacy_forwarded_photo(
+        forward_origin=SimpleNamespace(
+            sender_user_name="Modern sender",
+            sender_user=None,
+            sender_chat=None,
+            chat=None,
+            author_signature=None,
+        ),
+        forward_from=SimpleNamespace(
+            full_name="Legacy sender",
+            username="legacy",
+        ),
+    )
+
+    result = extract_message_reminder_context(source)
+
+    assert result is not None
+    assert result.text == "фото от Modern sender"

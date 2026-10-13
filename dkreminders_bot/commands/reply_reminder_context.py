@@ -52,16 +52,65 @@ def extract_message_reminder_context(source) -> Optional[ReplyReminderContext]:
 
     source_message_id, source_chat_id = _source_ids(source)
 
-    forward_origin = getattr(source, "forward_origin", None)
+    # PTB 20.7 (our current production runtime) exposes forwarded-message
+    # metadata through the legacy Message fields. Newer PTB versions expose
+    # MessageOrigin via forward_origin. Support both shapes so this extractor
+    # keeps working before and after a future PTB upgrade.
     sender_name = ""
+
+    forward_origin = getattr(source, "forward_origin", None)
     if forward_origin is not None:
         sender_name = _clean(getattr(forward_origin, "sender_user_name", None))
+
         if not sender_name:
             sender = getattr(forward_origin, "sender_user", None)
             sender_name = _clean(
                 getattr(sender, "full_name", None)
                 or getattr(sender, "username", None)
             )
+
+        if not sender_name:
+            sender_chat = getattr(forward_origin, "sender_chat", None)
+            sender_name = _clean(
+                getattr(sender_chat, "title", None)
+                or getattr(sender_chat, "username", None)
+            )
+
+        if not sender_name:
+            origin_chat = getattr(forward_origin, "chat", None)
+            sender_name = _clean(
+                getattr(origin_chat, "title", None)
+                or getattr(origin_chat, "username", None)
+            )
+
+        if not sender_name:
+            sender_name = _clean(
+                getattr(forward_origin, "author_signature", None)
+            )
+
+    if not sender_name:
+        forward_from = getattr(source, "forward_from", None)
+        sender_name = _clean(
+            getattr(forward_from, "full_name", None)
+            or getattr(forward_from, "username", None)
+        )
+
+    if not sender_name:
+        sender_name = _clean(
+            getattr(source, "forward_sender_name", None)
+        )
+
+    if not sender_name:
+        forward_from_chat = getattr(source, "forward_from_chat", None)
+        sender_name = _clean(
+            getattr(forward_from_chat, "title", None)
+            or getattr(forward_from_chat, "username", None)
+        )
+
+    if not sender_name:
+        sender_name = _clean(
+            getattr(source, "forward_signature", None)
+        )
 
     text = _clean(getattr(source, "text", None))
     if text:
