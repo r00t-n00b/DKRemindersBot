@@ -122,12 +122,37 @@ async def handle_single_oneoff_reminder(
             await safe_reply(message, msg_parse_date_text_failed)
             return
 
-    reminder_id = add_reminder(
+    add_kwargs = dict(
         chat_id=target_chat_id,
         text=text,
         remind_at=remind_at,
         created_by=user.id,
     )
+
+    add_kwargs = {
+        "chat_id": target_chat_id,
+        "text": text,
+        "remind_at": remind_at,
+        "created_by": user.id,
+    }
+
+    source_message = getattr(message, "reply_to_message", None)
+    if source_message is not None:
+        source_message_id = getattr(source_message, "message_id", None)
+        source_chat = getattr(source_message, "chat", None)
+        source_chat_id = getattr(source_chat, "id", None)
+        if source_chat_id is None:
+            source_chat_id = getattr(source_message, "chat_id", None)
+
+        if (
+            source_message_id is not None
+            and source_chat_id is not None
+            and int(source_chat_id) == int(target_chat_id)
+        ):
+            add_kwargs["source_chat_id"] = int(source_chat_id)
+            add_kwargs["source_message_id"] = int(source_message_id)
+
+    reminder_id = add_reminder(**add_kwargs)
 
     logger.info(
         "Создан reminder id=%s chat_id=%s at=%s text=%s (from chat %s, user %s)",

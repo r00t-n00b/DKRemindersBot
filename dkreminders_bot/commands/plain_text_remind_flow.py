@@ -2,6 +2,12 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from dkreminders_bot.commands.reply_reminder_context import (
+    extract_reply_reminder_context,
+    refers_to_reply_context,
+    replace_reply_context_reference,
+)
+
 
 _DEP_NAMES = [
     "Chat",
@@ -56,6 +62,16 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
 
     if raw_text.startswith("/"):
         return
+
+    reply_context = None
+    if refers_to_reply_context(raw_text):
+        reply_context = extract_reply_reminder_context(message)
+        if reply_context is None:
+            await safe_reply(
+                message,
+                "Ответь этой командой на сообщение, о котором нужно напомнить.",
+            )
+            return
 
     get_user_timezone_name_raw = getattr(deps, "get_user_timezone_name_raw", None)
     build_first_timezone_prompt = getattr(deps, "build_first_timezone_prompt", None)
@@ -119,6 +135,12 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
 
     normalized = (normalized or "").strip()
     normalized = normalize_gemini_reminder_command_text(normalized)
+
+    if reply_context is not None and normalized and normalized != "NO_REMINDER":
+        normalized = replace_reply_context_reference(
+            normalized,
+            reply_context.text,
+        )
 
     if normalized == "NO_REMINDER" or not normalized:
         await safe_reply(

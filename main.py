@@ -548,8 +548,8 @@ def _build_storage_write_deps():
         sqlite3=sqlite3,
     )
 
-def add_reminder(chat_id: int, text: str, remind_at: datetime, created_by: Optional[int], template_id: Optional[int]=None) -> int:
-    return add_reminder_impl(chat_id, text, remind_at, created_by, template_id, deps=_build_storage_write_deps(), timezone_name=_timezone_for_created_by(created_by))
+def add_reminder(chat_id: int, text: str, remind_at: datetime, created_by: Optional[int], template_id: Optional[int]=None, *, source_chat_id: Optional[int]=None, source_message_id: Optional[int]=None) -> int:
+    return add_reminder_impl(chat_id, text, remind_at, created_by, template_id, deps=_build_storage_write_deps(), timezone_name=_timezone_for_created_by(created_by), source_chat_id=source_chat_id, source_message_id=source_message_id)
 
 def update_reminder_time(reminder_id: int, new_dt: datetime) -> bool:
     return update_reminder_time_impl(reminder_id, new_dt, deps=_build_storage_write_deps())

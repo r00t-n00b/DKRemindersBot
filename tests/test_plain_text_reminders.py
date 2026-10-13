@@ -368,3 +368,83 @@ def test_plain_text_fallback_understands_dot_time_when_gemini_fails(main_module)
         main_module._normalize_reminder_text_fallback("напомни в 13.46 рейд")
         == "13:46 - рейд"
     )
+
+
+@pytest.mark.asyncio
+async def test_reply_context_without_reply_asks_user_to_reply_and_skips_gemini(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через полчаса об этом")
+    message.reply_to_message = None
+
+    gemini_called = False
+
+    async def fake_gemini(*args, **kwargs):
+        nonlocal gemini_called
+        gemini_called = True
+        return "unexpected"
+
+    monkeypatch.setattr(
+        main_module,
+        "normalize_plain_text_reminder_with_gemini",
+        fake_gemini,
+    )
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert gemini_called is False
+    assert message.replies
+    assert "Ответь этой командой на сообщение" in message.replies[-1][0]
+
+
+@pytest.mark.asyncio
+async def test_reply_context_text_is_used_by_real_plain_text_flow(main_module, monkeypatch):
+    update, context, message = _mk_update("напомни через полчаса об этом")
+
+    source = SimpleNamespace(
+        text="заказать соль",
+        message_id=77,
+        chat=SimpleNamespace(id=update.effective_chat.id),
+    )
+    message.reply_to_message = source
+
+    seen = {}
+
+    async def fake_remind_command(proxy_update, proxy_context):
+        seen["text"] = proxy_update.effective_message.text
+        seen["reply_to_message"] = proxy_update.effective_message.reply_to_message
+
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert seen["text"] == "/remind через полчаса - заказать соль"
+    assert seen["reply_to_message"] is source
+
+
+@pytest.mark.asyncio
+async def test_reply_context_document_caption_is_used_by_real_plain_text_flow(main_module, monkeypatch):
+    update, context, message = _mk_update(
+        "напомни через полчаса про это сообщение"
+    )
+
+    source = SimpleNamespace(
+        text=None,
+        caption="Tab 1 их, Tab 2 мой",
+        document=SimpleNamespace(file_name="PMM PLG July 2026.pdf"),
+        message_id=88,
+        chat=SimpleNamespace(id=update.effective_chat.id),
+    )
+    message.reply_to_message = source
+
+    seen = {}
+
+    async def fake_remind_command(proxy_update, proxy_context):
+        seen["text"] = proxy_update.effective_message.text
+
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    await main_module.plain_text_remind_command(update, context)
+
+    assert seen["text"] == (
+        "/remind через полчаса - "
+        "PMM PLG July 2026.pdf: Tab 1 их, Tab 2 мой"
+    )

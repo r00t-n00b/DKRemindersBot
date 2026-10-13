@@ -13,6 +13,8 @@ class Reminder:
     remind_at: datetime
     created_by: Optional[int]
     template_id: Optional[int] = None
+    source_chat_id: Optional[int] = None
+    source_message_id: Optional[int] = None
     sent_at: Optional[datetime] = None
     delivered: int = 0
     acked: int = 0

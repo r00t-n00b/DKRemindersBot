@@ -71,6 +71,12 @@ def init_db_impl(*, deps) -> None:
     if 'timezone_name' not in cols:
         c.execute('ALTER TABLE reminders ADD COLUMN timezone_name TEXT')
         logger.info('DB migration: added reminders.timezone_name column')
+    if 'source_chat_id' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN source_chat_id INTEGER')
+        logger.info('DB migration: added reminders.source_chat_id column')
+    if 'source_message_id' not in cols:
+        c.execute('ALTER TABLE reminders ADD COLUMN source_message_id INTEGER')
+        logger.info('DB migration: added reminders.source_message_id column')
 
     c.execute(
         """

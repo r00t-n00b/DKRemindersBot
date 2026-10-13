@@ -35,6 +35,8 @@ def add_reminder_impl(
     *,
     deps,
     timezone_name: Optional[str] = None,
+    source_chat_id: Optional[int] = None,
+    source_message_id: Optional[int] = None,
 ) -> int:
     _apply_deps(deps)
     conn = sqlite3.connect(DB_PATH)
@@ -69,6 +71,12 @@ def add_reminder_impl(
         if "timezone_name" in cols and timezone_name:
             insert_cols.append("timezone_name")
             values.append(str(timezone_name))
+        if "source_chat_id" in cols and source_chat_id is not None:
+            insert_cols.append("source_chat_id")
+            values.append(int(source_chat_id))
+        if "source_message_id" in cols and source_message_id is not None:
+            insert_cols.append("source_message_id")
+            values.append(int(source_message_id))
 
         placeholders = ", ".join("?" for _ in insert_cols)
         column_sql = ", ".join(insert_cols)
@@ -189,11 +197,18 @@ def claim_due_reminders_impl(
     conn = sqlite3.connect(DB_PATH)
     try:
         cols = _table_columns(conn, "reminders")
+        source_select = (
+            "source_chat_id, source_message_id"
+            if "source_chat_id" in cols and "source_message_id" in cols
+            else "NULL AS source_chat_id, NULL AS source_message_id"
+        )
+
         if "delivery_state" not in cols:
             c = conn.cursor()
             c.execute(
-                """
-                SELECT id, chat_id, text, remind_at, created_by, template_id
+                f"""
+                SELECT id, chat_id, text, remind_at, created_by, template_id,
+                       {source_select}
                 FROM reminders
                 WHERE delivered = 0 AND remind_at <= ?
                 ORDER BY remind_at ASC
@@ -207,8 +222,9 @@ def claim_due_reminders_impl(
             conn.execute("BEGIN IMMEDIATE")
             c = conn.cursor()
             c.execute(
-                """
-                SELECT id, chat_id, text, remind_at, created_by, template_id
+                f"""
+                SELECT id, chat_id, text, remind_at, created_by, template_id,
+                       {source_select}
                 FROM reminders
                 WHERE delivered = 0
                   AND delivery_state = 'pending'
@@ -249,7 +265,16 @@ def claim_due_reminders_impl(
 
     reminders: List[Reminder] = []
     for row in rows:
-        rid, chat_id, text, remind_at_str, created_by, template_id = row
+        (
+            rid,
+            chat_id,
+            text,
+            remind_at_str,
+            created_by,
+            template_id,
+            source_chat_id,
+            source_message_id,
+        ) = row
         reminders.append(
             Reminder(
                 id=rid,
@@ -258,6 +283,8 @@ def claim_due_reminders_impl(
                 remind_at=from_iso(remind_at_str),
                 created_by=created_by,
                 template_id=template_id,
+                source_chat_id=source_chat_id,
+                source_message_id=source_message_id,
             )
         )
     return reminders

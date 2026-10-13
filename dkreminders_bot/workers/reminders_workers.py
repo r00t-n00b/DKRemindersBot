@@ -83,11 +83,23 @@ async def run_reminders_worker(app, deps) -> None:
                         else build_snooze_keyboard(r.id)
                     )
 
-                    sent_message = await app.bot.send_message(
-                        chat_id=r.chat_id,
-                        text=r.text,
-                        reply_markup=reply_markup,
-                    )
+                    send_kwargs = {
+                        "chat_id": r.chat_id,
+                        "text": r.text,
+                        "reply_markup": reply_markup,
+                    }
+
+                    source_chat_id = getattr(r, "source_chat_id", None)
+                    source_message_id = getattr(r, "source_message_id", None)
+                    if (
+                        source_chat_id is not None
+                        and source_message_id is not None
+                        and int(source_chat_id) == int(r.chat_id)
+                    ):
+                        send_kwargs["reply_to_message_id"] = int(source_message_id)
+                        send_kwargs["allow_sending_without_reply"] = True
+
+                    sent_message = await app.bot.send_message(**send_kwargs)
 
                     sent_message_id = getattr(sent_message, "message_id", None)
                     if sent_message_id is not None:
