@@ -64,6 +64,103 @@ def _apply_deps(deps) -> None:
         globals()[name] = getattr(deps, name)
 
 
+def _refresh_paginated_list_state(context, deps):
+    """Reload the complete active list and return the current rendered page."""
+    _apply_deps(deps)
+
+    target_chat_id = context.user_data.get("list_chat_id")
+    if target_chat_id is None:
+        return _build_active_list_response_for_ids(
+            context.user_data.get("list_ids") or [],
+            deps,
+        )
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute("PRAGMA table_info(reminders)")
+    reminder_cols = {row[1] for row in c.fetchall()}
+    c.execute("PRAGMA table_info(recurring_templates)")
+    template_cols = {row[1] for row in c.fetchall()}
+
+    if "timezone_name" in reminder_cols and "timezone_name" in template_cols:
+        timezone_select = "COALESCE(r.timezone_name, rt.timezone_name) AS timezone_name"
+    elif "timezone_name" in reminder_cols:
+        timezone_select = "r.timezone_name AS timezone_name"
+    elif "timezone_name" in template_cols:
+        timezone_select = "rt.timezone_name AS timezone_name"
+    else:
+        timezone_select = "NULL AS timezone_name"
+
+    c.execute(
+        f"""
+        SELECT
+            r.id,
+            r.text,
+            r.remind_at,
+            r.template_id,
+            rt.pattern_type,
+            rt.payload,
+            {timezone_select}
+        FROM reminders r
+        LEFT JOIN recurring_templates rt ON rt.id = r.template_id
+        WHERE r.chat_id = ? AND r.delivered = 0
+        ORDER BY r.remind_at ASC
+        """,
+        (int(target_chat_id),),
+    )
+    rows = c.fetchall()
+    conn.close()
+
+    all_ids = [int(row[0]) for row in rows]
+    context.user_data["list_all_ids"] = all_ids
+
+    if not rows:
+        context.user_data["list_ids"] = []
+        context.user_data["list_page"] = 0
+        return MSG_NO_MORE_REMINDERS, None, []
+
+    page_size = max(1, int(context.user_data.get("list_page_size") or 20))
+    total_pages = max(1, (len(rows) + page_size - 1) // page_size)
+    page = max(
+        0,
+        min(
+            int(context.user_data.get("list_page") or 0),
+            total_pages - 1,
+        ),
+    )
+
+    start = page * page_size
+    page_rows = rows[start:start + page_size]
+
+    alias = context.user_data.get("list_alias")
+    header = (
+        f"Активные напоминания для чата '{alias}':"
+        if alias
+        else "Активные напоминания:"
+    )
+    if total_pages > 1:
+        header += f"\\nСтраница {page + 1}/{total_pages} · всего {len(rows)}."
+
+    def keyboard_builder(count):
+        return build_list_delete_keyboard(
+            count,
+            page=page,
+            total_pages=total_pages,
+        )
+
+    reply, rebuilt_ids, keyboard = build_active_reminders_list_response(
+        page_rows,
+        header=header,
+        now_local=get_now(),
+        list_delete_keyboard_builder=keyboard_builder,
+    )
+
+    context.user_data["list_ids"] = rebuilt_ids
+    context.user_data["list_page"] = page
+    return reply, keyboard, rebuilt_ids
+
+
 def _build_active_list_response_for_ids(ids, deps):
     _apply_deps(deps)
     if not ids:
@@ -109,8 +206,11 @@ async def _edit_stored_list_message_after_delete(context, ids, deps):
     if chat_id is None or message_id is None:
         return
 
-    reply, keyboard, rebuilt_ids = _build_active_list_response_for_ids(ids, deps)
-    context.user_data["list_ids"] = rebuilt_ids
+    if context.user_data.get("list_all_ids") is not None:
+        reply, keyboard, rebuilt_ids = _refresh_paginated_list_state(context, deps)
+    else:
+        reply, keyboard, rebuilt_ids = _build_active_list_response_for_ids(ids, deps)
+        context.user_data["list_ids"] = rebuilt_ids
 
     await context.bot.edit_message_text(
         chat_id=chat_id,
@@ -194,8 +294,11 @@ async def handle_delete_callback(update, context, deps) -> None:
     context.user_data["list_ids"] = ids
 
     if query.message:
-        reply, keyboard, ids = _build_active_list_response_for_ids(ids, deps)
-        context.user_data["list_ids"] = ids
+        if context.user_data.get("list_all_ids") is not None:
+            reply, keyboard, ids = _refresh_paginated_list_state(context, deps)
+        else:
+            reply, keyboard, ids = _build_active_list_response_for_ids(ids, deps)
+            context.user_data["list_ids"] = ids
         await query.edit_message_text(reply, reply_markup=keyboard)
 
     tpl = snapshot.get("template") or {}

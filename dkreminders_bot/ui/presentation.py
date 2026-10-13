@@ -25,6 +25,16 @@ def _datetime_in_row_timezone(dt: datetime, tz_name: Optional[str]) -> datetime:
     except Exception:
         return dt
 
+
+LIST_REMINDER_TEXT_LIMIT = 120
+
+
+def _truncate_list_reminder_text(text: str, limit: int = LIST_REMINDER_TEXT_LIMIT) -> str:
+    text = str(text or "").replace("\n", " ").strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
 def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[str, Any]]) -> str:
     """
     Делает человекочитаемое описание регулярности для списка /list.
@@ -129,7 +139,9 @@ def build_active_reminders_list_response(rows, header: str, now_local: Optional[
 
     for idx, row in enumerate(rows, start=1):
         rid = int(_active_reminder_row_value(row, "id", 0))
-        reminder_text = str(_active_reminder_row_value(row, "text", 1) or "")
+        reminder_text = _truncate_list_reminder_text(
+            str(_active_reminder_row_value(row, "text", 1) or "")
+        )
         remind_at_str = str(_active_reminder_row_value(row, "remind_at", 2) or "")
         template_id = _active_reminder_row_value(row, "template_id", 3)
         tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)
@@ -271,7 +283,9 @@ def build_target_user_reminders_list_response(
 
     for idx, row in enumerate(rows, start=1):
         rid = int(_active_reminder_row_value(row, "id", 0))
-        reminder_text = str(_active_reminder_row_value(row, "text", 1) or "")
+        reminder_text = _truncate_list_reminder_text(
+            str(_active_reminder_row_value(row, "text", 1) or "")
+        )
         remind_at_str = str(_active_reminder_row_value(row, "remind_at", 2) or "")
         template_id = _active_reminder_row_value(row, "template_id", 3)
         tpl_pattern_type = _active_reminder_row_value(row, "pattern_type", 4)

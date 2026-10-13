@@ -196,3 +196,59 @@ def test_main_list_keyboard_proxy_preserves_pagination(monkeypatch):
     assert "list_page:1" in data
     assert "noop" in data
     assert "list_page:0" not in data
+
+
+def test_list_render_truncates_long_reminder_text():
+    from datetime import datetime
+    from dkreminders_bot.ui.presentation import build_active_reminders_list_response
+
+    rows = [
+        (
+            idx,
+            "x" * 1000,
+            f"2026-11-{idx:02d}T10:00:00+01:00",
+            None,
+            None,
+            None,
+            "Europe/Madrid",
+        )
+        for idx in range(1, 21)
+    ]
+
+    reply, ids, _ = build_active_reminders_list_response(
+        rows,
+        header="Активные напоминания:",
+        now_local=datetime.fromisoformat("2026-10-13T10:00:00+02:00"),
+        list_delete_keyboard_builder=lambda count: None,
+    )
+
+    assert ids == list(range(1, 21))
+    assert len(reply) < 4096
+    assert "…" in reply
+    assert "x" * 500 not in reply
+
+
+def test_list_render_replaces_newlines_before_truncation():
+    from datetime import datetime
+    from dkreminders_bot.ui.presentation import build_active_reminders_list_response
+
+    rows = [
+        (
+            1,
+            "первая строка\nвторая строка",
+            "2026-11-01T10:00:00+01:00",
+            None,
+            None,
+            None,
+            "Europe/Madrid",
+        )
+    ]
+
+    reply, _, _ = build_active_reminders_list_response(
+        rows,
+        header="Активные напоминания:",
+        now_local=datetime.fromisoformat("2026-10-13T10:00:00+02:00"),
+        list_delete_keyboard_builder=lambda count: None,
+    )
+
+    assert "первая строка вторая строка" in reply
