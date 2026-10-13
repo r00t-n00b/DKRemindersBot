@@ -269,3 +269,84 @@ async def test_real_oneoff_without_reply_keeps_old_add_reminder_call_shape():
     )
 
     assert set(seen) == {"chat_id", "text", "remind_at", "created_by"}
+
+
+@pytest.mark.asyncio
+async def test_long_reply_context_uses_gemini_summary():
+    from dkreminders_bot.commands.reply_reminder_context import summarize_reply_context
+
+    source = "Очень длинный исходный текст. " * 40
+    seen = {}
+
+    async def fake_gemini(prompt, created_by):
+        seen["prompt"] = prompt
+        seen["created_by"] = created_by
+        return "посмотреть с Наташей описание вакансии"
+
+    result = await summarize_reply_context(
+        source,
+        normalize_with_gemini=fake_gemini,
+        created_by=123,
+    )
+
+    assert result == "посмотреть с Наташей описание вакансии"
+    assert seen["created_by"] == 123
+    assert source in seen["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_short_reply_context_does_not_call_gemini():
+    from dkreminders_bot.commands.reply_reminder_context import summarize_reply_context
+
+    async def fail_gemini(*args, **kwargs):
+        raise AssertionError("Gemini must not be called for short reply context")
+
+    result = await summarize_reply_context(
+        "заказать соль",
+        normalize_with_gemini=fail_gemini,
+        created_by=123,
+    )
+
+    assert result == "заказать соль"
+
+
+@pytest.mark.asyncio
+async def test_reply_context_gemini_temporary_failure_preserves_source_context():
+    from dkreminders_bot.commands.reply_reminder_context import summarize_reply_context
+
+    source = "важный длинный текст " * 50
+
+    class GeminiTextNormalizationTemporaryError(RuntimeError):
+        pass
+
+    async def fail_gemini(*args, **kwargs):
+        raise GeminiTextNormalizationTemporaryError("503 overloaded")
+
+    result = await summarize_reply_context(
+        source,
+        normalize_with_gemini=fail_gemini,
+        created_by=123,
+    )
+
+    assert result
+    assert result.startswith("важный длинный текст")
+    assert len(result) <= 500
+
+
+@pytest.mark.asyncio
+async def test_long_reply_context_summary_is_capped():
+    from dkreminders_bot.commands.reply_reminder_context import summarize_reply_context
+
+    source = "исходный текст " * 100
+
+    async def fake_gemini(*args, **kwargs):
+        return "x" * 1000
+
+    result = await summarize_reply_context(
+        source,
+        normalize_with_gemini=fake_gemini,
+        created_by=123,
+    )
+
+    assert len(result) == 500
+    assert result.endswith("…")

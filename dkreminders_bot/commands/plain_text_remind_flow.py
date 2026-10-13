@@ -6,6 +6,7 @@ from dkreminders_bot.commands.reply_reminder_context import (
     extract_reply_reminder_context,
     refers_to_reply_context,
     replace_reply_context_reference,
+    summarize_reply_context,
 )
 
 
@@ -137,9 +138,14 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
     normalized = normalize_gemini_reminder_command_text(normalized)
 
     if reply_context is not None and normalized and normalized != "NO_REMINDER":
+        source_context_text = await summarize_reply_context(
+            reply_context.text,
+            normalize_with_gemini=normalize_plain_text_reminder_with_gemini,
+            created_by=user.id,
+        )
         normalized = replace_reply_context_reference(
             normalized,
-            reply_context.text,
+            source_context_text,
         )
 
     if normalized == "NO_REMINDER" or not normalized:

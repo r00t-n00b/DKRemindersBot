@@ -115,3 +115,65 @@ def replace_reply_context_reference(command_text: str, source_text: str) -> str:
         str(command_text or ""),
         count=1,
     )
+
+
+REPLY_CONTEXT_GEMINI_THRESHOLD = 500
+REPLY_CONTEXT_MAX_LENGTH = 500
+
+
+def reply_context_needs_summary(text: str) -> bool:
+    """Only long source messages need AI summarization."""
+    return len(_clean(text)) > REPLY_CONTEXT_GEMINI_THRESHOLD
+
+
+def cap_reply_context_text(text: str, limit: int = REPLY_CONTEXT_MAX_LENGTH) -> str:
+    text = _clean(text)
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+async def summarize_reply_context(
+    source_text: str,
+    *,
+    normalize_with_gemini,
+    created_by,
+) -> str:
+    """Ask Gemini for a short actionable reminder description.
+
+    On any AI failure the deterministic source context is preserved.
+    """
+    fallback = cap_reply_context_text(source_text)
+
+    if not reply_context_needs_summary(source_text):
+        return fallback
+
+    prompt = (
+        "Сделай из текста сообщения короткое понятное описание того, "
+        "о чём нужно напомнить. Не пересказывай весь текст. "
+        "Сохрани имена, названия файлов и конкретное действие. "
+        "Ответь только текстом напоминания, без даты, времени, "
+        "служебных слов и /remind. Максимум 400 символов.\\n\\n"
+        f"Сообщение:\\n{source_text}"
+    )
+
+    try:
+        result = await normalize_with_gemini(prompt, created_by)
+    except Exception:
+        return fallback
+
+    result = _clean(result)
+    if not result or result.upper() == "NO_REMINDER":
+        return fallback
+
+    if result.startswith("/remind"):
+        result = result[len("/remind"):].strip()
+
+    # The existing Gemini reminder normalizer may still return
+    # "<time> - <text>". For source summarization we only want the text.
+    if " - " in result:
+        left, right = result.split(" - ", 1)
+        if right.strip():
+            result = right.strip()
+
+    return cap_reply_context_text(result)
