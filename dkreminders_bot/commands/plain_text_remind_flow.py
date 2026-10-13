@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from dkreminders_bot.commands.reply_reminder_context import (
+    extract_message_reminder_context,
     extract_reply_reminder_context,
     refers_to_reply_context,
     replace_reply_context_reference,
@@ -68,10 +69,10 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
     if refers_to_reply_context(raw_text):
         reply_context = extract_reply_reminder_context(message)
         if reply_context is None:
-            await safe_reply(
-                message,
-                "Ответь этой командой на сообщение, о котором нужно напомнить.",
-            )
+            context.user_data["pending_forward_comment_reminder"] = {
+                "raw_text": raw_text,
+                "command_message": message,
+            }
             return
 
     get_user_timezone_name_raw = getattr(deps, "get_user_timezone_name_raw", None)

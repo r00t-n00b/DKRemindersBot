@@ -391,8 +391,9 @@ async def test_reply_context_without_reply_asks_user_to_reply_and_skips_gemini(m
     await main_module.plain_text_remind_command(update, context)
 
     assert gemini_called is False
-    assert message.replies
-    assert "Ответь этой командой на сообщение" in message.replies[-1][0]
+    assert message.replies == []
+    assert context.user_data["pending_forward_comment_reminder"]["raw_text"] == "напомни через полчаса об этом"
+    assert context.user_data["pending_forward_comment_reminder"]["command_message"] is message
 
 
 @pytest.mark.asyncio

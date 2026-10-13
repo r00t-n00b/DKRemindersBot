@@ -350,3 +350,33 @@ async def test_long_reply_context_summary_is_capped():
 
     assert len(result) == 500
     assert result.endswith("…")
+
+
+def test_extract_message_context_from_forwarded_video_with_caption():
+    from types import SimpleNamespace
+    from dkreminders_bot.commands.reply_reminder_context import extract_message_reminder_context
+
+    source = SimpleNamespace(
+        message_id=901,
+        chat=SimpleNamespace(id=123),
+        text=None,
+        caption="Делюсь с вами рецептом пасты с митболами",
+        document=None,
+        photo=None,
+        video=SimpleNamespace(file_id="video"),
+        voice=None,
+        audio=None,
+        animation=None,
+        sticker=None,
+        forward_origin=SimpleNamespace(
+            sender_user_name="dacooker_",
+            sender_user=None,
+        ),
+    )
+
+    result = extract_message_reminder_context(source)
+
+    assert result is not None
+    assert result.text == "Делюсь с вами рецептом пасты с митболами от dacooker_"
+    assert result.source_message_id == 901
+    assert result.source_chat_id == 123

@@ -62,6 +62,7 @@ else:
             TEXT = _DummyFilter()
             COMMAND = _DummyFilter()
             LOCATION = _DummyFilter()
+            FORWARDED = _DummyFilter()
 
         filters = _DummyFilters()
 
@@ -956,6 +957,50 @@ def _normalize_plain_text_reminder_locally(raw_text: str) -> Optional[str]:
 def _build_plain_text_remind_command_deps():
     return build_plain_text_remind_command_deps(globals())
 
+async def forwarded_reminder_context_message(update: Update, context: CTX) -> None:
+    chat = update.effective_chat
+    message = update.effective_message
+    user = update.effective_user
+
+    if chat is None or message is None or user is None:
+        return
+    if chat.type != Chat.PRIVATE:
+        return
+
+    pending = context.user_data.pop("pending_forward_comment_reminder", None)
+    if not pending:
+        return
+
+    command_message = pending.get("command_message")
+    raw_text = (pending.get("raw_text") or "").strip()
+    if command_message is None or not raw_text:
+        return
+
+    from dkreminders_bot.commands.reply_reminder_context import (
+        extract_message_reminder_context,
+    )
+
+    source_context = extract_message_reminder_context(message)
+    if source_context is None:
+        return
+
+    proxy_command_message = NormalizedReminderMessageProxy(
+        command_message,
+        raw_text,
+        raw_text,
+    )
+    proxy_command_message.reply_to_message = message
+
+    proxy_update = SimpleNamespace(
+        effective_chat=chat,
+        effective_message=proxy_command_message,
+        effective_user=user,
+        message=proxy_command_message,
+    )
+
+    await plain_text_remind_command(proxy_update, context)
+
+
 async def plain_text_remind_command(update: Update, context: CTX) -> None:
     await handle_plain_text_remind_command(update, context, _build_plain_text_remind_command_deps())
 
@@ -1239,6 +1284,7 @@ def main() -> None:
     application.add_handler(CommandHandler("renamealias", renamealias_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
+    application.add_handler(MessageHandler(filters.FORWARDED, forwarded_reminder_context_message))
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
     application.add_handler(MessageHandler(filters.LOCATION, timezone_location_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))

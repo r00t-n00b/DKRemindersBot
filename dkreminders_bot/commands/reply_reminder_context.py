@@ -46,8 +46,7 @@ def _source_ids(message):
     return message_id, chat_id
 
 
-def extract_reply_reminder_context(command_message) -> Optional[ReplyReminderContext]:
-    source = getattr(command_message, "reply_to_message", None)
+def extract_message_reminder_context(source) -> Optional[ReplyReminderContext]:
     if source is None:
         return None
 
@@ -102,6 +101,12 @@ def extract_reply_reminder_context(command_message) -> Optional[ReplyReminderCon
         text=description,
         source_message_id=source_message_id,
         source_chat_id=source_chat_id,
+    )
+
+
+def extract_reply_reminder_context(command_message) -> Optional[ReplyReminderContext]:
+    return extract_message_reminder_context(
+        getattr(command_message, "reply_to_message", None)
     )
 
 
