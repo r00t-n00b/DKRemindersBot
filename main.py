@@ -241,6 +241,7 @@ from dkreminders_bot.callbacks.self_remind_calendar_flow import handle_self_remi
 from dkreminders_bot.callbacks.self_remind_picktime_flow import handle_self_remind_picktime
 from dkreminders_bot.callbacks.self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
 from dkreminders_bot.callbacks.self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
+from dkreminders_bot.utils.polling_supervisor import run_polling_forever
 from dkreminders_bot.utils.app_lifecycle import (
     _cancel_background_worker_impl,
     _start_background_worker_impl,
@@ -1319,7 +1320,10 @@ def main() -> None:
     )
 
     logger.info("Запускаем бота polling...")
-    application.run_polling()
+    run_polling_forever(
+        application.run_polling,
+        logger=logger,
+    )
 
 
 if __name__ == "__main__":
