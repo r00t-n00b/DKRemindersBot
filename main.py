@@ -242,6 +242,7 @@ from dkreminders_bot.callbacks.self_remind_picktime_flow import handle_self_remi
 from dkreminders_bot.callbacks.self_remind_create_flow import handle_self_remind_event_custom, handle_self_remind_event_before, handle_self_remind_set
 from dkreminders_bot.callbacks.self_remind_initial_flow import handle_self_remind_ask, handle_self_remind_cancel_personal, handle_self_remind_back, handle_self_remind_mode
 from dkreminders_bot.utils.polling_supervisor import run_polling_forever
+from dkreminders_bot.utils.heartbeat import heartbeat_worker
 from dkreminders_bot.utils.app_lifecycle import (
     _cancel_background_worker_impl,
     _start_background_worker_impl,
@@ -1221,6 +1222,7 @@ async def reminders_nudge_worker(app: Application) -> None:
 BACKGROUND_WORKER_TASK_KEYS = (
     "reminders_worker_task",
     "reminders_nudge_worker_task",
+    "heartbeat_worker_task",
 )
 
 
@@ -1232,6 +1234,8 @@ def _build_app_lifecycle_deps():
         migrate_alias_tables_to_owner_scope=migrate_alias_tables_to_owner_scope,
         reminders_nudge_worker=reminders_nudge_worker,
         reminders_worker=reminders_worker,
+        heartbeat_worker=heartbeat_worker,
+        heartbeat_url=os.environ.get("HEARTBEAT_URL"),
     )
 
 def _start_background_worker(application: Application, task_key: str, coro_factory) -> asyncio.Task:

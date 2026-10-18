@@ -6,6 +6,8 @@ import asyncio
 
 _DEP_NAMES = (
     "BACKGROUND_WORKER_TASK_KEYS",
+    "heartbeat_url",
+    "heartbeat_worker",
     "init_db",
     "logger",
     "migrate_alias_tables_to_owner_scope",
@@ -16,7 +18,10 @@ _DEP_NAMES = (
 
 def _apply_deps(deps) -> None:
     for name in _DEP_NAMES:
-        globals()[name] = getattr(deps, name)
+        if name in {"heartbeat_url", "heartbeat_worker"}:
+            globals()[name] = getattr(deps, name, None)
+        else:
+            globals()[name] = getattr(deps, name)
 
 
 def _start_background_worker_impl(application: Application, task_key: str, coro_factory, *, deps) -> asyncio.Task:
@@ -44,6 +49,13 @@ async def post_init_impl(application: Application, *, deps) -> None:
     migrate_alias_tables_to_owner_scope()
     _start_background_worker_impl(application, 'reminders_worker_task', lambda: reminders_worker(application), deps=deps)
     _start_background_worker_impl(application, 'reminders_nudge_worker_task', lambda: reminders_nudge_worker(application), deps=deps)
+    if heartbeat_url:
+        _start_background_worker_impl(
+            application,
+            'heartbeat_worker_task',
+            lambda: heartbeat_worker(heartbeat_url, logger=logger),
+            deps=deps,
+        )
     logger.info('Фоновые worker напоминаний запущены из post_init')
 
 
