@@ -13,6 +13,7 @@ RU_MONTHS = (
 
 RU_RELATIVE_UNITS = (
     "полчаса|"
+    "полтора\\s+часа|полторы\\s+часа|"
     "минуту|минуты|минут|"
     "час|часа|часов|"
     "день|дня|дней|"
@@ -83,6 +84,7 @@ def normalize_plain_text_reminder_locally(
     relative_expr_without_minutes = (
         r"через\s+(?:(?:\d+|одну|один|два|две|три|четыре|пять)\s+)?(?:"
         r"полчаса|"
+        r"полтора\s+часа|полторы\s+часа|"
         r"час|часа|часов|"
         r"день|дня|дней|"
         r"неделю|недели|недель|"
@@ -90,6 +92,22 @@ def normalize_plain_text_reminder_locally(
         r"год|года|лет"
         r")"
     )
+
+    # Russian one-and-a-half-hour duration.
+    # Normalize explicitly to minutes so the downstream parser does not
+    # confuse it with a recurring "every 90 minutes" reminder.
+    m = re.match(
+        r"^\s*через\s+полтор(?:а|ы)\s+часа\s+(?P<text>.+)$",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return _validated(
+            "in 90 minutes",
+            m.group("text"),
+            parse_date_time_smart=parse_date_time_smart,
+            get_now=get_now,
+        )
 
     # Compound Russian duration:
     # - "через 11 часов и 20 минут зачекинить всех на рейс"

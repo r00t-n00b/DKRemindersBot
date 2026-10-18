@@ -714,3 +714,40 @@ async def test_expired_forward_comment_does_not_bind_forward(
 
     assert called is False
     assert "pending_forward_comment_reminder" not in context.user_data
+
+
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        "напомни через полтора часа поставить в холодос пиво",
+        "напомни через полторы часа поставить в холодос пиво",
+    ],
+)
+def test_plain_text_one_and_half_hours_is_oneoff_not_recurring(
+    main_module,
+    monkeypatch,
+    raw_text,
+):
+    seen = {}
+
+    async def fail_gemini(*args, **kwargs):
+        raise AssertionError("Gemini must not be called for полтора часа")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+
+    monkeypatch.setattr(
+        main_module,
+        "normalize_plain_text_reminder_with_gemini",
+        fail_gemini,
+    )
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+
+    update, context, message = _mk_update(raw_text)
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == (
+        "/remind in 90 minutes - поставить в холодос пиво"
+    )
+    assert "pending_forward_comment_reminder" not in context.user_data
