@@ -72,7 +72,7 @@ Production reminder-worker должен стабильно:
 - restart сохраняет состояние серии;
 - обычный calendar-based recurring не меняет поведение.
 
-## 26. /settings — IN PROGRESS
+## 4. /settings — IN PROGRESS
 
 Нужно довести настройки до полноценного UX.
 
@@ -97,7 +97,7 @@ Production reminder-worker должен стабильно:
 - diagnostics/debug entry point только для себя;
 - возможно показывать текущие user settings/debug summary только для себя.
 
-## 4. Reply-context reminders — IN PROGRESS
+## 5. Reply-context reminders — IN PROGRESS
 
 Научить бота создавать полезные напоминания из reply на Telegram-сообщение.
 
@@ -137,7 +137,7 @@ Gemini fallback:
 - Gemini temporary failure;
 - исходное сообщение удалено к моменту доставки.
 
-## 5. Inbox / незакрытые напоминания — TODO
+## 6. Inbox / незакрытые напоминания — TODO
 
 Нужен отдельный inbox для delivered, но ещё не закрытых reminders:
 
@@ -146,7 +146,7 @@ Gemini fallback:
 - не показывать удалённое/завершённое;
 - понятный UX для “висящих” напоминаний.
 
-## 6. SQLite scalability hardening — TODO
+## 7. SQLite scalability hardening — TODO
 
 Усилить SQLite под рост данных:
 
@@ -156,7 +156,7 @@ Gemini fallback:
 - безопасные миграции без ручной боли;
 - production DB backup discipline.
 
-## 7. Batch preview — TODO
+## 8. Batch preview — TODO
 
 Перед массовым созданием reminders нужен preview:
 
@@ -166,7 +166,7 @@ Gemini fallback:
 - понятное отображение строк, которые не распарсились;
 - защита от случайного массового создания.
 
-## 8. Help/onboarding — TODO
+## 9. Help/onboarding — TODO
 
 Нормальный help и onboarding:
 
@@ -181,7 +181,7 @@ Gemini fallback:
 - кнопки не должны вести в тупик;
 - старые кнопки должны либо работать, либо объяснять, что устарели.
 
-## 9. Repo/package structure cleanup — DONE
+## 10. Repo/package structure cleanup — DONE
 
 Корневую свалку `.py` файлов перенесли в нормальный package layout:
 
@@ -192,7 +192,7 @@ Gemini fallback:
 - behavior changes не смешивались с refactor;
 - full test suite green after move.
 
-## 10. Убрать _apply_deps/globals постепенно — TODO
+## 11. Убрать _apply_deps/globals постепенно — TODO
 
 Постепенный технический рефакторинг:
 
@@ -203,7 +203,7 @@ Gemini fallback:
 - перейти к явным deps/dataclass deps;
 - не делать одним большим рискованным рефактором.
 
-## 11. Улучшить wording invalid recurring ordinals — TODO
+## 12. Улучшить wording invalid recurring ordinals — TODO
 
 Сделать понятные ошибки для невалидных recurring формулировок:
 
@@ -212,7 +212,7 @@ Gemini fallback:
 - RU/EN wording;
 - подсказки с правильными примерами.
 
-## 12. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
+## 13. Reminder lifecycle / Done-Snooze-Delete consistency — IN PROGRESS
 
 Довести lifecycle до консистентного состояния.
 
@@ -237,7 +237,7 @@ Gemini fallback:
 - nudge lifecycle;
 - production sanity-check после lifecycle patches.
 
-## 13. Callback/data consistency — TODO
+## 14. Callback/data consistency — TODO
 
 Закрепить тестами, что router pattern совпадает с callback_data:
 
@@ -251,7 +251,7 @@ Gemini fallback:
 - старые callback-и должны либо работать, либо честно говорить, что устарели;
 - не должно быть unknown-option из-за несовпадения callback_data и pattern.
 
-## 14. Групповые напоминания и self-remind — TODO
+## 15. Групповые напоминания и self-remind — TODO
 
 Отдельный крупный функциональный блок.
 
@@ -272,7 +272,7 @@ Edge-cases:
 - cancel/back в self-remind flow;
 - обычное напоминание vs напоминание до события внутри self-remind.
 
-## 15. Access control audit — TODO
+## 16. Access control audit — TODO
 
 Общий security/pass по всем флоу:
 
@@ -285,7 +285,7 @@ Edge-cases:
 - reminder создан в группе, действие нажато в личке или наоборот;
 - нельзя удалить/сдвинуть чужой reminder через старую кнопку.
 
-## 16. Voice UX polish — TODO
+## 17. Voice UX polish — TODO
 
 Отдельный большой блок по voice reminders:
 
@@ -308,7 +308,7 @@ Edge-cases:
 Следующий вероятный приоритет:
 - проверить, что voice reminders не обходят timezone onboarding и не создают reminder в implicit CET.
 
-## 17. Plain text / Gemini / fallback — TODO
+## 18. Plain text / Gemini / fallback — TODO
 
 Plain text уже работает с timezone, но остаётся полировка:
 
@@ -323,7 +323,7 @@ Plain text уже работает с timezone, но остаётся полир
 - alias в plain text;
 - конфликт alias vs дата/время.
 
-## 18. Recurring reminders — TODO
+## 19. Recurring reminders — TODO
 
 Повторяющиеся reminders — один из самых рискованных кусков.
 
@@ -356,7 +356,7 @@ Recurring management UX:
 - access control для group/private/created_by;
 - тесты на private/group/created_by/undo/stale callbacks.
 
-## 19. Snooze / reschedule UX — TODO
+## 20. Snooze / reschedule UX — TODO
 
 Полировка snooze/reschedule:
 
@@ -368,7 +368,7 @@ Recurring management UX:
 - не показывать бесполезные кнопки после удаления/выполнения;
 - понятные тексты после переноса.
 
-## 20. List / delete / undo — TODO
+## 21. List / delete / undo — TODO
 
 Довести до железобетона:
 
@@ -393,7 +393,7 @@ Diagnostics / debug history:
 - не раскрывать чужие reminders;
 - тесты на private chat, group chat, alias/created_by boundaries, empty history.
 
-## 21. Алисы чатов и пользователей — TODO
+## 22. Алисы чатов и пользователей — TODO
 
 Бэклог по aliases:
 
@@ -407,7 +407,7 @@ Diagnostics / debug history:
 - конфликт alias vs дата/время;
 - alias в voice/plain text.
 
-## 22. “Напоминание до события” — TODO
+## 23. “Напоминание до события” — TODO
 
 Флоу:
 - обычное напоминание;
@@ -425,7 +425,7 @@ Diagnostics / debug history:
 - тесты на RU/EN даты;
 - интеграция с self-remind flow.
 
-## 23. Production observability — TODO
+## 24. Production observability — TODO
 
 Логирование и prod visibility:
 
@@ -445,7 +445,7 @@ Diagnostics / debug history:
 - аккуратная debug-команда только для себя;
 - health-ish prod checks после deploy.
 
-## 24. Тестовая инфраструктура — RULE
+## 25. Тестовая инфраструктура — RULE
 
 Постоянное правило:
 
@@ -465,7 +465,7 @@ Diagnostics / debug history:
 - access control;
 - prod-risk edge cases.
 
-## 25. DB migration discipline — RULE
+## 26. DB migration discipline — RULE
 
 Постоянное правило:
 
