@@ -38,7 +38,41 @@ Production reminder-worker должен стабильно:
 Остаётся проверить как часть voice UX:
 - timezone gate для voice reminders, если пользователь новый.
 
-## 3. /settings — IN PROGRESS
+## 3. Smart recurring / completion-based recurrence — TODO
+
+Ближайший функциональный приоритет.
+
+Для интервальных recurring reminders нужен режим, где следующий reminder
+планируется от фактического завершения предыдущего, а не от его scheduled time.
+
+Базовый UX:
+- «каждые полчаса» может работать как completion-based recurrence;
+- reminder пришёл в 10:00, пользователь нажал Done в 10:17 → следующий в 10:47;
+- пока предыдущий reminder не закрыт, новая инстанция серии не создаётся;
+- Snooze не запускает новый интервал: отсчёт начинается после Done;
+- не допускать накопления нескольких незакрытых reminders одной серии.
+
+Нужно определить semantics:
+- как пользователь выбирает fixed recurring vs completion-based recurring;
+- calendar-based schedules вроде «каждый день в 9:00» продолжают работать по календарю;
+- Delete / Skip / Snooze;
+- pause/resume и delete series;
+- restart между delivery и Done;
+- timezone migration;
+- взаимодействие с nudges;
+- stale/duplicate Done callbacks;
+- group/private/access-control cases.
+
+Обязательно покрыть тестами:
+- Done → следующий occurrence через заданный interval;
+- поздний Done сдвигает следующий occurrence;
+- отсутствие Done не создаёт следующую инстанцию;
+- Snooze не начинает новый recurrence interval;
+- duplicate/stale Done не создаёт две инстанции;
+- restart сохраняет состояние серии;
+- обычный calendar-based recurring не меняет поведение.
+
+## 26. /settings — IN PROGRESS
 
 Нужно довести настройки до полноценного UX.
 
@@ -63,7 +97,7 @@ Production reminder-worker должен стабильно:
 - diagnostics/debug entry point только для себя;
 - возможно показывать текущие user settings/debug summary только для себя.
 
-## 4. Reply-context reminders — TODO
+## 4. Reply-context reminders — IN PROGRESS
 
 Научить бота создавать полезные напоминания из reply на Telegram-сообщение.
 
@@ -445,12 +479,13 @@ Diagnostics / debug history:
 
 ## Suggested next order
 
-1. /settings: finish the planned settings menu, especially nudge policy, aliases editing, recurring management entry point, diagnostics entry point.
-2. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
-3. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
-4. Voice UX polish: timezone gate for voice reminders.
-5. Reminder lifecycle / Done-Snooze-Delete consistency: remaining recurring/undo/nudge edge cases.
-6. Callback/data consistency.
-7. Access control audit.
-8. Групповые напоминания и self-remind.
-9. “Напоминание до события”.
+1. Smart recurring / completion-based recurrence: interval starts from Done of the previous occurrence.
+2. /settings: finish the planned settings menu, especially nudge policy, aliases editing, recurring management entry point, diagnostics entry point.
+3. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
+4. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
+5. Voice UX polish: timezone gate for voice reminders.
+6. Reminder lifecycle / Done-Snooze-Delete consistency: remaining recurring/undo/nudge edge cases.
+7. Callback/data consistency.
+8. Access control audit.
+9. Групповые напоминания и self-remind.
+10. “Напоминание до события”.

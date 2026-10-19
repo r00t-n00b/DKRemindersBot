@@ -2,7 +2,7 @@
 
 Telegram reminder bot deployed on Fly.io.
 
-The bot supports one-off reminders, recurring reminders, snooze/reschedule flows, personal self-reminders from group chats, group aliases, user aliases, voice reminders, and undo for delete actions.
+The bot supports one-off and recurring reminders, natural-language text and voice input, reply/forward-context reminders, snooze/reschedule/done flows, personal self-reminders from group chats, group and user aliases, timezone-aware scheduling, and undo for delete actions.
 
 ## Current architecture
 
@@ -11,7 +11,9 @@ The bot supports one-off reminders, recurring reminders, snooze/reschedule flows
 - builds dependency namespaces;
 - exposes compatibility wrappers used by older tests and handler wiring;
 - registers Telegram command/callback/message handlers;
-- starts the application and background workers.
+- starts the application and background workers;
+- supervises Telegram polling so transient DNS/network startup failures are retried instead of killing the process;
+- starts an optional external liveness heartbeat when `HEARTBEAT_URL` is configured.
 
 Business logic is split into modules:
 - reminder parsing and command flow: `remind_command_router.py`, `remind_target_resolution.py`, `remind_dispatch.py`, `plain_text_remind_flow.py`, `plain_text_gemini_normalization.py`, `plain_text_local_normalization.py`, `voice_remind_flow.py`;
@@ -33,10 +35,10 @@ Run the full local test suite:
 python3.11 -m pytest -q
 ```
 
-Current expected result after the latest refactor:
+Current expected result:
 
 ```text
-1180 passed, 1 skipped
+1405 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:
@@ -129,16 +131,27 @@ Before any change involving schemas, primary keys, ownership/scoping, migration 
 
 Do not drop, ignore, or rewrite production rows just because ownership data is missing unless the consequences were explicitly reviewed and accepted.
 
-## Known limitation / next backlog item
+## Reliability and production monitoring
 
-Timezone correctness is the next important product/technical item.
+The production bot runs on Fly.io as a polling worker. It does not expose an HTTP service.
 
-The desired contract:
-- store internal reminder timestamps consistently;
-- display user-facing times in the user/chat timezone;
-- default to `Europe/Madrid` where no explicit timezone exists;
-- parse `today`, `tomorrow`, relative times, and recurring schedules from the relevant user/chat local time;
-- cover DST transitions with tests.
+Transient Telegram/DNS/network startup failures are handled by a polling supervisor with bounded retry backoff, so temporary connectivity failures do not cause a rapid crash/restart loop.
+
+Production also supports an external heartbeat through the `HEARTBEAT_URL` Fly secret. The current production setup uses Healthchecks to detect loss of heartbeat and send DOWN/UP notifications through Telegram and email.
+
+The monitoring chain has been verified end-to-end in production:
+
+    machine stop -> heartbeat missing -> DOWN alert -> machine start -> heartbeat restored -> UP recovery
+
+Heartbeat delivery failures are logged but must never terminate the reminder bot.
+
+## Current product priority
+
+See `BACKLOG.md` for the source of truth.
+
+The next functional priority is smart completion-based recurring reminders. For interval schedules such as “every 30 minutes”, the desired mode schedules the next occurrence from the time the previous reminder is marked Done rather than blindly from the previous scheduled timestamp.
+
+Calendar-based schedules such as “every day at 09:00” remain calendar-based.
 
 ## Notes
 
