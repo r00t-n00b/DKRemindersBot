@@ -250,12 +250,12 @@ async def _reply(message, text: str, **kwargs):
     return result
 
 
-async def _edit_or_reply(query, text: str, **kwargs) -> None:
+async def _edit_or_reply(query, text: str, **kwargs):
     try:
         result = query.edit_message_text(text, **kwargs)
         if hasattr(result, "__await__"):
-            await result
-        return
+            result = await result
+        return result
     except Exception as e:
         # Telegram raises "message is not modified" when the user presses
         # a button that would render the same screen again. In that case
@@ -264,7 +264,7 @@ async def _edit_or_reply(query, text: str, **kwargs) -> None:
             return
 
     message = getattr(query, "message", None)
-    await _reply(message, text, **kwargs)
+    return await _reply(message, text, **kwargs)
 
 
 async def _delete_saved_location_prompt(update, context) -> None:

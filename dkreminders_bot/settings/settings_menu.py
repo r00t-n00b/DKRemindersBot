@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from dkreminders_bot.domain.nudge_policy import DEFAULT_GAPS, MAX_GAPS, parse_interval, validate_gaps
 from dkreminders_bot.settings.default_time import parse_default_time_value, format_default_time_value
-from dkreminders_bot.settings.timezone_features import InlineKeyboardButton, InlineKeyboardMarkup, _edit_or_reply, _load_settings_alias_lines
+from dkreminders_bot.settings.timezone_features import InlineKeyboardButton, InlineKeyboardMarkup, _edit_or_reply
 from dkreminders_bot.settings.timezone_search import search_timezones
 from dkreminders_bot.ui.messages import SETTINGS_MENU_TEXT as TEXT, SETTINGS_MENU_LABELS as L, SETTINGS_INPUT_PROMPTS as PROMPTS, SETTINGS_NOTICES as N, settings_schedule_text
 from dkreminders_bot.ui.presentation import format_interval_duration
@@ -95,10 +95,9 @@ def _view(session, deps):
     elif page == "migration":
         values["zone"] = data["migration"]["new_tz"]
         rows = [[(L[mode], "migrate:"+mode)] for mode in ("all", "oneoff", "recurring", "none")]
-    elif page == "aliases":
-        users, chats = _load_settings_alias_lines(uid, deps)
-        values["aliases"] = "\n".join(users + chats) or N["none_aliases"]
-        rows = [back]
+    elif page == "aliases" or page.startswith("alias_"):
+        from dkreminders_bot.settings.alias_menu import alias_view
+        return alias_view(session, deps, _keyboard)
     elif page == "input":
         kind = data["input"]
         text = PROMPTS[kind]
@@ -110,12 +109,14 @@ def _view(session, deps):
 
 async def _render(update, context, deps, session, *, query=None):
     session["data"]["revision"] = session["data"].get("revision", 0) + 1
+    text, keyboard = _view(session, deps)
     if not deps.settings_store.save(session):
         return False
-    text, keyboard = _view(session, deps)
     _, _, message = _identity(update)
     if query is not None:
-        await _edit_or_reply(query, text, reply_markup=keyboard)
+        sent = await _edit_or_reply(query, text, reply_markup=keyboard)
+        if getattr(sent, "message_id", None) is not None:
+            session["message_id"] = sent.message_id
     elif session.get("message_id") is not None:
         try:
             await context.bot.edit_message_text(chat_id=session["chat_id"], message_id=session["message_id"], text=text, reply_markup=keyboard)
@@ -136,6 +137,10 @@ async def start_settings(update, context, deps):
         if message is not None:
             await message.reply_text(N["private"])
         return
+    previous = deps.settings_store.session(user.id, deps.get_now(), include_expired=True)
+    if previous and previous["data"].get("alias_request"):
+        from dkreminders_bot.settings.alias_menu import _remove_picker
+        await _remove_picker(message)
     session = deps.settings_store.open(user.id, chat.id, deps.get_now())
     await _render(update, context, deps, session)
 
@@ -187,6 +192,10 @@ async def settings_menu_callback(update, context, deps):
         await query.answer(N["stale"], show_alert=True)
         return
     action, args = parts[4], parts[5:]
+    if action.startswith("a_"):
+        from dkreminders_bot.settings.alias_menu import alias_action
+        await alias_action(action, args, update, context, deps, session)
+        return
     data, now = session["data"], deps.get_now()
     notice = None
     try:
@@ -235,7 +244,7 @@ async def settings_menu_callback(update, context, deps):
             notice = N["cancelled"]
         elif action == "input":
             kind = args[0]
-            if kind not in PROMPTS or kind in {"gap", "count"} and "draft" not in data:
+            if kind not in {"time", "zone", "gap", "count"} or kind in {"gap", "count"} and "draft" not in data:
                 raise ValueError()
             await query.answer()
             await _ask(update, context, deps, session, kind, query=query)
@@ -316,6 +325,10 @@ async def settings_text_input(update, context, deps):
     text = (getattr(message, "text", None) or "").strip()
     reply_id = getattr(getattr(message, "reply_to_message", None), "message_id", None)
     cancel = text.split("@", 1)[0] == "/cancel"
+    if cancel and session["data"].get("alias_request"):
+        from dkreminders_bot.settings.alias_menu import cancel_group_input
+        await cancel_group_input(update, context, deps, session)
+        return True
     known_prompt = reply_id is not None and reply_id in session["data"].get("prompts", [])
     if not known_prompt and not (cancel and session["data"].get("input")):
         return False
@@ -331,6 +344,10 @@ async def settings_text_input(update, context, deps):
         return True
     data = session["data"]
     try:
+        if kind.startswith("alias_"):
+            from dkreminders_bot.settings.alias_menu import alias_text
+            await alias_text(kind, text, update, context, deps, session)
+            return True
         if kind == "time":
             hour, minute = parse_default_time_value(text)
             deps.set_user_default_time(user.id, hour, minute)

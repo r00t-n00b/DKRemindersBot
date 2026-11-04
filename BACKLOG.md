@@ -38,7 +38,7 @@ Production reminder-worker должен стабильно:
 Остаётся проверить как часть voice UX:
 - timezone gate для voice reminders, если пользователь новый.
 
-## 3. Smart recurring / completion-based recurrence — IN PROGRESS
+## 3. Smart recurring / completion-based recurrence — DONE
 
 Реализовано и покрыто автоматическими тестами:
 - при создании интервальной серии бот предлагает «По расписанию» / «После выполнения» и отмену;
@@ -60,8 +60,7 @@ Done, late/duplicate/concurrent Done, Snooze, restart, сбой записи и 
 private/group/ownership, bulk, plain text, календарные и старые серии,
 пропуск/undo, timezone migration и DST.
 
-Остаётся перед закрытием:
-- живая проверка выбора режима и цепочки Done/Snooze в Telegram после публикации.
+Опубликовано. Живая проверка в Telegram подтверждена пользователем.
 
 Отдельная дальнейшая задача управления сериями:
 - смена режима существующей серии и полноценные pause/resume из меню.
@@ -69,6 +68,18 @@ private/group/ownership, bulk, plain text, календарные и стары�
 ## 4. /settings — IN PROGRESS
 
 Нужно довести настройки до полноценного UX.
+
+Реализовано — управление алиасами (живая проверка после публикации):
+- список с пагинацией, отдельный экран каждого алиаса;
+- создание алиаса человека по @username с подтверждением получателя;
+- создание алиаса группы через штатный выбор Telegram, бот должен состоять в группе;
+- переименование и удаление только выбранного алиаса, с подтверждением;
+- конфликты имён проверяются без учёта регистра в обоих типах алиасов владельца;
+- имя не перезаписывает чужой или уже существующий алиас;
+- повторные/устаревшие кнопки и параллельные изменения командами безопасно отклоняются;
+- черновик и выбор группы переживают restart; отменённый запрос не оживает после ответа Telegram;
+- существующие команды и уже созданные напоминания сохраняют поведение;
+- полный прогон: 1524 passed, 1 skipped.
 
 Реализовано и покрыто автоматическими тестами:
 - личное меню: время, timezone, повторы уведомлений, алиасы и список напоминаний;
@@ -80,7 +91,7 @@ private/group/ownership, bulk, plain text, календарные и стары�
 - сессии, черновики и ожидаемый ввод переживают restart, устаревшие кнопки отклоняются;
 - настройки фиксируются при основной доставке; выключение действует сразу, включение не оживляет старые уведомления;
 - старые reminder/series/settings сохраняются; миграция проверена на копии базы;
-- полный прогон: 1491 passed, 1 skipped.
+- меню v400 проверено вживую пользователем.
 
 Уже сделано:
 - read-only экран сначала — DONE;
@@ -92,8 +103,7 @@ private/group/ownership, bulk, plain text, календарные и стары�
 - нормальный UX для смены timezone при отпуске/переезде с migration prompt — MOSTLY DONE.
 
 Остаётся:
-- проверить собственный ввод и повторы в Telegram после публикации;
-- editable aliases из /settings, а не только summary;
+- проверить управление алиасами в Telegram после публикации;
 - quick snooze “Завтра” / “Следующий понедельник” must use user default reminder time and show that time in button labels;
 - язык кнопок / language preference;
 - формат времени: 24h / verbose;
@@ -491,10 +501,10 @@ Diagnostics / debug history:
 
 ## Suggested next order
 
-1. Smart recurring / completion-based recurrence: verify the deployed chooser and Done/Snooze flow in Telegram.
-2. /settings: verify the menu/custom input/nudge schedule in Telegram; next add alias editing and recurring management.
-3. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
-4. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
+1. Verify alias management in `/settings` in Telegram after publication.
+2. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
+3. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
+4. Remaining `/settings` UX: test delivery, language/time format preferences, series and diagnostics entry points.
 5. Voice UX polish: timezone gate for voice reminders.
 6. Reminder lifecycle / Done-Snooze-Delete consistency: remaining recurring/undo/nudge edge cases.
 7. Callback/data consistency.

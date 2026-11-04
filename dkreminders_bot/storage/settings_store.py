@@ -79,10 +79,21 @@ class SettingsStore:
         result = dict(row)
         if not include_expired and datetime.fromisoformat(result["expires_at"]).timestamp() <= now.timestamp():
             return None
+        result["_snapshot"] = (result["data"], result["message_id"], result["prompt_message_id"])
         result["data"] = json.loads(result["data"])
         return result
 
     def save(self, session):
+        # Compare the complete previous UI state as well as the session token.
+        # An async Telegram response must not overwrite a newer cancellation.
+        previous = session.get("_snapshot")
+        if previous is None:
+            return False
+        serialized = json.dumps(session["data"], ensure_ascii=False)
         with self.connection() as conn:
-            updated = conn.execute("""UPDATE settings_sessions SET data=?, message_id=?, prompt_message_id=? WHERE user_id=? AND token=?""", (json.dumps(session["data"], ensure_ascii=False), session["message_id"], session["prompt_message_id"], session["user_id"], session["token"])).rowcount
+            updated = conn.execute("""UPDATE settings_sessions SET data=?, message_id=?, prompt_message_id=?
+                WHERE user_id=? AND token=? AND data=? AND message_id IS ? AND prompt_message_id IS ?""",
+                (serialized, session["message_id"], session["prompt_message_id"], session["user_id"], session["token"], *previous)).rowcount
+        if updated:
+            session["_snapshot"] = (serialized, session["message_id"], session["prompt_message_id"])
         return bool(updated)

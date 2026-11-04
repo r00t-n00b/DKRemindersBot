@@ -20,6 +20,19 @@ Reply/forward-context reminders retain their source message through delivery, pr
 
 Migration adds nudge preference/snapshot fields and the `settings_sessions` table without rewriting existing reminders or series. Legacy delivered rows retain the default schedule. See `docs/SETTINGS_DESIGN.md` for the agreed UX and boundaries.
 
+## Alias management in settings
+
+`/settings` → **Мои алиасы** lists only the current user's aliases, with pagination and a detail screen. Creating, renaming, and deleting use drafts and confirmation buttons. Existing reminders keep their stored destination when an alias changes or is deleted.
+
+- **Person:** enter a short name and `@username`; the recipient must already have started the bot. The destination is revalidated when confirming.
+- **Group:** enter a short name, then select a group with Telegram's native chat picker. The bot must already belong to that group; access is checked at selection and confirmation.
+- New names are one token of 1–64 characters, starting with a letter, followed by letters, digits, `_` or `-`. Date/command words are rejected. Existing legacy aliases remain visible and removable.
+- A new name cannot overwrite another alias of either type in the same owner scope, including case-insensitive collisions. Other owners may use the same name.
+- Old callbacks, expired requests, cancelled group selections, and aliases modified through legacy commands are checked before mutation. `/cancel` also dismisses a pending group picker.
+- `/linkuser`, `/linkchat`, `/renamealias`, and `/unalias` remain available.
+
+This feature uses the existing alias tables and settings-session data; no schema migration is required.
+
 ## Interval recurrence modes
 
 Creating an interval series (for example, `/remind every 30 minutes - stretch` or «напоминай каждые полчаса размяться») asks **По расписанию** or **После выполнения** before creating any reminders. Cancel creates nothing. The choice survives a restart and expires after 24 hours.
@@ -67,7 +80,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1491 passed, 1 skipped
+1524 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:
@@ -178,7 +191,7 @@ Heartbeat delivery failures are logged but must never terminate the reminder bot
 
 See `BACKLOG.md` for the source of truth.
 
-Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The `/settings` menu, custom values, and configurable nudge intervals are implemented. Next settings work is alias editing and the entry point for managing recurring series.
+Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The `/settings` menu, custom values, and configurable nudge intervals are implemented. Alias editing is implemented; verify the create/rename/delete flow in Telegram after deployment. The next planned functional priorities are production diagnostics and recurring-series management.
 
 ## Notes
 
