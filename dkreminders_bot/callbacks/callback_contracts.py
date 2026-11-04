@@ -188,3 +188,10 @@ SNOOZE_PATTERN = (
 )
 SNOOZE_CUSTOM_PATTERN = r"^snooze_custom:\d+$"
 SNOOZE_CALENDAR_PATTERN = r"^snooze_(cal|caltoday|pastdate|pickdate|picktime|cancel):"
+
+
+RECURRENCE_MODE_PATTERN = r"^recurrence_mode:[a-f0-9]{32}:(schedule|completion|cancel)$"
+
+
+def cb_recurrence_mode(token: str, mode: str) -> str:
+    return f"recurrence_mode:{token}:{mode}"

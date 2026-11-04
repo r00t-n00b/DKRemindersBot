@@ -15,6 +15,7 @@ REMIND_COMMAND_DEP_NAMES = (
     "add_reminder",
     "build_created_reminder_actions_keyboard",
     "create_recurring_template",
+    "request_interval_mode",
     "dispatch_remind_creation",
     "drop_optional_bulk_header",
     "extract_after_command",

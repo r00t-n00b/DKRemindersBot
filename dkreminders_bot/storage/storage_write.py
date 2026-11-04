@@ -210,8 +210,8 @@ def claim_due_reminders_impl(
                 SELECT id, chat_id, text, remind_at, created_by, template_id,
                        {source_select}
                 FROM reminders
-                WHERE delivered = 0 AND remind_at <= ?
-                ORDER BY remind_at ASC
+                WHERE delivered = 0 AND julianday(remind_at) <= julianday(?)
+                ORDER BY julianday(remind_at) ASC
                 LIMIT ?
                 """,
                 (now_iso, int(limit)),
@@ -228,9 +228,9 @@ def claim_due_reminders_impl(
                 FROM reminders
                 WHERE delivered = 0
                   AND delivery_state = 'pending'
-                  AND remind_at <= ?
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
-                ORDER BY remind_at ASC
+                  AND julianday(remind_at) <= julianday(?)
+                  AND (next_retry_at IS NULL OR julianday(next_retry_at) <= julianday(?))
+                ORDER BY julianday(remind_at) ASC
                 LIMIT ?
                 """,
                 (now_iso, now_iso, int(limit)),

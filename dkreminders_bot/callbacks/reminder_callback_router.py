@@ -5,6 +5,9 @@ testable and avoid importing the application module back.
 """
 
 
+from dkreminders_bot.callbacks.recurrence_mode import handle_completion_callback
+
+
 async def handle_reminder_callback(update, context, deps):
     MSG_EVENT_DATE_NOT_FOUND = deps.MSG_EVENT_DATE_NOT_FOUND
     MSG_INVALID_REMINDER_ID = deps.MSG_INVALID_REMINDER_ID
@@ -89,6 +92,9 @@ async def handle_reminder_callback(update, context, deps):
 
     data = query.data or ""
     try:
+        store = getattr(deps, "recurrence_store", None)
+        if store is not None and await handle_completion_callback(update, context, store=store, deps=deps):
+            return
         if (
             data.startswith("snooze_pastdate:")
             or data.startswith("selfremind_pastdate:")

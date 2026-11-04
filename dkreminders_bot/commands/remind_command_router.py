@@ -187,5 +187,6 @@ async def handle_remind_command(update, context, deps) -> None:
         safe_reply=safe_reply,
         logger=logger,
         register_reminder_message=register_reminder_message,
+        request_interval_mode=deps.request_interval_mode,
     )
     return

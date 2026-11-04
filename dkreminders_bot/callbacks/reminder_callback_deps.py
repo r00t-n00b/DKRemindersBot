@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+from dkreminders_bot.storage.completion_recurrence import RecurrenceStore
+
 
 REMINDER_CALLBACK_DEP_NAMES = (
     "MSG_EVENT_DATE_NOT_FOUND",
@@ -88,6 +90,7 @@ def build_reminder_callback_deps(namespace) -> SimpleNamespace:
     if missing:
         raise KeyError(f"Missing reminder callback deps: {', '.join(missing)}")
 
-    return SimpleNamespace(
-        **{name: namespace[name] for name in REMINDER_CALLBACK_DEP_NAMES}
-    )
+    values = {name: namespace[name] for name in REMINDER_CALLBACK_DEP_NAMES}
+    if "DB_PATH" in namespace:
+        values["recurrence_store"] = RecurrenceStore(namespace["DB_PATH"])
+    return SimpleNamespace(**values)

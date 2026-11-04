@@ -76,7 +76,10 @@ def parse_recurring(raw: str, now: datetime, default_time: Optional[Tuple[int, i
     interval_units_ru = INTERVAL_UNITS_RU
 
     # interval: every 3 days / каждые 3 дня / hourly / biweekly / every other week / раз в две недели
-    if tokens_match_alias(tokens_no_time, RECURRING_HOURLY_ALIASES):
+    if tokens_no_time in (["каждые", "полчаса"], ["каждый", "полчаса"], ["every", "half", "hour"], ["every", "half", "an", "hour"]):
+        pattern_type = "interval"
+        payload = {"value": 30, "unit": "minutes"}
+    elif tokens_match_alias(tokens_no_time, RECURRING_HOURLY_ALIASES):
         pattern_type = "interval"
         payload = {"value": 1, "unit": "hours"}
     elif tokens_no_time in (["biweekly"], ["fortnightly"]):

@@ -6,6 +6,19 @@ The bot supports one-off and recurring reminders, natural-language text and voic
 
 Reply/forward-context reminders retain their source message through delivery, private-chat nudges, and repeated snooze (quick buttons or custom time). Notifications reply to the source only when it belongs to the destination chat. If the source was deleted, delivery is allowed without a reply.
 
+## Interval recurrence modes
+
+Creating an interval series (for example, `/remind every 30 minutes - stretch` or «напоминай каждые полчаса размяться») asks **По расписанию** or **После выполнения** before creating any reminders. Cancel creates nothing. The choice survives a restart and expires after 24 hours.
+
+- **По расписанию:** the existing schedule behavior.
+- **После выполнения:** the next reminder is scheduled one interval after Done; no new occurrence is created while the current one is unfinished. Snooze moves the current occurrence and retains its series/source.
+- Calendar schedules such as every day at 09:00 and existing series keep their previous behavior.
+- Done/Snooze are transactional and reject duplicate actions. In private chats the recipient acts; in groups the series creator acts. Nudges remain private-only.
+- Explicitly skipping one occurrence starts the next interval from the skip time. Deleting a series stops it; undo preserves the mode.
+- Minutes/hours/days/weeks measure elapsed time across timezone/DST changes. Months use the series timezone and clamp to the last day of the month.
+
+Pending choices use the additive `recurrence_choices` table. The series mode is stored in the existing template payload; existing rows are not rewritten.
+
 ## Current architecture
 
 `main.py` is intentionally kept as the composition root:
@@ -40,7 +53,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1422 passed, 1 skipped
+1452 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:
@@ -151,9 +164,7 @@ Heartbeat delivery failures are logged but must never terminate the reminder bot
 
 See `BACKLOG.md` for the source of truth.
 
-The next functional priority is smart completion-based recurring reminders. For interval schedules such as “every 30 minutes”, the desired mode schedules the next occurrence from the time the previous reminder is marked Done rather than blindly from the previous scheduled timestamp.
-
-Calendar-based schedules such as “every day at 09:00” remain calendar-based.
+Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The next planned product work is completing the `/settings` menu, especially nudge policy and alias editing.
 
 ## Notes
 

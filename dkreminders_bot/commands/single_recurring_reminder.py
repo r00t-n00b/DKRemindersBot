@@ -55,6 +55,7 @@ async def try_handle_single_recurring_reminder(
     safe_reply,
     logger,
     register_reminder_message=None,
+    request_interval_mode=None,
 ) -> bool:
     if not looks_like_recurring(raw_single):
         return False
@@ -75,6 +76,14 @@ async def try_handle_single_recurring_reminder(
             e,
         )
         await safe_reply(message, msg_recurring_parse_failed(is_private))
+        return True
+
+    if pattern_type == "interval" and request_interval_mode is not None:
+        await request_interval_mode(
+            first_dt=first_dt, text=text, payload=payload, hour=hour, minute=minute,
+            now=now, target_chat_id=target_chat_id, used_alias=used_alias,
+            chat=chat, user=user, message=message,
+        )
         return True
 
     tpl_id = create_recurring_template(

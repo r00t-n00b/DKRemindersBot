@@ -35,6 +35,20 @@ def _truncate_list_reminder_text(text: str, limit: int = LIST_REMINDER_TEXT_LIMI
         return text
     return text[: limit - 1].rstrip() + "…"
 
+def format_interval_duration(payload) -> str:
+    value = int(payload.get("value", 0))
+    forms = {
+        "minutes": ("минута", "минуты", "минут"),
+        "hours": ("час", "часа", "часов"),
+        "days": ("день", "дня", "дней"),
+        "weeks": ("неделя", "недели", "недель"),
+        "months": ("месяц", "месяца", "месяцев"),
+    }
+    variants = forms.get(payload.get("unit"), (str(payload.get("unit", "")),) * 3)
+    index = 2 if 11 <= value % 100 <= 14 else 0 if value % 10 == 1 else 1 if 2 <= value % 10 <= 4 else 2
+    return f"{value} {variants[index]}"
+
+
 def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[str, Any]]) -> str:
     """
     Делает человекочитаемое описание регулярности для списка /list.
@@ -45,6 +59,10 @@ def format_recurring_human(pattern_type: Optional[str], payload: Optional[Dict[s
         return "повтор"
 
     payload = payload or {}
+    if pattern_type == "interval" and payload.get("recurrence_mode") == "completion":
+        return "После выполнения · интервал: " + format_interval_duration(payload)
+    if pattern_type == "interval" and payload.get("recurrence_mode") == "schedule":
+        return "По расписанию · интервал: " + format_interval_duration(payload)
 
     weekday_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     month_short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

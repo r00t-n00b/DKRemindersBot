@@ -411,3 +411,15 @@ def build_custom_time_keyboard(reminder_id: int, date_str: str, callback_prefix:
     )
 
     return InlineKeyboardMarkup(keyboard)
+
+
+def combine_completion_group_keyboard(group_keyboard, completion_keyboard):
+    """Keep self-remind controls and expose Done/Snooze for completion series."""
+    if group_keyboard is None:
+        return completion_keyboard
+    if completion_keyboard is None:
+        return group_keyboard
+    return InlineKeyboardMarkup([
+        *completion_keyboard.inline_keyboard,
+        *group_keyboard.inline_keyboard,
+    ])

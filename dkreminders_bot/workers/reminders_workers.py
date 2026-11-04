@@ -1,6 +1,8 @@
 """Background reminder worker flows."""
 
 from dkreminders_bot.ui.messages import msg_nudge_unacked
+from dkreminders_bot.domain.recurrence import is_completion_based
+from dkreminders_bot.ui.keyboards import combine_completion_group_keyboard
 
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -83,6 +85,11 @@ async def run_reminders_worker(app, deps) -> None:
                         else build_snooze_keyboard(r.id)
                     )
 
+                    tpl = get_recurring_template(r.template_id) if r.template_id is not None else None
+                    completion_based = bool(tpl and is_completion_based(tpl["pattern_type"], tpl["payload"]))
+                    if completion_based and chat_type_value in {"group", "supergroup", "channel"}:
+                        reply_markup = combine_completion_group_keyboard(reply_markup, build_snooze_keyboard(r.id))
+
                     send_kwargs = {
                         "chat_id": r.chat_id,
                         "text": r.text,
@@ -130,8 +137,7 @@ async def run_reminders_worker(app, deps) -> None:
                     )
 
                     if r.template_id is not None:
-                        tpl = get_recurring_template(r.template_id)
-                        if tpl and tpl["active"]:
+                        if tpl and tpl["active"] and not completion_based:
                             next_dt = compute_next_occurrence(
                                 tpl["pattern_type"],
                                 tpl["payload"],

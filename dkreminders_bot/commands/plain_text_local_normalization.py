@@ -4,6 +4,7 @@ import re
 from typing import Optional
 
 from dkreminders_bot.parsing.parser_lexicon import MONTH_EN, WEEKDAY_EN, WEEKDAY_RU
+from dkreminders_bot.parsing.parser_recurring import parse_recurring
 
 
 RU_MONTHS = (
@@ -25,7 +26,7 @@ RU_RELATIVE_UNITS = (
 
 def _strip_plain_text_reminder_prefix(raw_text: str) -> str:
     return re.sub(
-        r"^\s*(?:напомни(?:\s+мне)?|напомнить(?:\s+мне)?|remind(?:\s+me)?(?:\s+to)?)\s+",
+        r"^\s*(?:(?:напомни|напоминай)(?:\s+мне)?|напомнить(?:\s+мне)?|remind(?:\s+me)?(?:\s+to)?)\s+",
         "",
         raw_text,
         flags=re.IGNORECASE,
@@ -76,6 +77,29 @@ def normalize_plain_text_reminder_locally(
     candidate = _strip_plain_text_reminder_prefix(candidate)
     if not candidate:
         return None
+
+    # Explicit intervals have an unambiguous boundary before their action text.
+    recurring = re.fullmatch(
+        r"(?P<expr>(?:каждые?\s+полчаса)|"
+        r"(?:кажд\w*|every)\s+(?:[1-9]\d*\s+)?"
+        r"(?:минуту|минуты|минут|минута|часов|часа|час|дней|дня|недель|недели|месяцев|месяца|minutes?|hours?|days?|weeks?|months?))"
+        r"(?:\s+(?P<time>(?:(?:в|at)\s+)?\d{1,2}:\d{2}))?"
+        r"\s+(?:-\s*)?(?P<body>.+)",
+        candidate, flags=re.IGNORECASE,
+    )
+    if recurring:
+        expr = recurring.group("expr")
+        if "полчаса" in expr.lower():
+            expr = "every 30 minutes"
+        if recurring.group("time"):
+            expr += " " + recurring.group("time")
+        normalized = f"{expr} - {recurring.group('body')}"
+        try:
+            parse_recurring(normalized, get_now())
+        except ValueError:
+            pass
+        else:
+            return normalized
 
     # Deterministic Russian relative reminders without dash:
     # - "напомни через неделю трансфернуть всех кто ценный"

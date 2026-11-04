@@ -225,6 +225,10 @@ from dkreminders_bot.parsing.parser_recurring_detection import looks_like_recurr
 from dkreminders_bot.commands.bulk_header_detection import drop_optional_bulk_header
 from dkreminders_bot.commands.bulk_single_reminder import create_single_reminder_from_line
 from dkreminders_bot.commands.single_recurring_reminder import try_handle_single_recurring_reminder
+from dkreminders_bot.storage.completion_recurrence import RecurrenceStore
+from dkreminders_bot.callbacks.recurrence_mode import request_interval_choice, handle_mode_choice
+from dkreminders_bot.callbacks.callback_contracts import RECURRENCE_MODE_PATTERN
+
 from dkreminders_bot.commands.single_oneoff_reminder import handle_single_oneoff_reminder
 from dkreminders_bot.callbacks.snooze_apply import apply_snooze_to_reminder
 from dkreminders_bot.callbacks.snooze_custom_flow import enter_custom_snooze_flow
@@ -637,6 +641,7 @@ from typing import Optional
 def _build_storage_delete_restore_deps():
     return SimpleNamespace(
         DB_PATH=DB_PATH,
+        get_now=get_now,
         add_reminder=add_reminder,
         compute_next_occurrence=compute_next_occurrence,
         get_recurring_template_row=get_recurring_template_row,
@@ -1078,6 +1083,35 @@ async def timezone_location_message(update: Update, context: CTX) -> None:
     await handle_timezone_location_message(update, context, _build_timezone_settings_deps())
 
 
+async def request_interval_mode(*, first_dt, text, payload, hour, minute, now,
+                                target_chat_id, used_alias, chat, user, message):
+    zone = get_user_timezone_name(user.id)
+    spec = {
+        "first_dt": first_dt.isoformat(), "text": text, "payload": payload,
+        "time_hour": hour, "time_minute": minute, "chat_id": target_chat_id,
+        "created_by": user.id, "origin_chat_id": chat.id,
+        "used_alias": used_alias, "timezone_name": zone,
+    }
+    source = getattr(message, "reply_to_message", None)
+    if source is not None:
+        spec["source_chat_id"] = getattr(getattr(source, "chat", None), "id", getattr(source, "chat_id", None))
+        spec["source_message_id"] = getattr(source, "message_id", None)
+    await request_interval_choice(
+        store=RecurrenceStore(DB_PATH), spec=spec, now=now, message=message,
+        safe_reply=safe_reply,
+    )
+
+
+async def recurrence_mode_callback(update, context):
+    await handle_mode_choice(update, context, store=RecurrenceStore(DB_PATH), deps=SimpleNamespace(
+        get_now=get_now, logger=logger, safe_reply=safe_reply,
+        format_created_recurring_reminder_text=format_created_recurring_reminder_text,
+        format_recurring_human=format_recurring_human,
+        register_reminder_message=register_reminder_message,
+        build_created_reminder_actions_keyboard_for_reminder=build_created_reminder_actions_keyboard_for_reminder,
+    ))
+
+
 def _build_remind_command_deps():
     return build_remind_command_deps(globals())
 
@@ -1304,6 +1338,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
     application.add_handler(MessageHandler(filters.LOCATION, timezone_location_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
+    application.add_handler(CallbackQueryHandler(recurrence_mode_callback, pattern=RECURRENCE_MODE_PATTERN))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
     application.add_handler(CallbackQueryHandler(timezone_settings_callback, pattern=r"^tz:"))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))

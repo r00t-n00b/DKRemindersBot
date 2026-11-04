@@ -1,3 +1,6 @@
+import json
+import sqlite3
+
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -116,6 +119,13 @@ def test_remind_command_routes_recurring_aliases_to_recurring_parser(main_module
         m.asyncio.run(m.remind_command(update, context))
 
         assert message.replies
+        if expected_pattern == "interval":
+            assert "Как повторять?" in message.replies[-1][0]
+            with sqlite3.connect(m.DB_PATH) as conn:
+                pending = json.loads(conn.execute("SELECT spec FROM recurrence_choices ORDER BY rowid DESC LIMIT 1").fetchone()[0])
+            assert pending["text"] == expected_text
+            assert pending["payload"] == expected_payload
+            continue
         assert "Ок, создал повторяющееся напоминание." in message.replies[-1][0]
         assert "Не смог понять дату и текст" not in message.replies[-1][0]
 
@@ -208,6 +218,13 @@ def test_all_simple_recurring_aliases_from_lexicon_route_through_remind_command(
         m.asyncio.run(m.remind_command(update, context))
 
         assert message.replies
+        if expected_pattern == "interval":
+            assert "Как повторять?" in message.replies[-1][0]
+            with sqlite3.connect(m.DB_PATH) as conn:
+                pending = json.loads(conn.execute("SELECT spec FROM recurrence_choices ORDER BY rowid DESC LIMIT 1").fetchone()[0])
+            assert pending["text"] == expected_text
+            assert pending["payload"] == expected_payload
+            continue
         assert "Ок, создал повторяющееся напоминание." in message.replies[-1][0]
         assert "Не смог понять дату и текст" not in message.replies[-1][0]
 

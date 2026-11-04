@@ -39,6 +39,7 @@ async def dispatch_remind_creation(
     safe_reply,
     logger,
     register_reminder_message=None,
+    request_interval_mode=None,
 ) -> None:
     if had_newline:
         raw_lines = [ln.strip() for ln in raw_args.splitlines() if ln.strip()]
@@ -60,6 +61,7 @@ async def dispatch_remind_creation(
 
         created = 0
         failed = 0
+        pending = 0
         error_lines: List[tuple[int, str, str]] = []
 
         for idx, line in enumerate(lines, start=1):
@@ -69,6 +71,18 @@ async def dispatch_remind_creation(
                 line = line[1:].lstrip()
 
             try:
+                if request_interval_mode is not None and looks_like_recurring(line):
+                    first_dt, text, pattern, payload, hour, minute = parse_with_optional_default_time(
+                        parse_recurring, line, now, default_time=default_time,
+                    )
+                    if pattern == "interval":
+                        await request_interval_mode(
+                            first_dt=first_dt, text=text, payload=payload, hour=hour, minute=minute,
+                            now=now, target_chat_id=target_chat_id, used_alias=used_alias,
+                            chat=chat, user=user, message=message,
+                        )
+                        pending += 1
+                        continue
                 create_single_reminder_from_line(
                     line=line,
                     now=now,
@@ -86,6 +100,9 @@ async def dispatch_remind_creation(
             error_lines=error_lines,
         )
 
+        if pending:
+            from dkreminders_bot.ui.messages import MSG_RECURRENCE_PENDING_BULK
+            reply += "\n" + MSG_RECURRENCE_PENDING_BULK.format(count=pending)
         await safe_reply(message, reply)
         return
 
@@ -113,6 +130,7 @@ async def dispatch_remind_creation(
         safe_reply=safe_reply,
         logger=logger,
         register_reminder_message=register_reminder_message,
+        request_interval_mode=request_interval_mode,
     )
     if recurring_handled:
         return

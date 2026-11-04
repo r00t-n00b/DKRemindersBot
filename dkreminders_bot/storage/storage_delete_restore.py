@@ -5,6 +5,10 @@ It does not own schema creation or migrations.
 """
 
 from datetime import datetime
+
+from dkreminders_bot.domain.recurrence import is_completion_based
+from dkreminders_bot.storage.completion_recurrence import RecurrenceStore
+from dkreminders_bot.utils.time_utils import aware_now
 from typing import Any, Dict, List, Optional
 
 
@@ -62,6 +66,9 @@ def delete_recurring_one_instance_and_reschedule_impl(rid: int, chat_id: int, *,
         return None
     if not tpl.get('active'):
         return None
+    if is_completion_based(tpl['pattern_type'], tpl.get('payload')):
+        now = getattr(deps, "get_now", aware_now)()
+        return RecurrenceStore(DB_PATH).skip(int(rid), int(chat_id), now)
     deleted = delete_single_reminder_row_impl(int(rid), int(chat_id), deps=deps)
     if not deleted:
         return None
@@ -162,6 +169,8 @@ def delete_recurring_series_with_snapshot_impl(template_id: int, target_chat_id:
         return None
     if int(tpl['chat_id']) != int(target_chat_id):
         return None
+    if is_completion_based(tpl['pattern_type'], tpl.get('payload')):
+        return RecurrenceStore(DB_PATH).delete_series(int(template_id), int(target_chat_id))
     reminders = get_reminders_by_template_id(int(template_id), int(target_chat_id))
     if not reminders:
         deactivate_recurring_template_impl(int(template_id), deps=deps)
@@ -189,10 +198,15 @@ def restore_deleted_snapshot_impl(snapshot: Dict[str, Any], *, deps) -> Optional
             activate_recurring_template_impl(int(tpl['id']), deps=deps)
             tpl_id = int(tpl['id'])
         remind_at = datetime.fromisoformat(str(r['remind_at']))
-        new_rid = add_reminder(chat_id=int(r['chat_id']), text=str(r['text']), remind_at=remind_at, created_by=r.get('created_by'), template_id=tpl_id)
+        source_kwargs = {}
+        if is_completion_based((tpl or {}).get('pattern_type'), (tpl or {}).get('payload')):
+            source_kwargs = {k: r[k] for k in ('source_chat_id', 'source_message_id') if r.get(k) is not None}
+        new_rid = add_reminder(chat_id=int(r['chat_id']), text=str(r['text']), remind_at=remind_at, created_by=r.get('created_by'), template_id=tpl_id, **source_kwargs)
         return new_rid
     if kind == 'series':
         tpl = snapshot.get('template') or {}
+        if is_completion_based(tpl.get('pattern_type'), tpl.get('payload')):
+            return RecurrenceStore(DB_PATH).restore_series(snapshot, getattr(deps, "get_now", aware_now)())
         tpl_id = tpl.get('id')
         if tpl_id is None:
             return None

@@ -100,6 +100,15 @@ def init_db_impl(*, deps) -> None:
     if 'timezone_name' not in tpl_cols:
         c.execute('ALTER TABLE recurring_templates ADD COLUMN timezone_name TEXT')
         logger.info('DB migration: added recurring_templates.timezone_name column')
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS recurrence_choices (
+            token TEXT PRIMARY KEY,
+            spec TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            chosen_mode TEXT,
+            reminder_id INTEGER
+        )
+    """)
     c.execute('\n        CREATE TABLE IF NOT EXISTS user_aliases (\n            alias TEXT NOT NULL,\n            user_id INTEGER NOT NULL,\n            chat_id INTEGER NOT NULL,\n            username TEXT,\n            created_by INTEGER NOT NULL,\n            created_at TEXT NOT NULL,\n            PRIMARY KEY (created_by, alias)\n        )\n        ')
     c.execute('\n        CREATE TABLE IF NOT EXISTS user_chats (\n            user_id INTEGER PRIMARY KEY,\n            chat_id INTEGER NOT NULL,\n            username TEXT,\n            first_name TEXT,\n            last_name TEXT,\n            updated_at TEXT NOT NULL\n        )\n        ')
     c.execute('CREATE INDEX IF NOT EXISTS idx_user_chats_username ON user_chats(username)')

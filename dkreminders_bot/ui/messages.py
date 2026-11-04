@@ -468,3 +468,19 @@ __all__ = tuple(
     for name in globals()
     if name.startswith("MSG_") or name.startswith("msg_")
 )
+
+# Recurrence mode selection and completion-based series.
+MSG_RECURRENCE_MODE_PROMPT = (
+    "Как повторять?\n\n{text}\nИнтервал: {interval}\n\n"
+    "🕒 По расписанию — напоминать с заданным интервалом, даже если предыдущее ещё не выполнено.\n\n"
+    "✅ После выполнения — отсчитать интервал после нажатия «Выполнено». "
+    "Пока не выполнишь, следующее не появится."
+)
+MSG_RECURRENCE_FORBIDDEN = "Эта кнопка доступна только владельцу напоминания в его чате."
+MSG_RECURRENCE_PROCESSED = "Этот выбор или напоминание уже обработаны."
+MSG_RECURRENCE_EXPIRED = "Время выбора истекло. Создай напоминание заново."
+MSG_RECURRENCE_CANCELLED = "Создание серии отменено."
+MSG_RECURRENCE_SELECTED = "Режим выбран."
+MSG_RECURRENCE_NEXT = "Следующее напоминание: {when}."
+MSG_RECURRENCE_PENDING_BULK = "Ожидают выбора режима: {count}."
+MSG_RECURRENCE_CHOICE_FAILED = "Не удалось создать серию. Попробуй нажать кнопку ещё раз."

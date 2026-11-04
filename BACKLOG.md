@@ -38,39 +38,33 @@ Production reminder-worker должен стабильно:
 Остаётся проверить как часть voice UX:
 - timezone gate для voice reminders, если пользователь новый.
 
-## 3. Smart recurring / completion-based recurrence — TODO
+## 3. Smart recurring / completion-based recurrence — IN PROGRESS
 
-Ближайший функциональный приоритет.
+Реализовано и покрыто автоматическими тестами:
+- при создании интервальной серии бот предлагает «По расписанию» / «После выполнения» и отмену;
+- до выбора серия и первое напоминание не создаются; выбор хранится в SQLite и переживает restart;
+- календарные расписания и существующие серии сохраняют прежнее поведение;
+- после Done следующее напоминание создаётся от фактического времени выполнения;
+- без Done новые повторы не накапливаются; nudges продолжают работать в личке;
+- Snooze сохраняет серию и источник, включая повторный и custom snooze;
+- завершение и создание следующего повтора выполняются одной транзакцией;
+- повторные/одновременные нажатия не создают дубликаты;
+- в личке действия доступны получателю; в группе — создателю серии;
+- явный пропуск одного повтора отсчитывает следующий интервал от момента пропуска;
+- удаление серии останавливает её; undo сохраняет режим и источник;
+- интервалы в минутах/часах/днях/неделях считаются как прошедшее время; месяцы — по локальному календарю с ограничением последним днём месяца;
+- даты доставки сравниваются по фактическому времени, включая разные timezone и переход на зимнее время.
 
-Для интервальных recurring reminders нужен режим, где следующий reminder
-планируется от фактического завершения предыдущего, а не от его scheduled time.
+Покрыто автоматическими тестами: создание/отмена/истечение выбора, оба режима,
+Done, late/duplicate/concurrent Done, Snooze, restart, сбой записи и rollback,
+private/group/ownership, bulk, plain text, календарные и старые серии,
+пропуск/undo, timezone migration и DST.
 
-Базовый UX:
-- «каждые полчаса» может работать как completion-based recurrence;
-- reminder пришёл в 10:00, пользователь нажал Done в 10:17 → следующий в 10:47;
-- пока предыдущий reminder не закрыт, новая инстанция серии не создаётся;
-- Snooze не запускает новый интервал: отсчёт начинается после Done;
-- не допускать накопления нескольких незакрытых reminders одной серии.
+Остаётся перед закрытием:
+- живая проверка выбора режима и цепочки Done/Snooze в Telegram после публикации.
 
-Нужно определить semantics:
-- как пользователь выбирает fixed recurring vs completion-based recurring;
-- calendar-based schedules вроде «каждый день в 9:00» продолжают работать по календарю;
-- Delete / Skip / Snooze;
-- pause/resume и delete series;
-- restart между delivery и Done;
-- timezone migration;
-- взаимодействие с nudges;
-- stale/duplicate Done callbacks;
-- group/private/access-control cases.
-
-Обязательно покрыть тестами:
-- Done → следующий occurrence через заданный interval;
-- поздний Done сдвигает следующий occurrence;
-- отсутствие Done не создаёт следующую инстанцию;
-- Snooze не начинает новый recurrence interval;
-- duplicate/stale Done не создаёт две инстанции;
-- restart сохраняет состояние серии;
-- обычный calendar-based recurring не меняет поведение.
+Отдельная дальнейшая задача управления сериями:
+- смена режима существующей серии и полноценные pause/resume из меню.
 
 ## 4. /settings — IN PROGRESS
 
@@ -486,7 +480,7 @@ Diagnostics / debug history:
 
 ## Suggested next order
 
-1. Smart recurring / completion-based recurrence: interval starts from Done of the previous occurrence.
+1. Smart recurring / completion-based recurrence: verify the deployed chooser and Done/Snooze flow in Telegram.
 2. /settings: finish the planned settings menu, especially nudge policy, aliases editing, recurring management entry point, diagnostics entry point.
 3. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
 4. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
