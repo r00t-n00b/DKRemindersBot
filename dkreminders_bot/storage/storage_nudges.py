@@ -27,7 +27,7 @@ def get_due_nudges_impl(now: datetime, *, deps) -> List[Dict[str, Any]]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute('\n            SELECT id, chat_id, text, sent_at, nudge_count\n            FROM reminders\n            WHERE delivered = 1\n              AND acked = 0\n              AND nudge_count < 4\n              AND sent_at IS NOT NULL\n            ').fetchall()
+        rows = conn.execute('\n            SELECT id, chat_id, text, sent_at, nudge_count, source_chat_id, source_message_id\n            FROM reminders\n            WHERE delivered = 1\n              AND acked = 0\n              AND nudge_count < 4\n              AND sent_at IS NOT NULL\n            ').fetchall()
         out: List[Dict[str, Any]] = []
         for r in rows:
             try:

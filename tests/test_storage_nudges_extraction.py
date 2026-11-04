@@ -34,7 +34,9 @@ def _create_reminders_table(conn):
             template_id INTEGER,
             acked INTEGER NOT NULL DEFAULT 0,
             sent_at TEXT,
-            nudge_count INTEGER NOT NULL DEFAULT 0
+            nudge_count INTEGER NOT NULL DEFAULT 0,
+            source_chat_id INTEGER,
+            source_message_id INTEGER
         )
         """
     )

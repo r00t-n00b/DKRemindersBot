@@ -85,9 +85,15 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
     _apply_deps(deps)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    cols = _table_columns(conn, "reminders")
+    source_select = (
+        "source_chat_id, source_message_id"
+        if {"source_chat_id", "source_message_id"} <= cols
+        else "NULL AS source_chat_id, NULL AS source_message_id"
+    )
     c.execute(
-        """
-        SELECT id, chat_id, text, remind_at, created_by, template_id, sent_at, delivered, acked
+        f"""
+        SELECT id, chat_id, text, remind_at, created_by, template_id, sent_at, delivered, acked, {source_select}
         FROM reminders
         WHERE id = ?
         """,
@@ -98,7 +104,10 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
     if not row:
         return None
 
-    rid, chat_id, text, remind_at_str, created_by, template_id, sent_at_str, delivered, acked = row
+    (
+        rid, chat_id, text, remind_at_str, created_by, template_id,
+        sent_at_str, delivered, acked, source_chat_id, source_message_id,
+    ) = row
     sent_at = from_iso(sent_at_str) if sent_at_str else None
 
     return Reminder(
@@ -111,6 +120,8 @@ def get_reminder_impl(reminder_id: int, deps) -> Optional[Reminder]:
         sent_at=sent_at,
         delivered=int(delivered or 0),
         acked=int(acked or 0),
+        source_chat_id=source_chat_id,
+        source_message_id=source_message_id,
     )
 
 

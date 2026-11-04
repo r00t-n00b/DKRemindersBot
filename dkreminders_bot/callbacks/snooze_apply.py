@@ -60,12 +60,22 @@ async def apply_snooze_to_reminder(
             replacement_text=snoozed_text,
         )
 
+    source_kwargs = {}
+    source_chat_id = getattr(reminder, "source_chat_id", None)
+    source_message_id = getattr(reminder, "source_message_id", None)
+    if source_chat_id is not None and source_message_id is not None:
+        source_kwargs = {
+            "source_chat_id": source_chat_id,
+            "source_message_id": source_message_id,
+        }
+
     add_reminder(
         chat_id=reminder.chat_id,
         text=reminder.text,
         remind_at=new_dt,
         created_by=reminder.created_by,
         template_id=None,
+        **source_kwargs,
     )
 
     try:

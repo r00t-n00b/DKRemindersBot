@@ -4,6 +4,8 @@ Telegram reminder bot deployed on Fly.io.
 
 The bot supports one-off and recurring reminders, natural-language text and voice input, reply/forward-context reminders, snooze/reschedule/done flows, personal self-reminders from group chats, group and user aliases, timezone-aware scheduling, and undo for delete actions.
 
+Reply/forward-context reminders retain their source message through delivery, private-chat nudges, and repeated snooze (quick buttons or custom time). Notifications reply to the source only when it belongs to the destination chat. If the source was deleted, delivery is allowed without a reply.
+
 ## Current architecture
 
 `main.py` is intentionally kept as the composition root:
@@ -38,7 +40,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1405 passed, 1 skipped
+1422 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:

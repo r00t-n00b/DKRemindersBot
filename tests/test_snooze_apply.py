@@ -380,3 +380,41 @@ def test_apply_snooze_ignores_already_acked_reminder():
     assert query.answers == [("Это напоминание уже обработано", True)]
     assert not any(call[0] == "add" for call in calls)
     assert not any(call[0] == "acked" for call in calls)
+
+
+
+def test_snooze_preserves_source_message_for_next_delivery():
+    calls = []
+    query = Query()
+    context = SimpleNamespace(bot="bot")
+    reminder = SimpleNamespace(
+        id=123,
+        chat_id=555,
+        text="посмотреть фотографии",
+        created_by=42,
+        source_chat_id=555,
+        source_message_id=77,
+    )
+    new_dt = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
+
+    async def clear_keyboards(*args, **kwargs):
+        pass
+
+    asyncio.run(
+        apply_snooze_to_reminder(
+            reminder=reminder,
+            new_dt=new_dt,
+            query=query,
+            context=context,
+            mark_reminder_acked=lambda rid: None,
+            clear_reminder_message_keyboards=clear_keyboards,
+            add_reminder=lambda **kwargs: calls.append(kwargs),
+            format_snoozed_reminder_text=lambda text, when: text,
+            format_snoozed_answer_text=lambda when: when,
+        )
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["source_chat_id"] == 555
+    assert calls[0]["source_message_id"] == 77
+    assert calls[0]["template_id"] is None

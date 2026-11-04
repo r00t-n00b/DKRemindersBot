@@ -41,6 +41,8 @@ def test_plain_text_without_timezone_shows_picker_and_does_not_create_reminder()
         "safe_reply": fake_safe_reply,
         "type": type,
         "get_user_timezone_name_raw": lambda user_id: None,
+        "get_user_alias_chat_id_for_user": lambda alias, user_id: None,
+        "get_chat_id_by_alias_for_user": lambda alias, user_id: None,
         "build_first_timezone_prompt": lambda: "Telegram не передаёт мне твой часовой пояс автоматически",
         "build_timezone_picker_keyboard": lambda: "timezone-picker",
     }

@@ -19,6 +19,8 @@ PLAIN_TEXT_REMIND_COMMAND_DEP_SPECS = (
     ("safe_reply", "safe_reply"),
     ("type", "type"),
     ("get_user_timezone_name_raw", "get_user_timezone_name_raw"),
+    ("get_user_alias_chat_id_for_user", "get_user_alias_chat_id_for_user"),
+    ("get_chat_id_by_alias_for_user", "get_chat_id_by_alias_for_user"),
     ("build_first_timezone_prompt", "build_first_timezone_prompt"),
     ("build_timezone_picker_keyboard", "build_timezone_picker_keyboard"),
 )

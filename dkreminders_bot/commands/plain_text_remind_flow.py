@@ -112,7 +112,60 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
         return
 
     normalization_source = "local"
-    normalized = _normalize_plain_text_reminder_locally(raw_text)
+    normalized = None
+
+    # Handle a recipient placed before "через полтора часа".
+    # Resolve the recipient only through an existing user/chat alias.
+    import re
+
+    recipient_match = re.fullmatch(
+        r"\s*(?:напомни|напомнить)\s+"
+        r"(?P<recipient>[А-Яа-яЁёA-Za-z][А-Яа-яЁёA-Za-z0-9_-]*)\s+"
+        r"через\s+полтор(?:а|ы)\s+часа\s+"
+        r"(?P<body>.+?)\s*",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if recipient_match:
+        recipient = recipient_match.group("recipient")
+        body = recipient_match.group("body").strip()
+
+        # Russian dative name -> nominative alias candidates.
+        candidates = [recipient]
+        if recipient.lower().endswith("е"):
+            candidates.append(recipient[:-1] + "а")
+            candidates.append(recipient[:-1] + "я")
+            if recipient.lower().endswith("ше"):
+                candidates.append(recipient[:-1] + "а")
+        if recipient.lower().endswith("и"):
+            candidates.append(recipient[:-1] + "я")
+
+        user_alias_lookup = getattr(
+            deps, "get_user_alias_chat_id_for_user", None
+        )
+        chat_alias_lookup = getattr(
+            deps, "get_chat_id_by_alias_for_user", None
+        )
+
+        resolved_alias = None
+        for candidate in dict.fromkeys(candidates):
+            if (
+                callable(user_alias_lookup)
+                and user_alias_lookup(candidate, user.id) is not None
+            ) or (
+                callable(chat_alias_lookup)
+                and chat_alias_lookup(candidate, user.id) is not None
+            ):
+                resolved_alias = candidate
+                break
+
+        if resolved_alias:
+            normalized = f"{resolved_alias} in 90 minutes - {body}"
+        else:
+            normalized = f"in 90 minutes - {recipient} {body}"
+
+    if normalized is None:
+        normalized = _normalize_plain_text_reminder_locally(raw_text)
 
     if not normalized:
         normalization_source = "local_relative"

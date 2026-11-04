@@ -751,3 +751,82 @@ def test_plain_text_one_and_half_hours_is_oneoff_not_recurring(
         "/remind in 90 minutes - поставить в холодос пиво"
     )
     assert "pending_forward_comment_reminder" not in context.user_data
+
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected"),
+    [
+        (
+            "напомни Наташе через полтора часа посмотреть https://es.iherb.com/c/baby-kids",
+            "/remind Наташа in 90 minutes - посмотреть https://es.iherb.com/c/baby-kids",
+        ),
+        (
+            "напомни Наташе через полторы часа посмотреть ссылку",
+            "/remind Наташа in 90 minutes - посмотреть ссылку",
+        ),
+    ],
+)
+def test_recipient_before_one_and_half_hours_routes_to_known_alias(
+    main_module, monkeypatch, raw_text, expected
+):
+    seen = {}
+
+    async def fail_gemini(*args, **kwargs):
+        raise AssertionError("Gemini must not be called")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+
+    monkeypatch.setattr(
+        main_module, "normalize_plain_text_reminder_with_gemini", fail_gemini
+    )
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+    monkeypatch.setattr(
+        main_module,
+        "get_user_alias_chat_id_for_user",
+        lambda alias, user_id: 999 if alias == "Наташа" else None,
+    )
+
+    update, context, _ = _mk_update(raw_text)
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == expected
+    assert "every" not in seen["text"]
+
+
+def test_unknown_recipient_before_one_and_half_hours_is_not_routed(
+    main_module, monkeypatch
+):
+    seen = {}
+
+    async def fail_gemini(*args, **kwargs):
+        raise AssertionError("Gemini must not be called")
+
+    async def fake_remind_command(update, context):
+        seen["text"] = update.effective_message.text
+
+    monkeypatch.setattr(
+        main_module, "normalize_plain_text_reminder_with_gemini", fail_gemini
+    )
+    monkeypatch.setattr(main_module, "remind_command", fake_remind_command)
+    monkeypatch.setattr(
+        main_module,
+        "get_user_alias_chat_id_for_user",
+        lambda alias, user_id: None,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "get_chat_id_by_alias_for_user",
+        lambda alias, user_id: None,
+    )
+
+    update, context, _ = _mk_update(
+        "напомни Наташе через полтора часа посмотреть ссылку"
+    )
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    assert seen["text"] == (
+        "/remind in 90 minutes - Наташе посмотреть ссылку"
+    )
+    assert "every" not in seen["text"]
