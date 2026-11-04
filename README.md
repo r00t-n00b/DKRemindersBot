@@ -6,6 +6,20 @@ The bot supports one-off and recurring reminders, natural-language text and voic
 
 Reply/forward-context reminders retain their source message through delivery, private-chat nudges, and repeated snooze (quick buttons or custom time). Notifications reply to the source only when it belongs to the destination chat. If the source was deleted, delivery is allowed without a reply.
 
+## Personal settings
+
+`/settings` opens a private inline menu for default time, timezone, reminder nudges, aliases, and `/list`. Group requests show no personal settings. Older timezone/default-time buttons remain supported.
+
+- Default time accepts presets and custom `HH:MM` input (for example, `08:45`).
+- Timezone accepts presets, location, a limited offline city-alias list, and any available IANA timezone such as `America/New_York`. Search results require confirmation; changing timezone retains the migration question for active reminders.
+- Custom values are replies to a specific bot prompt. Unrelated messages still follow the ordinary reminder flow; `/cancel` closes the pending settings input.
+- Nudge schedules contain 1–20 independently editable intervals, each from one minute to 365 days. Defaults are `[20, 60, 240, 720]` minutes between successful sends. Presets and custom values such as `45 мин`, `1 ч 30 мин`, and `2 дня` are supported.
+- A schedule is edited as a draft and saved atomically. Sessions, drafts, and pending prompts survive restart and expire after 24 hours; stale buttons cannot change newer screens.
+- Preferences belong to the private recipient, including reminders created by someone else. Each primary delivery snapshots its schedule. Schedule changes apply to later deliveries; disabling stops pending nudges immediately, and re-enabling only allows nudges for new primary deliveries.
+- Snooze stops the old reminder's cycle; its next primary delivery uses current preferences. Groups still receive no nudges. Failed sends do not spend a repeat, and downtime does not produce a catch-up burst.
+
+Migration adds nudge preference/snapshot fields and the `settings_sessions` table without rewriting existing reminders or series. Legacy delivered rows retain the default schedule. See `docs/SETTINGS_DESIGN.md` for the agreed UX and boundaries.
+
 ## Interval recurrence modes
 
 Creating an interval series (for example, `/remind every 30 minutes - stretch` or «напоминай каждые полчаса размяться») asks **По расписанию** or **После выполнения** before creating any reminders. Cancel creates nothing. The choice survives a restart and expires after 24 hours.
@@ -53,7 +67,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1452 passed, 1 skipped
+1491 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:
@@ -164,7 +178,7 @@ Heartbeat delivery failures are logged but must never terminate the reminder bot
 
 See `BACKLOG.md` for the source of truth.
 
-Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The next planned product work is completing the `/settings` menu, especially nudge policy and alias editing.
+Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The `/settings` menu, custom values, and configurable nudge intervals are implemented. Next settings work is alias editing and the entry point for managing recurring series.
 
 ## Notes
 

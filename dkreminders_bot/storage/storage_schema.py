@@ -118,6 +118,26 @@ def init_db_impl(*, deps) -> None:
     if 'timezone_name' not in user_settings_cols:
         c.execute('ALTER TABLE user_settings ADD COLUMN timezone_name TEXT')
         logger.info('DB migration: added user_settings.timezone_name column')
+    for table, additions in {
+        "user_settings": {
+            "nudge_enabled": "INTEGER NOT NULL DEFAULT 1",
+            "nudge_intervals_json": "TEXT",
+            "nudge_resume_after": "TEXT",
+        },
+        "reminders": {
+            "nudge_policy_json": "TEXT",
+            "last_nudge_at": "TEXT",
+            "nudge_exhausted": "INTEGER NOT NULL DEFAULT 0",
+        },
+    }.items():
+        existing = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
+        for name, ddl in additions.items():
+            if name not in existing:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+    c.execute("""CREATE TABLE IF NOT EXISTS settings_sessions (
+        user_id INTEGER PRIMARY KEY, token TEXT NOT NULL, chat_id INTEGER NOT NULL,
+        message_id INTEGER, prompt_message_id INTEGER, data TEXT NOT NULL, expires_at TEXT NOT NULL
+    )""")
     conn.commit()
     conn.close()
 

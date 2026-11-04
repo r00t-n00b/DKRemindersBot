@@ -47,4 +47,6 @@ def build_reminders_worker_deps(namespace) -> SimpleNamespace:
     if missing:
         raise KeyError(f"Missing deps for build_reminders_worker_deps: {', '.join(missing)}")
 
+    if "can_send_nudge" in namespace:
+        values["can_send_nudge"] = namespace["can_send_nudge"]
     return SimpleNamespace(**values)

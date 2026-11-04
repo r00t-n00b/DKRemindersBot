@@ -70,6 +70,18 @@ private/group/ownership, bulk, plain text, календарные и стары�
 
 Нужно довести настройки до полноценного UX.
 
+Реализовано и покрыто автоматическими тестами:
+- личное меню: время, timezone, повторы уведомлений, алиасы и список напоминаний;
+- своё время через ответ на сообщение бота;
+- свой timezone через офлайн-алиасы городов или IANA с подтверждением и вопросом о переносе напоминаний;
+- включение/выключение nudge для получателя в личке;
+- 1–20 промежутков, каждый задаётся отдельно пресетом или своим интервалом;
+- черновик списка с сохранением/отменой;
+- сессии, черновики и ожидаемый ввод переживают restart, устаревшие кнопки отклоняются;
+- настройки фиксируются при основной доставке; выключение действует сразу, включение не оживляет старые уведомления;
+- старые reminder/series/settings сохраняются; миграция проверена на копии базы;
+- полный прогон: 1491 passed, 1 skipped.
+
 Уже сделано:
 - read-only экран сначала — DONE;
 - fallback time: понятный read-only текст “если время не указано...” — DONE;
@@ -80,9 +92,8 @@ private/group/ownership, bulk, plain text, календарные и стары�
 - нормальный UX для смены timezone при отпуске/переезде с migration prompt — MOSTLY DONE.
 
 Остаётся:
-- собрать настройки в более полноценное меню, а не просто read-only summary + отдельные кнопки;
+- проверить собственный ввод и повторы в Telegram после публикации;
 - editable aliases из /settings, а не только summary;
-- nudge policy: включить/выключить nudges, интервал, максимум повторов;
 - quick snooze “Завтра” / “Следующий понедельник” must use user default reminder time and show that time in button labels;
 - язык кнопок / language preference;
 - формат времени: 24h / verbose;
@@ -481,7 +492,7 @@ Diagnostics / debug history:
 ## Suggested next order
 
 1. Smart recurring / completion-based recurrence: verify the deployed chooser and Done/Snooze flow in Telegram.
-2. /settings: finish the planned settings menu, especially nudge policy, aliases editing, recurring management entry point, diagnostics entry point.
+2. /settings: verify the menu/custom input/nudge schedule in Telegram; next add alias editing and recurring management.
 3. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
 4. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
 5. Voice UX polish: timezone gate for voice reminders.

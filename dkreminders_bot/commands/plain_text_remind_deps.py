@@ -47,4 +47,6 @@ def build_plain_text_remind_command_deps(namespace) -> SimpleNamespace:
     if missing:
         raise KeyError(f"Missing deps for build_plain_text_remind_command_deps: {', '.join(missing)}")
 
+    if "settings_custom_text" in namespace:
+        values["settings_custom_text"] = namespace["settings_custom_text"]
     return SimpleNamespace(**values)

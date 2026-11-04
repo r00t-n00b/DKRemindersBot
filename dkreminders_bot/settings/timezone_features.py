@@ -405,6 +405,10 @@ def _clear_timezone_started_from_settings(context) -> None:
 
 
 async def _render_settings_screen(update, query, deps) -> None:
+    if hasattr(deps, "settings_store"):
+        from dkreminders_bot.settings.settings_menu import render_settings_home
+        await render_settings_home(update, query, None, deps)
+        return
     user = update.effective_user
     if user is None:
         return
@@ -414,6 +418,10 @@ async def _render_settings_screen(update, query, deps) -> None:
 
 
 async def handle_settings_command(update, context, deps) -> None:
+    if hasattr(deps, "settings_store"):
+        from dkreminders_bot.settings.settings_menu import start_settings
+        await start_settings(update, context, deps)
+        return
     message = update.effective_message
     user = update.effective_user
     if message is None or user is None:
@@ -436,6 +444,19 @@ async def handle_settings_command(update, context, deps) -> None:
 
 
 async def handle_settings_callback(update, context, deps) -> None:
+    if getattr(update, "callback_query", None) is None:
+        return
+    if hasattr(deps, "settings_store"):
+        from dkreminders_bot.settings.settings_menu import settings_menu_callback, _identity, _personal
+        query = update.callback_query
+        user, chat, _ = _identity(update)
+        if not _personal(user, chat):
+            from dkreminders_bot.ui.messages import SETTINGS_NOTICES
+            await query.answer(SETTINGS_NOTICES["private"], show_alert=True)
+            return
+        if (query.data or "").startswith("settings:v2:"):
+            await settings_menu_callback(update, context, deps)
+            return
     query = update.callback_query
     user = update.effective_user
     if query is None or user is None:
@@ -549,6 +570,15 @@ async def _after_timezone_changed(update, context, deps, *, old_tz: str, new_tz:
 
 
 async def handle_timezone_callback(update, context, deps) -> None:
+    if getattr(update, "callback_query", None) is None:
+        return
+    if hasattr(deps, "settings_store"):
+        from dkreminders_bot.settings.settings_menu import _identity, _personal
+        from dkreminders_bot.ui.messages import SETTINGS_NOTICES
+        user, chat, _ = _identity(update)
+        if not _personal(user, chat):
+            await update.callback_query.answer(SETTINGS_NOTICES["private"], show_alert=True)
+            return
     query = update.callback_query
     user = update.effective_user
     if query is None or user is None:
@@ -675,7 +705,7 @@ async def handle_timezone_callback(update, context, deps) -> None:
                 await _edit_or_reply(query, "Ок, старые напоминания не трогаю.")
             return
 
-        if mode not in {"all", "oneoff", "recurring"} or not old_tz or not new_tz:
+        if mode not in {"all", "oneoff", "recurring"} or not old_tz or not new_tz or deps.get_user_timezone_name(user.id) != new_tz:
             await query.answer("Настройка уже неактуальна")
             await _edit_or_reply(query, "Не нашёл актуальную смену часового пояса. Зайди в /settings ещё раз.")
             return
@@ -704,6 +734,14 @@ async def handle_timezone_callback(update, context, deps) -> None:
 
 
 async def handle_timezone_location_message(update, context, deps) -> None:
+    if hasattr(deps, "settings_store"):
+        from dkreminders_bot.settings.settings_menu import _identity, _personal
+        from dkreminders_bot.ui.messages import SETTINGS_NOTICES
+        user, chat, message = _identity(update)
+        if not _personal(user, chat):
+            if message is not None:
+                await message.reply_text(SETTINGS_NOTICES["private"])
+            return
     message = update.effective_message
     user = update.effective_user
     if message is None or user is None:

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from dkreminders_bot.domain.models import Reminder
+from dkreminders_bot.storage.settings_store import nudge_settings
 from dkreminders_bot.utils.time_utils import aware_now, from_iso, to_iso
 
 
@@ -120,6 +121,11 @@ def update_reminder_time_impl(reminder_id: int, new_dt: datetime, *, deps) -> bo
         if "next_retry_at" in cols:
             assignments.append("next_retry_at = NULL")
 
+        for column in ("nudge_policy_json", "last_nudge_at"):
+            if column in cols:
+                assignments.append(f"{column} = NULL")
+        if "nudge_exhausted" in cols:
+            assignments.append("nudge_exhausted = 0")
         values.append(int(reminder_id))
 
         c = conn.cursor()
@@ -169,6 +175,13 @@ def mark_reminder_sent_impl(
             assignments.append("last_error = NULL")
         if "next_retry_at" in cols:
             assignments.append("next_retry_at = NULL")
+
+        if "nudge_policy_json" in cols:
+            row = conn.execute("SELECT chat_id FROM reminders WHERE id=?", (reminder_id,)).fetchone()
+            config = nudge_settings(conn, row[0]) if row else {"enabled": False, "gaps": []}
+            assignments.append("nudge_policy_json = ?")
+            values.append(json.dumps(config["gaps"] if config["enabled"] else []))
+            assignments.extend(["last_nudge_at = NULL", "nudge_exhausted = 0", "nudge_count = 0"])
 
         values.append(int(reminder_id))
 

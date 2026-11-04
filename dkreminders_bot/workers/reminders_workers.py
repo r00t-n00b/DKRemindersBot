@@ -208,7 +208,11 @@ async def run_reminders_nudge_worker(app, deps) -> None:
                         send_kwargs["reply_to_message_id"] = int(source_message_id)
                         send_kwargs["allow_sending_without_reply"] = True
 
+                    can_send = getattr(deps, "can_send_nudge", None)
+                    if can_send is not None and not can_send(r["id"], get_now()):
+                        continue
                     sent_message = await app.bot.send_message(**send_kwargs)
+                    increment_nudge_count(r["id"])
 
                     sent_message_id = getattr(sent_message, "message_id", None)
                     if sent_message_id is not None:
@@ -219,7 +223,6 @@ async def run_reminders_nudge_worker(app, deps) -> None:
                             kind="nudge",
                         )
 
-                    increment_nudge_count(r["id"])
                 except Exception:
                     logger.exception("Ошибка при отправке nudge reminder id=%s", r["id"])
         except Exception:

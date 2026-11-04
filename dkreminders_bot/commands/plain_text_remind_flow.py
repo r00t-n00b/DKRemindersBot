@@ -47,6 +47,9 @@ AI_TEMPORARY_FAILURE_FALLBACK_TEXT = (
 
 async def handle_plain_text_remind_command(update, context, deps) -> None:
     _apply_deps(deps)
+    settings_input = getattr(deps, "settings_custom_text", None)
+    if settings_input is not None and await settings_input(update, context):
+        return
     chat = update.effective_chat
     message = update.effective_message
     user = update.effective_user

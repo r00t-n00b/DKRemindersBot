@@ -18,6 +18,10 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from dkreminders_bot.utils.time_utils import BOT_TZ, ensure_aware
+from dkreminders_bot.storage.storage_nudges import can_send_nudge_impl
+from dkreminders_bot.storage.settings_store import SettingsStore
+from dkreminders_bot.settings.settings_menu import settings_text_input
+
 from dkreminders_bot.settings.timezone_features import build_first_timezone_prompt, build_timezone_picker_keyboard, handle_settings_callback, handle_settings_command, handle_timezone_callback, handle_timezone_location_message
 
 # --- Telegram imports ---
@@ -1049,6 +1053,9 @@ async def defaulttime_command(update: Update, context: CTX) -> None:
 
 def _build_timezone_settings_deps():
     return SimpleNamespace(
+        settings_store=SettingsStore(DB_PATH),
+        get_now=get_now,
+        list_command=list_command,
         get_user_timezone_name=get_user_timezone_name,
         get_user_timezone_name_raw=get_user_timezone_name_raw,
         set_user_timezone_name=set_user_timezone_name,
@@ -1065,6 +1072,14 @@ def _build_timezone_settings_deps():
         move_active_reminders_timezone_for_user=move_active_reminders_timezone_for_user,
         plain_text_remind_command=plain_text_remind_command,
     )
+
+
+async def settings_custom_text(update, context):
+    return await settings_text_input(update, context, _build_timezone_settings_deps())
+
+
+async def settings_cancel_command(update, context):
+    await settings_custom_text(update, context)
 
 
 async def settings_command(update: Update, context: CTX) -> None:
@@ -1288,8 +1303,13 @@ async def post_shutdown(application: Application) -> None:
 def _build_storage_nudges_deps():
     return SimpleNamespace(
         DB_PATH=DB_PATH,
+        get_now=get_now,
         sqlite3=sqlite3,
     )
+
+
+def can_send_nudge(reminder_id, now):
+    return can_send_nudge_impl(reminder_id, now, deps=_build_storage_nudges_deps())
 
 
 def _nudge_threshold_minutes(nudge_count: int) -> Optional[int]:
@@ -1327,6 +1347,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("defaulttime", defaulttime_command))
     application.add_handler(CommandHandler("settings", settings_command))
+    application.add_handler(CommandHandler("cancel", settings_cancel_command))
     application.add_handler(CommandHandler("linkchat", linkchat_command))
     application.add_handler(CommandHandler("linkuser", linkuser_command))
     application.add_handler(CommandHandler("aliases", aliases_command))
