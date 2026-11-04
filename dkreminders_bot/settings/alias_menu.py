@@ -57,7 +57,13 @@ def alias_view(session, deps, keyboard):
         number = max(0, min(int(data.get("alias_page", 0)), pages-1))
         data["alias_page"] = number
         data["alias_items"] = entries[number*PAGE_SIZE:(number+1)*PAGE_SIZE]
-        rows = [[(("👤 " if r["kind"] == "user" else "💬 ") + _clip(r["alias"], 48), f"a_open:{i}")] for i, r in enumerate(data["alias_items"])]
+        rows = []
+        previous_kind = None
+        for i, r in enumerate(data["alias_items"]):
+            if r["kind"] != previous_kind:
+                rows.append([(L["section_" + r["kind"]], "a_section:" + r["kind"])])
+                previous_kind = r["kind"]
+            rows.append([(("👤 " if r["kind"] == "user" else "💬 ") + _clip(r["alias"], 48), f"a_open:{i}")])
         navigation = []
         if number:
             navigation.append((L["previous"], f"a_page:{number-1}"))
@@ -138,7 +144,10 @@ async def alias_action(action, args, update, context, deps, session):
     query = update.callback_query
     notice = None
     try:
-        if action == "a_list":
+        if action == "a_section" and data["page"] == "aliases" and args[0] in {"chat", "user"}:
+            await query.answer(L["section_" + args[0]])
+            return
+        elif action == "a_list":
             data.pop("alias_wizard", None)
             _page(session, "aliases")
         elif action == "a_page":

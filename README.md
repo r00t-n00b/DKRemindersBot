@@ -22,7 +22,7 @@ Migration adds nudge preference/snapshot fields and the `settings_sessions` tabl
 
 ## Alias management in settings
 
-`/settings` → **Мои алиасы** lists only the current user's aliases, with pagination and a detail screen. Creating, renaming, and deleting use drafts and confirmation buttons. Existing reminders keep their stored destination when an alias changes or is deleted.
+`/settings` → **Мои алиасы** lists only the current user's aliases, with pagination and a detail screen. Chats (channels/groups) come before people, with alphabetical ordering within each section and section headers on every page. Creating, renaming, and deleting use drafts and confirmation buttons. Existing reminders keep their stored destination when an alias changes or is deleted.
 
 - **Person:** enter a short name and `@username`; the recipient must already have started the bot. The destination is revalidated when confirming.
 - **Group:** enter a short name, then select a group with Telegram's native chat picker. The bot must already belong to that group; access is checked at selection and confirmation.
@@ -80,7 +80,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1524 passed, 1 skipped
+1529 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:

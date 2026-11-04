@@ -559,6 +559,7 @@ ALIAS_MENU_LABELS = {
     "rename_confirm": "Сохранить новое имя", "delete_confirm": "Да, удалить алиас",
     "cancel": "Отмена", "back": "‹ Назад", "previous": "←", "next": "→",
     "choose_group": "Выбрать группу", "aliases": "‹ К списку алиасов",
+    "section_chat": "— 💬 Каналы и группы —", "section_user": "— 👤 Люди —",
 }
 ALIAS_MENU_NOTICES = {
     "invalid": "Название: одно слово от 1 до 64 символов. Начни с буквы; можно использовать буквы, цифры, _ и -.",

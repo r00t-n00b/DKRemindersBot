@@ -436,3 +436,50 @@ async def test_new_alias_menu_message_remains_working_when_edit_falls_back_to_re
     await click(env,replacement,'Человек')
     assert 'Отправь название алиаса' in replacement.text
     assert env.store.session(456,env.clock['now'])['message_id']==replacement.message_id
+
+
+@pytest.mark.asyncio
+async def test_alias_list_groups_chats_before_people_and_sorts_names_without_case(env):
+    for name in ['Юлия', 'борис', 'Анна']:
+        env.m.set_user_alias(name, 999, 999, 'natasha', 456)
+    for name in ['Работа', 'ёжик', 'Дом', 'Журнал']:
+        env.m.set_chat_alias(name, -100, 'Chat', 456)
+    menu = await aliases_menu(env)
+    buttons = [b for row in menu.reply_markup.inline_keyboard for b in row]
+    assert [b.text for b in buttons if 'a_open:' in b.callback_data] == [
+        '💬 Дом', '💬 ёжик', '💬 Журнал', '💬 Работа', '👤 Анна', '👤 борис', '👤 Юлия',
+    ]
+    assert [b.text for b in buttons[:6]] == [
+        '— 💬 Каналы и группы —', '💬 Дом', '💬 ёжик', '💬 Журнал', '💬 Работа', '— 👤 Люди —',
+    ]
+    snapshot = env.store.session(456, env.clock['now'])
+    q = await click(env, menu, '— 👤 Люди —')
+    assert q.answers and not q.answers[0][1].get('show_alert')
+    assert env.store.session(456, env.clock['now']) == snapshot
+    await click(env, menu, '👤 Анна')
+    assert 'Анна' in menu.text and '@natasha' in menu.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('chat_count', [0, 7, 8, 9])
+async def test_alias_section_headers_repeat_on_pages_without_using_alias_slots(env, chat_count):
+    for i in range(chat_count):
+        env.m.set_chat_alias(f'Канал{i:02d}', -100-i, 'Chat', 456)
+    for i in range(10):
+        env.m.set_user_alias(f'Алиса{i:02d}', 999, 999, 'natasha', 456)
+    expected = [('chat', f'Канал{i:02d}') for i in range(chat_count)] + [('user', f'Алиса{i:02d}') for i in range(10)]
+    menu = await aliases_menu(env)
+    pages = (len(expected)+7)//8
+    for page in range(pages):
+        items = expected[page*8:(page+1)*8]
+        buttons = [b for row in menu.reply_markup.inline_keyboard for b in row]
+        actual = [b.text for b in buttons if 'a_open:' in b.callback_data]
+        assert actual == [('💬 ' if kind == 'chat' else '👤 ') + name for kind, name in items]
+        headers = [b.text for b in buttons if 'a_section:' in b.callback_data]
+        assert headers == [label for kind, label in [('chat', '— 💬 Каналы и группы —'), ('user', '— 👤 Люди —')] if any(k == kind for k, _ in items)]
+        assert all(len(b.callback_data.encode()) <= 64 for b in buttons)
+        if page+1 < pages:
+            await click(env, menu, '→')
+    if pages > 1:
+        await click(env, menu, '←')
+        assert f'Страница {pages-1} из {pages}' in menu.text

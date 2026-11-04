@@ -33,7 +33,10 @@ class AliasMenuStore:
         result = []
         for kind, table in TABLES.items():
             result.extend({**dict(r), "kind": kind} for r in conn.execute(f"SELECT * FROM {table} WHERE created_by=?", (owner,)))
-        return sorted(result, key=lambda r: (alias_key(r["alias"]), r["kind"]))
+        return sorted(result, key=lambda r: (
+            0 if r["kind"] == "chat" else 1,
+            alias_key(r["alias"]).replace("ё", "е"), alias_key(r["alias"]), r["alias"],
+        ))
 
     def aliases(self, owner):
         with self.connection() as conn:
