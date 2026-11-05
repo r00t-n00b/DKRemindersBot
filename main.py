@@ -21,6 +21,8 @@ from dkreminders_bot.utils.time_utils import BOT_TZ, ensure_aware
 from dkreminders_bot.storage.storage_nudges import can_send_nudge_impl
 from dkreminders_bot.storage.settings_store import SettingsStore
 from dkreminders_bot.storage.alias_menu_store import AliasMenuStore
+from dkreminders_bot.storage.reminder_diagnostics import ReminderDiagnosticsStore
+from dkreminders_bot.commands.reminder_diagnostics import handle_diagnostics_command, handle_diagnostics_callback
 from dkreminders_bot.settings.alias_menu import alias_chat_shared
 from dkreminders_bot.settings.settings_menu import settings_text_input
 
@@ -1149,6 +1151,21 @@ def _build_list_command_deps():
     return build_list_command_deps(globals())
 
 
+def _build_reminder_diagnostics_deps():
+    return SimpleNamespace(
+        store=ReminderDiagnosticsStore(DB_PATH), get_now=get_now, safe_reply=safe_reply, logger=logger,
+        sensitive_values=tuple(os.environ.get(name, "") for name in ("BOT_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY")),
+    )
+
+
+async def debug_reminders_command(update: Update, context: CTX) -> None:
+    await handle_diagnostics_command(update, context, _build_reminder_diagnostics_deps())
+
+
+async def debug_reminders_callback(update: Update, context: CTX) -> None:
+    await handle_diagnostics_callback(update, context, _build_reminder_diagnostics_deps())
+
+
 async def list_command(update: Update, context: CTX) -> None:
     await handle_list_command_flow(update, context, _build_list_command_deps())
 
@@ -1363,6 +1380,8 @@ def main() -> None:
     application.add_handler(CommandHandler("renamealias", renamealias_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
+    application.add_handler(CommandHandler("debug_reminders", debug_reminders_command))
+    application.add_handler(CommandHandler("history", debug_reminders_command))
     application.add_handler(MessageHandler(filters.StatusUpdate.CHAT_SHARED, settings_chat_shared))
     application.add_handler(MessageHandler(filters.FORWARDED, forwarded_reminder_context_message))
     application.add_handler(MessageHandler(filters.VOICE, voice_remind_command))
@@ -1370,6 +1389,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_remind_command))
     application.add_handler(CallbackQueryHandler(recurrence_mode_callback, pattern=RECURRENCE_MODE_PATTERN))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
+    application.add_handler(CallbackQueryHandler(debug_reminders_callback, pattern=r"^diag:"))
     application.add_handler(CallbackQueryHandler(timezone_settings_callback, pattern=r"^tz:"))
     application.add_handler(CallbackQueryHandler(created_delete_callback, pattern=r"^created_del:\d+$"))
     application.add_handler(CallbackQueryHandler(created_reschedule_callback, pattern=r"^created_resched:\d+$"))

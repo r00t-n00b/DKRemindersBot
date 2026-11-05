@@ -34,6 +34,19 @@ Migration adds nudge preference/snapshot fields and the `settings_sessions` tabl
 
 This feature uses the existing alias tables and settings-session data; no schema migration is required.
 
+## Reminder diagnostics
+
+`/debug_reminders` (also `/history`) works only in a private chat and shows the latest 20 stored reminders **created by the requesting user**, including delivered and completed records. It includes that user's reminders to people and groups; it never shows reminders created by somebody else, even when the requester is the recipient. Legacy records without `created_by` are excluded. There is no cross-user admin view.
+
+- `/debug_reminders` — all recipients.
+- `/debug_reminders Наташа` — a user-owned person or chat alias (legacy multiword names are supported).
+- `/debug_reminders @username` — a known private recipient.
+- Unknown targets return an error; ambiguous person/chat aliases require renaming or using `@username`.
+
+Each page shows 5 reminders, newest ID first, with creation/due/sent times, destination and series ID, delivery/acknowledgement flags, nudge count and last nudge, delivery state/attempts/retry time, source-message IDs, a short error summary, and tracked Telegram message counts by `created` / `delivery` / `nudge`. Dates retain their stored ISO offset and timezone. Configured API secrets and recognizable Telegram/Google tokens are hidden in error summaries.
+
+Arrows and **Обновить** re-read the most recent 20 rows and current states. The private pagination session expires after 30 minutes of inactivity, on opening a new diagnostic screen, or after a restart; open the command again. It is independent of `/list` and `/settings`. The SQLite connection uses `mode=ro`; diagnostics adds no tables and performs no database writes. Deleted rows cannot be recovered from this view.
+
 ## Interval recurrence modes
 
 Creating an interval series (for example, `/remind every 30 minutes - stretch` or «напоминай каждые полчаса размяться») asks **По расписанию** or **После выполнения** before creating any reminders. Cancel creates nothing. The choice survives a restart and expires after 24 hours.
@@ -81,7 +94,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1538 passed, 1 skipped
+1564 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:
@@ -192,7 +205,7 @@ Heartbeat delivery failures are logged but must never terminate the reminder bot
 
 See `BACKLOG.md` for the source of truth.
 
-Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The `/settings` menu, custom values, and configurable nudge intervals are implemented. Alias editing is implemented; verify the create/rename/delete flow in Telegram after deployment. The next planned functional priorities are production diagnostics and recurring-series management.
+Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The `/settings` menu, custom values, and configurable nudge intervals are implemented. Alias editing is implemented; verify the create/rename/delete flow in Telegram after deployment. Reminder diagnostics is implemented; verify `/debug_reminders` / `/history` in Telegram after deployment. The next planned functional priority is recurring-series management.
 
 ## Notes
 

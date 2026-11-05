@@ -407,15 +407,19 @@ Recurring management UX:
 - индексы после удаления;
 - пустые списки.
 
-Diagnostics / debug history:
+Diagnostics / debug history — реализовано, нужна живая проверка после публикации:
 - нормальный /list остаётся чистым и показывает только user-facing active reminders;
-- добавить private/admin-only debug command, например `/debug_reminders` или `/history`;
-- показать последние 20 reminders для текущего user/chat;
+- `/debug_reminders` и `/history`: только в личке, каждый пользователь видит только свои созданные напоминания; межпользовательского admin-режима нет;
+- последние 20 сохранённых reminders, созданных текущим пользователем; фильтр по собственному алиасу или известному @username;
 - поля: id, text, remind_at, delivered, acked, nudge_count, sent_at, template_id, delivery_state;
 - показать количество tracked Telegram messages по kind: created / delivery / nudge;
 - read-only, без мутаций;
 - не раскрывать чужие reminders;
-- тесты на private chat, group chat, alias/created_by boundaries, empty history.
+- страницы по 5 записей, обновление; сессия 30 минут, чужие/старые кнопки отклоняются;
+- SQLite mode=ro, без миграции, токены скрываются в ошибках;
+- тесты private/group, alias/created_by boundaries, пустой истории, статусов, tracked messages, пагинации и ошибок чтения;
+- копия production: 6 авторов и 9 фильтров алиасов, хеш базы не изменился;
+- полный прогон: 1564 passed, 1 skipped.
 
 ## 22. Алисы чатов и пользователей — TODO
 
@@ -449,7 +453,9 @@ Diagnostics / debug history:
 - тесты на RU/EN даты;
 - интеграция с self-remind flow.
 
-## 24. Production observability — TODO
+## 24. Production observability — IN PROGRESS
+
+Реализован read-only `/debug_reminders` / `/history`, нужна живая проверка после публикации (подробности в разделе 21). Остальные пункты остаются в бэклоге.
 
 Логирование и prod visibility:
 
@@ -504,7 +510,7 @@ Diagnostics / debug history:
 ## Suggested next order
 
 1. Verify alias management in `/settings` in Telegram after publication.
-2. Production observability: add `/debug_reminders` or `/history` with delivered/acked/nudge_count/tracked message diagnostics.
+2. Verify `/debug_reminders` / `/history` in Telegram after publication; further production logging stays in section 24.
 3. Recurring management UX: list series, pause/resume, delete next occurrence, delete whole series, edit schedule/text.
 4. Remaining `/settings` UX: test delivery, language/time format preferences, series and diagnostics entry points.
 5. Voice UX polish: timezone gate for voice reminders.
