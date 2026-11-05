@@ -42,6 +42,24 @@ class AliasMenuStore:
         with self.connection() as conn:
             return self._list(conn, owner)
 
+    def reminder_page(self, owner, snapshot, page=0, *, page_size=10):
+        """Read only the owner's pending reminders for the selected recipient."""
+        with self.connection() as conn:
+            conn.execute("BEGIN")
+            selected = self._current(conn, owner, snapshot)
+            scope = (owner, selected["chat_id"])
+            total = conn.execute(
+                "SELECT COUNT(*) FROM reminders WHERE created_by=? AND chat_id=? AND delivered=0", scope,
+            ).fetchone()[0]
+            pages = max(1, (total + page_size - 1) // page_size)
+            page = max(0, min(page, pages - 1))
+            rows = conn.execute("""SELECT r.id, r.text, r.remind_at, r.template_id,
+                rt.pattern_type, rt.payload, COALESCE(r.timezone_name, rt.timezone_name) AS timezone_name
+                FROM reminders r LEFT JOIN recurring_templates rt ON rt.id=r.template_id
+                WHERE r.created_by=? AND r.chat_id=? AND r.delivered=0
+                ORDER BY r.remind_at, r.id LIMIT ? OFFSET ?""", (*scope, page_size, page * page_size)).fetchall()
+            return [dict(row) for row in rows], page, pages, total
+
     @classmethod
     def _available(cls, conn, owner, name, *, except_row=None):
         for row in cls._list(conn, owner):

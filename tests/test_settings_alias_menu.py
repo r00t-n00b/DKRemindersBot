@@ -483,3 +483,126 @@ async def test_alias_section_headers_repeat_on_pages_without_using_alias_slots(e
     if pages > 1:
         await click(env, menu, '←')
         assert f'Страница {pages-1} из {pages}' in menu.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind,target', [('user', 999), ('chat', -100)])
+async def test_alias_reminders_show_only_owner_pending_for_exact_recipient(env, kind, target):
+    if kind == 'user':
+        env.m.set_user_alias('Получатель', target, target, 'natasha', 456)
+    else:
+        env.m.set_chat_alias('Получатель', target, 'Chat', 456)
+    wanted = env.m.add_reminder(target, 'Моё активное', env.clock['now'], 456)
+    env.m.add_reminder(target, 'Чужое секретное', env.clock['now'], 777)
+    env.m.add_reminder(target+1, 'Другому адресату', env.clock['now'], 456)
+    sent = env.m.add_reminder(target, 'Уже доставленное', env.clock['now'], 456)
+    with sqlite3.connect(env.m.DB_PATH) as conn:
+        conn.execute('UPDATE reminders SET delivered=1 WHERE id=?', (sent,))
+    env.context.user_data['list_ids'] = [12345]
+    menu = await aliases_menu(env)
+    await click(env, menu, 'Получатель')
+    await click(env, menu, 'Напоминания для этого алиаса')
+    assert 'Моё активное' in menu.text and 'всего 1' in menu.text
+    assert all(text not in menu.text for text in ['Чужое секретное', 'Другому адресату', 'Уже доставленное'])
+    assert env.context.user_data['list_ids'] == [12345]
+    assert env.m.get_reminder(wanted).chat_id == target
+    await click(env, menu, 'К алиасу')
+    assert 'Куда:' in menu.text
+    await click(env, menu, 'К списку алиасов')
+    assert 'Мои алиасы' in menu.text
+
+
+@pytest.mark.asyncio
+async def test_alias_reminders_empty_and_refresh_after_new_reminder(env):
+    env.m.set_chat_alias('Работа', -100, 'Work', 456)
+    menu = await aliases_menu(env)
+    await click(env, menu, 'Работа')
+    await click(env, menu, 'Напоминания для этого алиаса')
+    assert 'пока нет' in menu.text and 'всего 0' in menu.text
+    env.m.add_reminder(-100, 'Появилось новое', env.clock['now'], 456)
+    await click(env, menu, 'Обновить')
+    assert 'Появилось новое' in menu.text and 'всего 1' in menu.text
+
+
+@pytest.mark.asyncio
+async def test_alias_reminders_pagination_refresh_clamps_and_survives_restart(env):
+    env.m.set_user_alias('Друг', 999, 999, 'natasha', 456)
+    for i in reversed(range(22)):
+        env.m.add_reminder(999, f'Задача{i:02d}', env.clock['now']+timedelta(minutes=i), 456)
+    menu = await aliases_menu(env)
+    await click(env, menu, 'Друг')
+    await click(env, menu, 'Напоминания для этого алиаса')
+    assert 'Страница 1 из 3' in menu.text
+    assert menu.text.index('Задача00') < menu.text.index('Задача09')
+    assert 'Задача10' not in menu.text
+    old_next = button_data(menu, '→')
+    env.context.user_data.clear()
+    env.m.init_db()
+    await click(env, menu, data=old_next)
+    assert 'Страница 2 из 3' in menu.text and 'Задача10' in menu.text
+    stale = await click(env, menu, data=old_next)
+    assert stale.answers[0][1].get('show_alert')
+    await click(env, menu, '→')
+    assert 'Задача20' in menu.text and 'Задача21' in menu.text
+    with sqlite3.connect(env.m.DB_PATH) as conn:
+        conn.execute('DELETE FROM reminders WHERE text >= ?', ('Задача08',))
+    await click(env, menu, 'Обновить')
+    assert 'Страница 1 из 1' in menu.text and 'всего 8' in menu.text
+    with sqlite3.connect(env.m.DB_PATH) as conn:
+        conn.execute('UPDATE reminders SET delivered=1')
+    await click(env, menu, 'Обновить')
+    assert 'пока нет' in menu.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('change', ['rename', 'delete', 'retarget'])
+async def test_alias_reminder_button_rejects_alias_changed_by_legacy_commands(env, change):
+    env.m.set_chat_alias('Работа', -100, 'Work', 456)
+    env.m.add_reminder(-200, 'Новый закрытый адресат', env.clock['now'], 456)
+    menu = await aliases_menu(env)
+    await click(env, menu, 'Работа')
+    callback = button_data(menu, 'Напоминания для этого алиаса')
+    with sqlite3.connect(env.m.DB_PATH) as conn:
+        if change == 'rename':
+            conn.execute("UPDATE chat_aliases SET alias='Офис' WHERE created_by=456")
+        elif change == 'delete':
+            conn.execute('DELETE FROM chat_aliases WHERE created_by=456')
+        else:
+            conn.execute('UPDATE chat_aliases SET chat_id=-200 WHERE created_by=456')
+    result = await click(env, menu, data=callback)
+    assert result.answers[0][1].get('show_alert')
+    assert 'изменён или удалён' in result.answers[0][0]
+    assert 'Новый закрытый адресат' not in menu.text
+    assert 'Мои алиасы' in menu.text
+
+
+@pytest.mark.asyncio
+async def test_alias_reminders_follow_recipient_after_rename_and_include_recurring(env):
+    env.m.set_user_alias('Старое', 999, 999, 'natasha', 456)
+    tpl = env.m.create_recurring_template(999, 'Полить цветы', 'daily', {}, 12, 0, 456)
+    rid = env.m.add_reminder(999, 'Полить цветы', env.clock['now'], 456, template_id=tpl)
+    selected = AliasMenuStore(env.m.DB_PATH).aliases(456)[0]
+    AliasMenuStore(env.m.DB_PATH).rename(456, selected, 'Новое')
+    menu = await aliases_menu(env)
+    await click(env, menu, 'Новое')
+    await click(env, menu, 'Напоминания для этого алиаса')
+    assert '«Новое»' in menu.text and 'Полить цветы' in menu.text and '🔁' in menu.text
+    assert env.m.get_reminder(rid).chat_id == 999
+
+
+@pytest.mark.asyncio
+async def test_alias_reminders_access_and_telegram_message_limits(env):
+    env.m.set_user_alias('Я'*160, 999, 999, 'natasha', 456)
+    for i in range(11):
+        env.m.add_reminder(999, f'{i:02d}'+ '🌻'*300, env.clock['now'], 456)
+    menu = await aliases_menu(env)
+    await click(env, menu, '👤 Я')
+    callback = button_data(menu, 'Напоминания для этого алиаса')
+    rejected = await click(env, menu, data=callback, actor=777)
+    assert rejected.answers[0][1].get('show_alert')
+    await click(env, menu, data=callback)
+    assert len(menu.text.encode('utf-16-le'))//2 < 4096
+    assert all(len(b.callback_data.encode()) <= 64 for row in menu.reply_markup.inline_keyboard for b in row)
+    env.clock['now'] += timedelta(days=2)
+    expired = await click(env, menu, 'Обновить')
+    assert expired.answers[0][1].get('show_alert')

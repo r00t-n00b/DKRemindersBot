@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime
 
 from dkreminders_bot.domain.alias_names import alias_key, validate_alias_name
+from dkreminders_bot.ui.presentation import build_active_reminders_list_response
 from dkreminders_bot.ui.messages import (
     ALIAS_MENU_TEXT as TEXT, ALIAS_MENU_LABELS as L, ALIAS_MENU_NOTICES as N,
     SETTINGS_NOTICES as SN,
@@ -76,7 +77,28 @@ def alias_view(session, deps, keyboard):
     elif page == "alias_detail":
         r = data["alias_selected"]
         text = TEXT["detail"].format(kind=L[r["kind"]], name=_clip(r["alias"], 100), target=target_label(r))
-        rows = [[(L["rename"], "a_rename")], [(L["delete"], "a_delete")], [(L["aliases"], "a_list")]]
+        rows = [[(L["reminders"], "a_reminders")], [(L["rename"], "a_rename")], [(L["delete"], "a_delete")], [(L["aliases"], "a_list")]]
+    elif page == "alias_reminders":
+        selected = data["alias_selected"]
+        reminders, number, pages, total = deps.alias_menu_store.reminder_page(
+            uid, selected, int(data.get("alias_reminder_page", 0)),
+        )
+        data["alias_reminder_page"] = number
+        header = TEXT["reminders"].format(name=_clip(selected["alias"], 100), page=number+1, pages=pages, count=total)
+        if reminders:
+            text, _, _ = build_active_reminders_list_response(
+                reminders, header=header, now_local=deps.get_now(),
+                list_delete_keyboard_builder=lambda count: None,
+            )
+        else:
+            text = header + "\n\n" + TEXT["reminders_empty"]
+        navigation = []
+        if number:
+            navigation.append((L["previous"], f"a_reminder_page:{number-1}"))
+        if number+1 < pages:
+            navigation.append((L["next"], f"a_reminder_page:{number+1}"))
+        rows = [navigation] if navigation else []
+        rows += [[(L["refresh"], "a_reminder_page:" + str(number))], [(L["alias_back"], "a_detail")]]
     elif page == "alias_type":
         text = TEXT["type"]
         rows = [[(L["user"], "a_new:user")], [(L["chat"], "a_new:chat")], [(L["aliases"], "a_list")]]
@@ -162,6 +184,21 @@ async def alias_action(action, args, update, context, deps, session):
                 raise ValueError(SN["stale"])
             data["alias_selected"] = deps.alias_menu_store.current(uid, data["alias_items"][index])
             _page(session, "alias_detail")
+        elif action in {"a_reminders", "a_reminder_page", "a_detail"}:
+            if data["page"] not in {"alias_detail", "alias_reminders"}:
+                raise ValueError(SN["stale"])
+            deps.alias_menu_store.current(uid, data["alias_selected"])
+            if action == "a_detail":
+                _page(session, "alias_detail")
+            else:
+                number = 0 if action == "a_reminders" else int(args[0])
+                if number < 0 or (action == "a_reminder_page" and data["page"] != "alias_reminders"):
+                    raise ValueError(SN["stale"])
+                data["alias_reminder_page"] = number
+                _page(session, "alias_reminders")
+            await _render(update, context, deps, session, query=query)
+            await query.answer()
+            return
         elif action == "a_add":
             data.pop("alias_wizard", None)
             _page(session, "alias_type")
