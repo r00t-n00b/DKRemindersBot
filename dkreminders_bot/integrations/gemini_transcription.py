@@ -1,7 +1,9 @@
 """Gemini audio transcription retry/fallback helper."""
 
 import asyncio
+import json
 import os
+import re
 import time
 from typing import Optional
 
@@ -10,6 +12,86 @@ from dkreminders_bot.integrations.gemini_errors import (
     _is_transient_gemini_error,
     _is_unsupported_gemini_model_error,
 )
+from dkreminders_bot.integrations.voice_errors import VoiceRecipientUnclearError
+from dkreminders_bot.utils.command_text import first_token_looks_like_reminder_start
+from dkreminders_bot.integrations.voice_text_normalization import normalize_self_clock_reminder
+
+
+def _starts_with_schedule(text: str) -> bool:
+    tokens = [token.strip(",!?;") for token in text.casefold().split(maxsplit=2)]
+    if not tokens:
+        return False
+    if tokens[0] in {"в", "на", "at", "on"}:
+        return len(tokens) > 1 and bool(
+            first_token_looks_like_reminder_start(tokens[1])
+            or re.fullmatch(r"\d{1,2}", tokens[1])
+        )
+    return first_token_looks_like_reminder_start(tokens[0])
+
+
+def _has_spoken_recipient(transcript: str, target: str) -> bool:
+    # Only the slot after the reminder verb and before the schedule can
+    # authorize routing to another chat. Never search the task for names.
+    match = re.match(
+        r"\s*(?:напомни|напомнить|напомню|напоминай|remind)[\s,]+"
+        r"(?P<recipient>[^\s,]+)[\s,]+(?P<rest>.+)",
+        transcript,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match or not _starts_with_schedule(match["rest"]):
+        return False
+
+    recipient = match["recipient"].casefold().replace("ё", "е")
+    target = target.casefold().replace("ё", "е")
+    if recipient in {"мне", "me"}:
+        return False
+    if recipient == target:
+        return True
+    if not re.fullmatch(r"[а-я]+", target):
+        return False
+    # Support common dative forms of Russian first names.
+    if target.endswith("а"):
+        return recipient == target[:-1] + "е"
+    if target.endswith("я"):
+        ending = "и" if target.endswith("ия") else "е"
+        return recipient == target[:-1] + ending
+    if target.endswith(("й", "ь")):
+        return recipient == target[:-1] + "ю"
+    return recipient == target + "у"
+
+
+def _validate_recipient(command: str, transcript: str = "") -> str:
+    tokens = command.split(maxsplit=1)
+    if not tokens:
+        return ""
+    target = tokens[0]
+    if first_token_looks_like_reminder_start(target):
+        return command
+    has_schedule = len(tokens) == 2 and first_token_looks_like_reminder_start(
+        tokens[1].split(maxsplit=1)[0]
+    )
+    if has_schedule and (
+        target.casefold() == "me" or _has_spoken_recipient(transcript, target)
+    ):
+        return command
+    raise VoiceRecipientUnclearError()
+
+
+def _reminder_from_response(text: str) -> str:
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.IGNORECASE | re.DOTALL)
+    if fenced:
+        text = fenced[1]
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        # Keep compatibility with the existing plain command response.
+        return _validate_recipient(text) if not text.startswith(("{", "```")) else ""
+    if not isinstance(result, dict):
+        return ""
+    transcript, command = result.get("transcript"), result.get("command")
+    if not isinstance(transcript, str) or not isinstance(command, str):
+        return ""
+    return normalize_self_clock_reminder(transcript) or _validate_recipient(command.strip(), transcript)
 
 
 async def gemini_transcribe_audio_with_retries(
@@ -68,17 +150,21 @@ async def gemini_transcribe_audio_with_retries(
                         (
                             "You are normalizing a Telegram voice reminder.\n"
                             "\n"
-                            "Listen to the audio and return only one line in this exact format:\n"
-                            "<optional target alias> <date/time expression> - <reminder text>\n"
+                            "Listen to the audio and return only one line of JSON with two string fields:\n"
+                            "- transcript: transcribe the original words verbatim, including the recipient and the speaker's grammatical gender.\n"
+                            "- command: <optional target alias> <date/time expression> - <reminder text>\n"
                             "\n"
-                            "The output must be directly usable after '/remind '.\n"
+                            "The command field must be directly usable after '/remind '.\n"
                             "\n"
                             "Rules:\n"
-                            "- Return only the normalized reminder command. No quotes. No markdown. No commentary.\n"
-                            "- Preserve the reminder text meaning.\n"
+                            "- Return the JSON object without markdown or commentary. The examples below show the command field.\n"
+                            "- Copy the task wording, including names, pronouns and grammatical gender.\n"
+                            "- Use an alias only when the speaker explicitly names the reminder recipient immediately after the reminder verb, before the schedule. A name inside the task (send to, call, write to) stays in the task.\n"
+                            "- 'напомни мне', 'напомню, мне', and 'remind me' explicitly target the speaker. Use 'me' even when the task mentions known aliases.\n"
+                            "- Example: 'Напомню, мне в 9.30 утра переслать Диме сообщение, которое я отправила Наташе.' -> 'me 09:30 - переслать Диме сообщение, которое я отправила Наташе.'\n"
                             "- Never change an explicitly spoken time. If the user says 'в 12', return '12:00'.\n"
                             "- If the user says 'в 14:55', return '14:55' exactly.\n"
-                            "- Remove leading phrases like 'напомни', 'напомни мне', 'поставь напоминание', 'remind me'.\n"
+                            "- Remove introductory phrases such as 'напомни' and 'поставь напоминание' from the command. Keep an explicit self recipient as 'me'.\n"
                             "- Convert spoken Russian numbers to digits where needed.\n"
                             "- Convert Russian month names to English month names.\n"
                             "- Convert Russian number words to digits in intervals: 'два часа' -> '2 часа', 'три дня' -> '3 дня'.\n"
@@ -117,7 +203,7 @@ async def gemini_transcribe_audio_with_retries(
                 )
 
                 duration_ms = int((time.monotonic() - attempt_start) * 1000)
-                text = (getattr(result, "text", "") or "").strip()
+                text = _reminder_from_response((getattr(result, "text", "") or "").strip())
                 if text:
                     logger.info(
                         "GEMINI_TRANSCRIPTION_SUCCESS model=%s attempt=%s duration_ms=%s",
@@ -129,6 +215,8 @@ async def gemini_transcribe_audio_with_retries(
 
                 last_error = RuntimeError(f"Gemini model {model} returned empty transcription")
 
+            except VoiceRecipientUnclearError:
+                raise
             except Exception as e:
                 last_error = e
 

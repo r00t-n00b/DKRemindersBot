@@ -4,7 +4,7 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from dkreminders_bot.integrations.voice_errors import VoiceTelegramFileError, VoiceTranscriptionServiceError
+from dkreminders_bot.integrations.voice_errors import VoiceRecipientUnclearError, VoiceTelegramFileError, VoiceTranscriptionServiceError
 
 
 _DEP_NAMES = [
@@ -112,6 +112,8 @@ async def transcribe_voice_message_impl(update, context, deps):
             audio_bytes=audio_bytes,
             aliases_prompt=_format_known_aliases_for_voice_prompt(update.effective_user.id),
         )
+    except VoiceRecipientUnclearError:
+        raise
     except Exception as exc:
         logger.warning(
             "VOICE_TRANSCRIPTION_SERVICE_FAILED duration_ms=%s error_type=%s error=%s",

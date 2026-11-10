@@ -232,6 +232,35 @@ def normalize_gemini_reminder_command_text(text: str) -> str:
     return s
 
 
+def normalize_self_clock_reminder(transcript: str) -> str:
+    """Use the spoken recipient and wording for an explicit self reminder."""
+    match = re.fullmatch(
+        r"(?:напомни|напомнить|напомню)[\s,]+мне[\s,]+"
+        r"в\s+(?P<hour>\d{1,2})(?P<separator>[:.])(?P<minute>\d{2})"
+        r"(?:\s+(?P<daypart>утра|дня|вечера))?[\s,]+(?P<body>\S.*)",
+        transcript.strip(),
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+
+    hour = int(match["hour"])
+    minute = int(match["minute"])
+    daypart = (match["daypart"] or "").lower()
+    if match["separator"] == "." and not daypart:
+        # A bare dotted pair may be a date, such as 10.11.
+        return ""
+    if re.match(r"(?:утра|дня|вечера|ночи)\b", match["body"], re.IGNORECASE):
+        return ""
+    if minute >= 60 or hour >= 24 or (daypart and not 1 <= hour <= 12):
+        return ""
+    if daypart:
+        hour = hour % 12 + (12 if daypart in {"дня", "вечера"} else 0)
+
+    # Use /remind's explicit self target, even if an alias looks like a time.
+    return f"me {hour:02d}:{minute:02d} - {match['body']}"
+
+
 def normalize_voice_reminder_text(text: str) -> str:
     """
     MVP-нормализация голосового reminder-а.
@@ -246,6 +275,10 @@ def normalize_voice_reminder_text(text: str) -> str:
     raw = (text or "").strip()
     if not raw:
         return ""
+
+    self_clock = normalize_self_clock_reminder(raw)
+    if self_clock:
+        return self_clock
 
     s = re.sub(r"\s+", " ", raw).strip()
     s = _strip_voice_reminder_prefix(s)

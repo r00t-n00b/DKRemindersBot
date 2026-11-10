@@ -2,11 +2,12 @@
 
 from dkreminders_bot.ui.messages import (
     MSG_VOICE_EMPTY,
+    MSG_VOICE_RECIPIENT_UNCLEAR,
     MSG_VOICE_FAILED_GENERIC,
     MSG_VOICE_TELEGRAM_FILE_FAILED,
     MSG_VOICE_TRANSCRIPTION_FAILED,
 )
-from dkreminders_bot.integrations.voice_errors import VoiceTelegramFileError, VoiceTranscriptionServiceError
+from dkreminders_bot.integrations.voice_errors import VoiceRecipientUnclearError, VoiceTelegramFileError, VoiceTranscriptionServiceError
 
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -57,6 +58,9 @@ async def handle_voice_remind_command(update, context, deps) -> None:
 
     try:
         heard_text = await transcribe_voice_message(update, context)
+    except VoiceRecipientUnclearError:
+        await safe_reply(message, MSG_VOICE_RECIPIENT_UNCLEAR)
+        return
     except VoiceTelegramFileError as e:
         logger.exception(
             "VOICE_REMIND_TELEGRAM_FILE_FAILED user_id=%s chat_id=%s error_type=%s error=%s",

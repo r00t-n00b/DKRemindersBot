@@ -50,7 +50,7 @@ class FakeClient:
 def test_gemini_transcribe_audio_with_retries_returns_clean_text(monkeypatch):
     monkeypatch.setenv("GEMINI_TRANSCRIBE_MODELS", "model-a")
     logger = FakeLogger()
-    client = FakeClient(["  normalized reminder  "])
+    client = FakeClient(["  завтра 11:00 - купить молоко  "])
 
     async def run():
         return await gemini_transcribe_audio_with_retries(
@@ -63,7 +63,7 @@ def test_gemini_transcribe_audio_with_retries_returns_clean_text(monkeypatch):
 
     result = asyncio.run(run())
 
-    assert result == "normalized reminder"
+    assert result == "завтра 11:00 - купить молоко"
     assert client.models.calls[0]["model"] == "model-a"
     assert client.models.calls[0]["contents"][0] == {"data": b"voice", "mime_type": "audio/ogg"}
     assert "Known aliases block" in client.models.calls[0]["contents"][1]
@@ -75,7 +75,7 @@ def test_gemini_transcribe_audio_with_retries_falls_back_after_unsupported_model
     logger = FakeLogger()
     client = FakeClient([
         RuntimeError("404 NOT_FOUND model is not found, use ListModels"),
-        "ok",
+        "завтра 11:00 - купить молоко",
     ])
 
     async def run():
@@ -88,7 +88,7 @@ def test_gemini_transcribe_audio_with_retries_falls_back_after_unsupported_model
 
     result = asyncio.run(run())
 
-    assert result == "ok"
+    assert result == "завтра 11:00 - купить молоко"
     assert [call["model"] for call in client.models.calls] == ["bad-model", "good-model"]
     assert logger.warning_calls
 
