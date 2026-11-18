@@ -830,3 +830,36 @@ def test_unknown_recipient_before_one_and_half_hours_is_not_routed(
         "/remind in 90 minutes - Наташе посмотреть ссылку"
     )
     assert "every" not in seen["text"]
+
+
+@pytest.mark.parametrize(
+    "relative_request, delay_minutes, task",
+    [
+        ("через 3 часа ответить всем в слаке", 180, "ответить всем в слаке"),
+        ("через 15 минут позвонить Олегу", 15, "позвонить Олегу"),
+        ("через 2 часа и 20 минут проверить отчёт", 140, "проверить отчёт"),
+    ],
+)
+def test_explicit_alias_with_relative_delay_is_saved_locally(
+    main_module, monkeypatch, fixed_now, relative_request, delay_minutes, task,
+):
+    from datetime import datetime, timedelta
+    import sqlite3
+
+    async def unexpected_gemini(*args, **kwargs):
+        pytest.fail("Explicit alias and relative delay should be parsed locally")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", unexpected_gemini)
+    now = fixed_now.replace(hour=11, minute=41)
+    monkeypatch.setattr(main_module, "get_now", lambda: now)
+    main_module.set_user_alias("Наташа", 999, 999, "natasha", 456)
+    main_module.set_user_alias("Олег", 888, 888, "oleg", 456)
+    update, context, _ = _mk_update(f"напомни Наташе {relative_request}", user_id=456, chat_id=456)
+
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+
+    with sqlite3.connect(main_module.DB_PATH) as conn:
+        [(recipient, text, due)] = conn.execute("SELECT chat_id, text, remind_at FROM reminders").fetchall()
+    assert recipient == 999
+    assert text == task
+    assert datetime.fromisoformat(due) == now + timedelta(minutes=delay_minutes)

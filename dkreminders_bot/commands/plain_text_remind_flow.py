@@ -117,29 +117,35 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
     normalization_source = "local"
     normalized = None
 
-    # Handle a recipient placed before "через полтора часа".
+    # Parse a relative schedule locally when an explicit recipient precedes it.
     # Resolve the recipient only through an existing user/chat alias.
     import re
 
     recipient_match = re.fullmatch(
         r"\s*(?:напомни|напомнить)\s+"
         r"(?P<recipient>[А-Яа-яЁёA-Za-z][А-Яа-яЁёA-Za-z0-9_-]*)\s+"
-        r"через\s+полтор(?:а|ы)\s+часа\s+"
-        r"(?P<body>.+?)\s*",
+        r"(?P<request>через\s+.+)",
         raw_text,
         flags=re.IGNORECASE | re.DOTALL,
     )
-    if recipient_match:
-        recipient = recipient_match.group("recipient")
-        body = recipient_match.group("body").strip()
+    if recipient_match and recipient_match["recipient"].casefold() != "мне":
+        relative = recipient_match["request"]
+        normalized_relative = (
+            _normalize_plain_text_reminder_locally(relative)
+            or _normalize_plain_text_relative_reminder_locally(relative)
+        )
+    else:
+        normalized_relative = None
+
+    if normalized_relative:
+        recipient = recipient_match["recipient"]
+        schedule, _, body = normalized_relative.partition(" - ")
 
         # Russian dative name -> nominative alias candidates.
         candidates = [recipient]
         if recipient.lower().endswith("е"):
             candidates.append(recipient[:-1] + "а")
             candidates.append(recipient[:-1] + "я")
-            if recipient.lower().endswith("ше"):
-                candidates.append(recipient[:-1] + "а")
         if recipient.lower().endswith("и"):
             candidates.append(recipient[:-1] + "я")
 
@@ -163,9 +169,9 @@ async def handle_plain_text_remind_command(update, context, deps) -> None:
                 break
 
         if resolved_alias:
-            normalized = f"{resolved_alias} in 90 minutes - {body}"
+            normalized = f"{resolved_alias} {schedule} - {body}"
         else:
-            normalized = f"in 90 minutes - {recipient} {body}"
+            normalized = f"{schedule} - {recipient} {body}"
 
     if normalized is None:
         normalized = _normalize_plain_text_reminder_locally(raw_text)
