@@ -123,3 +123,15 @@ def test_real_alias_still_splits_from_reminder():
 
     assert alias == "наташа"
     assert args == "понедельник 11:00 - написать в Меркадо"
+
+
+def test_all_next_forms_are_date_prefixes(main_module):
+    from dkreminders_bot.parsing.parser_lexicon import NEXT_WORDS
+    from dkreminders_bot.utils.command_text import first_token_looks_like_reminder_start
+
+    assert all(first_token_looks_like_reminder_start(word) for word in NEXT_WORDS)
+    alias, args = main_module.maybe_split_alias_first_token(
+        "следующей неделе - фильтры и их мейнтейнс"
+    )
+    assert alias is None
+    assert args == "следующей неделе - фильтры и их мейнтейнс"

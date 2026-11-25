@@ -863,3 +863,39 @@ def test_explicit_alias_with_relative_delay_is_saved_locally(
     assert recipient == 999
     assert text == task
     assert datetime.fromisoformat(due) == now + timedelta(minutes=delay_minutes)
+
+
+@pytest.mark.parametrize("date_expr,expected_time", [
+    ("на следующей неделе", (9, 45)),
+    ("следующей неделе", (9, 45)),
+    ("следующая неделя", (9, 45)),
+    ("на следующую неделю", (9, 45)),
+    ("next week", (9, 45)),
+    ("на следующей неделе в 14:30", (14, 30)),
+    ("next week at 16", (16, 0)),
+])
+def test_next_week_plain_text_saves_self_reminder_without_gemini(
+    main_module, monkeypatch, date_expr, expected_time,
+):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import sqlite3
+
+    tz = ZoneInfo("Europe/Madrid")
+    now = datetime(2026, 11, 25, 10, 3, tzinfo=tz)
+    monkeypatch.setattr(main_module, "get_now", lambda: now)
+    main_module.set_user_default_time(456, 9, 45)
+
+    async def unexpected_gemini(*args, **kwargs):
+        pytest.fail("Next week should be parsed locally")
+
+    monkeypatch.setattr(main_module, "normalize_plain_text_reminder_with_gemini", unexpected_gemini)
+    update, context, _ = _mk_update(
+        f"напомни {date_expr} фильтры и их мейнтейнс", user_id=456, chat_id=456,
+    )
+    asyncio.run(main_module.plain_text_remind_command(update, context))
+    with sqlite3.connect(main_module.DB_PATH) as conn:
+        rows = conn.execute("SELECT chat_id,text,remind_at FROM reminders").fetchall()
+    assert len(rows) == 1
+    assert rows[0][:2] == (456, "фильтры и их мейнтейнс")
+    assert datetime.fromisoformat(rows[0][2]) == datetime(2026, 11, 30, *expected_time, tzinfo=tz)

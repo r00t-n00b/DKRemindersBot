@@ -78,6 +78,25 @@ def normalize_plain_text_reminder_locally(
     if not candidate:
         return None
 
+    next_week = re.fullmatch(
+        r"(?P<date>(?:на\s+)?следующ(?:ей\s+неделе|ая\s+неделя|ую\s+неделю)|next\s+week)"
+        r"(?:\s+(?:(?:в|at)\s+)?(?P<hour>\d{1,2})(?:[:.](?P<minute>\d{2}))?)?"
+        r"\s+(?:-\s*)?(?P<body>.+)",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if next_week:
+        expr = next_week["date"]
+        if next_week["hour"] is not None:
+            time_value = _format_time(next_week["hour"], next_week["minute"])
+            if time_value is None:
+                return None
+            expr += " " + time_value
+        return _validated(
+            expr, next_week["body"],
+            parse_date_time_smart=parse_date_time_smart, get_now=get_now,
+        )
+
     # Explicit intervals have an unambiguous boundary before their action text.
     recurring = re.fullmatch(
         r"(?P<expr>(?:каждые?\s+полчаса)|"
