@@ -21,6 +21,7 @@ START_TEXT = dedent("""
         ⚙️ Команды:
         /help - короткая справка
         /list - активные напоминания
+        /unfinished - все незавершённые
         /defaulttime - время по умолчанию
 
         Еще примеры:
@@ -119,6 +120,7 @@ HELP_TEXT = dedent("""
         📋 СПИСОК
 
         /list - активные напоминания
+        /unfinished - все незавершённые
         /list Наташа - для user-alias
         /list football - для chat-alias
         /list @username - напоминания, которые ты поставил этому пользователю

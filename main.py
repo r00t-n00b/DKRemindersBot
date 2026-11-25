@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from dkreminders_bot.utils.time_utils import BOT_TZ, ensure_aware
 from dkreminders_bot.storage.storage_nudges import can_send_nudge_impl
 from dkreminders_bot.storage.settings_store import SettingsStore
+from dkreminders_bot.storage.unfinished_reminders import UnfinishedRemindersStore
 from dkreminders_bot.storage.alias_menu_store import AliasMenuStore
 from dkreminders_bot.storage.reminder_diagnostics import ReminderDiagnosticsStore
 from dkreminders_bot.commands.reminder_diagnostics import handle_diagnostics_command, handle_diagnostics_callback
@@ -1060,6 +1061,7 @@ def _build_timezone_settings_deps():
     return SimpleNamespace(
         settings_store=SettingsStore(DB_PATH),
         alias_menu_store=AliasMenuStore(DB_PATH),
+        unfinished_store=UnfinishedRemindersStore(DB_PATH),
         get_now=get_now,
         list_command=list_command,
         get_user_timezone_name=get_user_timezone_name,
@@ -1090,6 +1092,11 @@ async def settings_chat_shared(update, context):
 
 async def settings_cancel_command(update, context):
     await settings_custom_text(update, context)
+
+
+async def unfinished_command(update: Update, context: CTX) -> None:
+    from dkreminders_bot.settings.settings_menu import start_settings
+    await start_settings(update, context, _build_timezone_settings_deps(), page="unfinished")
 
 
 async def settings_command(update: Update, context: CTX) -> None:
@@ -1380,6 +1387,7 @@ def main() -> None:
     application.add_handler(CommandHandler("renamealias", renamealias_command))
     application.add_handler(CommandHandler("remind", remind_command))
     application.add_handler(CommandHandler("list", list_command))
+    application.add_handler(CommandHandler("unfinished", unfinished_command))
     application.add_handler(CommandHandler("debug_reminders", debug_reminders_command))
     application.add_handler(CommandHandler("history", debug_reminders_command))
     application.add_handler(MessageHandler(filters.StatusUpdate.CHAT_SHARED, settings_chat_shared))

@@ -34,6 +34,14 @@ Migration adds nudge preference/snapshot fields and the `settings_sessions` tabl
 
 This feature uses the existing alias tables and settings-session data; no schema migration is required.
 
+## Unfinished reminders
+
+/unfinished or /settings → **📥 Незавершённые напоминания** opens every delivered reminder with delivered=1 and acked=0 that is addressed to the current private user or was created by that user. It shows delivered reminders awaiting completion. Future reminders are available through /list. Group reminders are visible when created by the requester. Personal legacy reminders without a creator are included when addressed to the requester.
+
+Reminders are ordered by scheduled instant, oldest first. Pages contain 8 entries and show the recipient, delivery status, scheduled time and timezone, with a recurring marker where applicable. The list has no 20-record cap. **Обновить** and page arrows re-read the database. Sessions survive restarts and reject stale or foreign callbacks.
+
+Completing a reminder removes it on refresh. Snooze acknowledges the old occurrence, removing it from this list. The postponed occurrence enters the list after delivery. Separate unfinished occurrences of a series remain separate entries. Opening the list changes only the settings UI session. The reminder query uses SQLite read-only mode and requires no schema migration.
+
 ## Reminder diagnostics
 
 `/debug_reminders` (also `/history`) works only in a private chat and shows the latest 20 stored reminders **created by the requesting user**, including delivered and completed records. It includes that user's reminders to people and groups; it never shows reminders created by somebody else, even when the requester is the recipient. Legacy records without `created_by` are excluded. There is no cross-user admin view.
@@ -94,7 +102,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1564 passed, 1 skipped
+1617 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:

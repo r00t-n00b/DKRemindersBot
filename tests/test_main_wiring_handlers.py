@@ -83,6 +83,7 @@ def test_main_registers_all_handlers(monkeypatch, main_module):
         "renamealias",
         "remind",
         "list",
+        "unfinished",
     } <= command_names
 
     assert m.voice_remind_command in message_callbacks

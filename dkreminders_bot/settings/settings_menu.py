@@ -65,7 +65,7 @@ def _view(session, deps):
     back = [(L["back"], "home")]
     rows = []
     if page == "home":
-        rows = [[(L[key], key)] for key in ("time", "zone", "nudges", "aliases", "list")]
+        rows = [[(L[key], key)] for key in ("time", "zone", "nudges", "aliases", "list", "unfinished")]
     elif page == "nudges":
         rows = [[(L["sequence"], "sequence")], [(L["off"] if config["enabled"] else L["on"], "off" if config["enabled"] else "on")], back]
     elif page == "sequence":
@@ -98,6 +98,9 @@ def _view(session, deps):
     elif page == "aliases" or page.startswith("alias_"):
         from dkreminders_bot.settings.alias_menu import alias_view
         return alias_view(session, deps, _keyboard)
+    elif page == "unfinished":
+        from dkreminders_bot.settings.unfinished_menu import unfinished_view
+        return unfinished_view(session, deps, _keyboard)
     elif page == "input":
         kind = data["input"]
         text = PROMPTS[kind]
@@ -131,7 +134,7 @@ async def _render(update, context, deps, session, *, query=None):
     return True
 
 
-async def start_settings(update, context, deps):
+async def start_settings(update, context, deps, *, page="home"):
     user, chat, message = _identity(update)
     if not _personal(user, chat):
         if message is not None:
@@ -142,6 +145,7 @@ async def start_settings(update, context, deps):
         from dkreminders_bot.settings.alias_menu import _remove_picker
         await _remove_picker(message)
     session = deps.settings_store.open(user.id, chat.id, deps.get_now())
+    _page(session, page)
     await _render(update, context, deps, session)
 
 
@@ -199,8 +203,14 @@ async def settings_menu_callback(update, context, deps):
     data, now = session["data"], deps.get_now()
     notice = None
     try:
-        if action in {"home", "time", "zone", "nudges", "aliases"}:
+        if action in {"home", "time", "zone", "nudges", "aliases", "unfinished"}:
             _page(session, action)
+        elif action == "unfinished_page":
+            number = int(args[0])
+            if number < 0 or data.get("page") != "unfinished":
+                raise ValueError(N["stale"])
+            data["unfinished_page"] = number
+            _page(session, "unfinished")
         elif action == "list":
             _page(session, "home")
             deps.settings_store.save(session)
