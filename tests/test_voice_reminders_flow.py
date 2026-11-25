@@ -253,3 +253,49 @@ def test_voice_requires_spoken_recipient_before_schedule(
         assert "Не удалось подтвердить, кому" in message.replies[-1][0]
     else:
         assert rows == [(expected_chat, command.split(" - ", 1)[1])]
+
+
+@pytest.mark.parametrize("recipient,command_prefix,expected_chat", [
+    ("мне", "me", 456),
+    ("мне", "", 456),
+    ("", "", 456),
+    ("Олегу", "Олег", 789),
+])
+@pytest.mark.parametrize("month", ["декабря", "december", "Dec"])
+def test_voice_named_calendar_date_reaches_reminder_storage(
+    main_module, monkeypatch, recipient, command_prefix, expected_chat, month,
+):
+    import json
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from dkreminders_bot.integrations.gemini_transcription import gemini_transcribe_audio_with_retries
+    from test_gemini_transcription import FakeClient, FakeGenaiTypes
+
+    task = "поставить чистку стиральной машины со спецпорошком"
+    client = FakeClient([json.dumps({
+        "transcript": f"Напомню {recipient} 14 декабря в 11 утра {task}",
+        "command": f"{command_prefix} 14 {month} 11:00 - {task}".strip(),
+    })])
+
+    async def fake_transcribe(*args, **kwargs):
+        return await gemini_transcribe_audio_with_retries(
+            client=client, audio_bytes=b"voice", genai_types=FakeGenaiTypes,
+            logger=main_module.logger,
+        )
+
+    monkeypatch.setattr(main_module, "transcribe_voice_message", fake_transcribe)
+    now = datetime(2026, 11, 25, 21, 54, tzinfo=ZoneInfo("Europe/Madrid"))
+    monkeypatch.setattr(main_module, "get_now", lambda: now)
+    monkeypatch.setenv("GEMINI_TRANSCRIBE_MODELS", "test-model")
+    main_module.set_user_timezone_name(456, "Europe/Madrid")
+    main_module.set_user_alias("Олег", 789, 789, "oleg", 456)
+    update, context, message = _mk_update(user_id=456, chat_id=456)
+    asyncio.run(main_module.voice_remind_command(update, context))
+    with sqlite3.connect(main_module.DB_PATH) as conn:
+        rows = conn.execute("SELECT chat_id,text,remind_at FROM reminders").fetchall()
+    assert len(rows) == 1
+    assert rows[0][:2] == (expected_chat, task)
+    assert datetime.fromisoformat(rows[0][2]) == datetime(2026, 12, 14, 11, 0, tzinfo=now.tzinfo)
+    assert all("Не удалось подтвердить" not in text for text, _ in message.replies)

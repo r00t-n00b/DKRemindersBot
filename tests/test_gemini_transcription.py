@@ -138,3 +138,22 @@ def test_gemini_transcription_body_is_no_longer_in_main_source():
     assert "genai_types.Part.from_bytes" not in source
     assert "Gemini временно не смог распознать голосовое" not in source
     assert "from dkreminders_bot.integrations.gemini_transcription import gemini_transcribe_audio_with_retries" in source
+
+
+@pytest.mark.parametrize("command", [
+    "me 14 Олег 11:00 - позвонить",
+    "14 Олег 11:00 - позвонить",
+    "me 99 декабря 11:00 - позвонить",
+    "Олег 14 декабря 11:00 - позвонить",
+])
+def test_voice_date_validation_does_not_accept_unconfirmed_target(command):
+    import json
+    from dkreminders_bot.integrations.gemini_transcription import _reminder_from_response
+    from dkreminders_bot.integrations.voice_errors import VoiceRecipientUnclearError
+
+    response = json.dumps({
+        "transcript": "Напомни мне 14 декабря в 11 позвонить Олегу",
+        "command": command,
+    })
+    with pytest.raises(VoiceRecipientUnclearError):
+        _reminder_from_response(response)

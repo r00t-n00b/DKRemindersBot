@@ -14,19 +14,29 @@ from dkreminders_bot.integrations.gemini_errors import (
 )
 from dkreminders_bot.integrations.voice_errors import VoiceRecipientUnclearError
 from dkreminders_bot.utils.command_text import first_token_looks_like_reminder_start
+from dkreminders_bot.parsing.parser_lexicon import MONTH_EN, MONTH_RU
 from dkreminders_bot.integrations.voice_text_normalization import normalize_self_clock_reminder
 
 
 def _starts_with_schedule(text: str) -> bool:
-    tokens = [token.strip(",!?;") for token in text.casefold().split(maxsplit=2)]
+    tokens = [token.strip(",!?;") for token in text.casefold().split()]
     if not tokens:
         return False
-    if tokens[0] in {"в", "на", "at", "on"}:
-        return len(tokens) > 1 and bool(
-            first_token_looks_like_reminder_start(tokens[1])
-            or re.fullmatch(r"\d{1,2}", tokens[1])
+    has_preposition = tokens[0] in {"в", "на", "at", "on"}
+    if has_preposition:
+        tokens = tokens[1:]
+    if not tokens:
+        return False
+    if first_token_looks_like_reminder_start(tokens[0]):
+        return True
+    if re.fullmatch(r"\d{1,2}", tokens[0]):
+        day = int(tokens[0])
+        named_date = (
+            1 <= day <= 31 and len(tokens) > 1
+            and (tokens[1] in MONTH_EN or tokens[1] in MONTH_RU)
         )
-    return first_token_looks_like_reminder_start(tokens[0])
+        return named_date or (has_preposition and 0 <= day <= 23)
+    return False
 
 
 def _has_spoken_recipient(transcript: str, target: str) -> bool:
@@ -65,11 +75,9 @@ def _validate_recipient(command: str, transcript: str = "") -> str:
     if not tokens:
         return ""
     target = tokens[0]
-    if first_token_looks_like_reminder_start(target):
+    if _starts_with_schedule(command):
         return command
-    has_schedule = len(tokens) == 2 and first_token_looks_like_reminder_start(
-        tokens[1].split(maxsplit=1)[0]
-    )
+    has_schedule = len(tokens) == 2 and _starts_with_schedule(tokens[1])
     if has_schedule and (
         target.casefold() == "me" or _has_spoken_recipient(transcript, target)
     ):
