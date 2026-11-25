@@ -27,18 +27,23 @@ def unfinished_view(session, deps, keyboard):
     data, uid = session["data"], session["user_id"]
     try:
         reminders, number, pages, total = deps.unfinished_store.page(
-            uid, int(data.get("unfinished_page", 0)),
+            uid, int(data.get("unfinished_page", 0)), target=data.get("unfinished_target"),
         )
+    except ValueError:
+        data["unfinished_ids"] = []
+        return T["target_changed"], keyboard(session, [[(T["back"], "home")]])
     except sqlite3.Error:
+        data["unfinished_ids"] = []
         logger.exception("Reading unfinished reminders failed")
         return T["error"], keyboard(session, [
-            [(T["refresh"], "unfinished")], [(T["back"], "home")],
+            [(T["refresh"], "unfinished_page:" + str(data.get("unfinished_page", 0)))], [(T["back"], "home")],
         ])
     data["unfinished_page"] = number
+    data["unfinished_ids"] = [row["id"] for row in reminders]
     lines = [
         T["title"],
         T["summary"].format(total=total),
-        T["scope"],
+        T["target_scope"].format(name=_truncate_list_reminder_text(data["unfinished_target"]["alias"], limit=60)) if data.get("unfinished_target") else T["scope"],
         T["page"].format(page=number+1, pages=pages),
     ]
     zone = deps.get_user_timezone_name_raw(uid) or "Europe/Madrid"
@@ -64,6 +69,38 @@ def unfinished_view(session, deps, keyboard):
         navigation.append((T["previous"], f"unfinished_page:{number-1}"))
     if number+1 < pages:
         navigation.append((T["next"], f"unfinished_page:{number+1}"))
-    rows = [navigation] if navigation else []
+    completion_buttons = [
+        (T["complete"].format(number=number*PAGE_SIZE+i+1), f"u_done:{row['id']}")
+        for i, row in enumerate(reminders)
+    ]
+    rows = [completion_buttons[i:i+4] for i in range(0, len(completion_buttons), 4)]
+    if navigation:
+        rows.append(navigation)
     rows += [[(T["refresh"], f"unfinished_page:{number}")], [(T["back"], "home")]]
     return "\n\n".join(lines), keyboard(session, rows)
+
+
+async def start_unfinished(update, context, deps):
+    from dkreminders_bot.settings.settings_menu import _identity, _personal, start_settings
+    from dkreminders_bot.ui.messages import SETTINGS_NOTICES
+
+    user, chat, message = _identity(update)
+    if not _personal(user, chat):
+        if message is not None:
+            await message.reply_text(SETTINGS_NOTICES["private"])
+        return
+    name = " ".join(context.args or []).strip()
+    target = None
+    if name:
+        try:
+            target = deps.unfinished_store.resolve_alias(user.id, name)
+        except ValueError as exc:
+            await message.reply_text(str(exc), parse_mode=None)
+            return
+        except sqlite3.Error:
+            logger.exception("Resolving unfinished recipient failed")
+            await message.reply_text(T["error"])
+            return
+    await start_settings(
+        update, context, deps, page="unfinished", initial_data={"unfinished_target": target},
+    )

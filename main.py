@@ -1057,11 +1057,47 @@ async def defaulttime_command(update: Update, context: CTX) -> None:
     await handle_defaulttime_command(update, context, _build_alias_settings_command_deps())
 
 
+class _UnfinishedDoneQuery:
+    """Reuse completion cleanup without editing the list as a delivery message."""
+
+    message = None
+
+    async def answer(self, *args, **kwargs):
+        pass
+
+
+def finish_unfinished(reminder_id, user_id, target=None):
+    return RecurrenceStore(DB_PATH).transition(
+        reminder_id, actor_id=user_id, chat_id=user_id, now=get_now(), from_inbox=True, inbox_target=target,
+    )
+
+
+async def finish_unfinished_messages(reminder_id, context, result):
+    from dkreminders_bot.ui import messages
+
+    def completed_text(text):
+        rendered = format_completed_reminder_text(text)
+        if result.get("next_at") is not None:
+            rendered += "\n\n" + messages.MSG_RECURRENCE_NEXT.format(when=result["next_at"].strftime("%d.%m %H:%M %Z"))
+        return rendered
+
+    await handle_done_callback(
+        reminder_id=reminder_id, query=_UnfinishedDoneQuery(), context=context,
+        mark_reminder_acked=lambda rid: None, get_reminder=get_reminder,
+        clear_reminder_message_keyboards=clear_reminder_message_keyboards,
+        format_completed_reminder_text=completed_text,
+        delete_old_snoozed_reminder_messages=delete_old_snoozed_reminder_messages,
+        delete_other_reminder_messages=delete_other_reminder_messages,
+    )
+
+
 def _build_timezone_settings_deps():
     return SimpleNamespace(
         settings_store=SettingsStore(DB_PATH),
         alias_menu_store=AliasMenuStore(DB_PATH),
         unfinished_store=UnfinishedRemindersStore(DB_PATH),
+        finish_unfinished=finish_unfinished,
+        finish_unfinished_messages=finish_unfinished_messages,
         get_now=get_now,
         list_command=list_command,
         get_user_timezone_name=get_user_timezone_name,
@@ -1095,8 +1131,8 @@ async def settings_cancel_command(update, context):
 
 
 async def unfinished_command(update: Update, context: CTX) -> None:
-    from dkreminders_bot.settings.settings_menu import start_settings
-    await start_settings(update, context, _build_timezone_settings_deps(), page="unfinished")
+    from dkreminders_bot.settings.unfinished_menu import start_unfinished
+    await start_unfinished(update, context, _build_timezone_settings_deps())
 
 
 async def settings_command(update: Update, context: CTX) -> None:

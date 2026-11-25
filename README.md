@@ -36,11 +36,15 @@ This feature uses the existing alias tables and settings-session data; no schema
 
 ## Unfinished reminders
 
-/unfinished or /settings → **📥 Незавершённые напоминания** opens every delivered reminder with delivered=1 and acked=0 that is addressed to the current private user or was created by that user. It shows delivered reminders awaiting completion. Future reminders are available through /list. Group reminders are visible when created by the requester. Personal legacy reminders without a creator are included when addressed to the requester.
+/unfinished or /settings → **📥 Незавершённые напоминания** shows delivered reminders awaiting completion in the requester's own private chat (delivered=1 and acked=0). This includes incoming reminders from other authors and personal legacy records without a creator. Future reminders are available through /list.
 
-Reminders are ordered by scheduled instant, oldest first. Pages contain 8 entries and show the recipient, delivery status, scheduled time and timezone, with a recurring marker where applicable. The list has no 20-record cap. **Обновить** and page arrows re-read the database. Sessions survive restarts and reject stale or foreign callbacks.
+/unfinished alias opens the selected recipient's delivered, unfinished reminders created by the requester. Only aliases owned by that requester are resolved. Legacy multiword aliases are supported. Person aliases take priority over chat aliases of the same name, matching /list. An unknown alias returns an error. Each page and completion revalidates the selected alias and destination. Renaming, deleting, or retargeting the alias expires that view.
 
-Completing a reminder removes it on refresh. Snooze acknowledges the old occurrence, removing it from this list. The postponed occurrence enters the list after delivery. Separate unfinished occurrences of a series remain separate entries. Opening the list changes only the settings UI session. The reminder query uses SQLite read-only mode and requires no schema migration.
+Reminders are ordered by scheduled instant, oldest first. Pages contain 8 entries with recipient, scheduled time, timezone, and a recurring marker. There is no 20-record cap. Page arrows and **Обновить** reread the database. The private session, recipient scope, and visible IDs survive restarts.
+
+Numbered **✅1**, **✅2**, and subsequent buttons complete the corresponding visible reminder and immediately refresh the list. The personal view permits completion by the private recipient. An alias view permits completion of reminders created by the requester for that destination. Authorization and acknowledgement are checked in one transaction. Completion-based series create their next occurrence atomically. Inactive series are acknowledged without restarting them. Standard completion cleanup updates tracked messages.
+
+Snooze removes the acknowledged occurrence from the list. The postponed occurrence appears after delivery. Reading uses SQLite read-only mode. Completing an entry changes its acknowledgement state and may create the next series occurrence. No schema migration is required.
 
 ## Reminder diagnostics
 
@@ -102,7 +106,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1617 passed, 1 skipped
+1651 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:

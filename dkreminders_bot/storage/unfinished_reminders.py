@@ -1,5 +1,9 @@
 """Paged unfinished reminders visible to their creator or private recipient."""
 
+from dkreminders_bot.domain.alias_names import alias_key
+from dkreminders_bot.storage.alias_menu_store import AliasMenuStore
+from dkreminders_bot.ui.messages import UNFINISHED_TEXT as T
+
 from contextlib import closing
 from pathlib import Path
 import sqlite3
@@ -11,13 +15,28 @@ class UnfinishedRemindersStore:
     def __init__(self, db_path):
         self.db_path = db_path
 
-    def page(self, user_id, number=0):
+    def resolve_alias(self, user_id, name):
+        uri = Path(self.db_path).resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            aliases = AliasMenuStore._list(conn, user_id)
+            for kind in ("user", "chat"):
+                for row in aliases:
+                    if row["kind"] == kind and alias_key(row["alias"]) == alias_key(name):
+                        return row
+        raise ValueError(T["unknown_alias"])
+
+    def page(self, user_id, number=0, target=None):
         uri = Path(self.db_path).resolve().as_uri() + "?mode=ro"
         with closing(sqlite3.connect(uri, uri=True)) as conn:
             conn.row_factory = sqlite3.Row
             conn.execute("BEGIN")
-            scope = "r.delivered=1 AND r.acked=0 AND (r.chat_id=? OR r.created_by=?)"
-            params = (user_id, user_id)
+            scope = "r.delivered=1 AND r.acked=0 AND r.chat_id=?"
+            params = (user_id,)
+            if target is not None:
+                selected = AliasMenuStore._current(conn, user_id, target)
+                scope += " AND r.created_by=?"
+                params = (selected["chat_id"], user_id)
             total = conn.execute(
                 f"SELECT COUNT(*) FROM reminders r WHERE {scope}", params,
             ).fetchone()[0]

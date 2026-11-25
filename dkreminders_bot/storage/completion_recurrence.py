@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from dkreminders_bot.domain.recurrence import is_completion_based, next_after_completion
 from dkreminders_bot.utils.time_utils import to_iso
+from dkreminders_bot.storage.alias_menu_store import AliasMenuStore
 
 
 class RecurrenceStore:
@@ -109,23 +110,42 @@ class RecurrenceStore:
                 return dict(row)
         return None
 
-    def transition(self, reminder_id, *, actor_id, chat_id, now, snooze_until=None):
+    def transition(self, reminder_id, *, actor_id, chat_id, now, snooze_until=None, from_inbox=False, inbox_target=None):
         with self.transaction() as conn:
             row = conn.execute(
                 """SELECT r.*, t.pattern_type, t.payload, t.active,
                 t.timezone_name AS series_timezone
-                FROM reminders r JOIN recurring_templates t ON t.id = r.template_id WHERE r.id = ?""",
+                FROM reminders r LEFT JOIN recurring_templates t ON t.id = r.template_id WHERE r.id = ?""",
                 (reminder_id,),
             ).fetchone()
             if row is None:
                 return {"status": "processed"}
             r = dict(row)
-            payload = json.loads(r["payload"])
-            if not is_completion_based(r["pattern_type"], payload):
+            if from_inbox:
+                if snooze_until is not None or chat_id != actor_id:
+                    return {"status": "forbidden"}
+                if inbox_target is None:
+                    allowed = r["chat_id"] == actor_id
+                else:
+                    try:
+                        target = AliasMenuStore._current(conn, actor_id, inbox_target)
+                    except ValueError:
+                        return {"status": "forbidden"}
+                    allowed = r["chat_id"] == target["chat_id"] and r["created_by"] == actor_id
+                if not allowed:
+                    return {"status": "forbidden"}
+                if r["acked"] or not r["delivered"]:
+                    return {"status": "processed"}
+            payload = json.loads(r["payload"]) if r["payload"] else {}
+            completion_based = is_completion_based(r["pattern_type"], payload)
+            if not completion_based or (from_inbox and not r["active"]):
+                if from_inbox:
+                    conn.execute("UPDATE reminders SET acked=1 WHERE id=?", (reminder_id,))
+                    return {"status": "applied"}
                 return {"status": "legacy"}
             # In a private destination the recipient acts; in a group, the creator.
             owner = r["chat_id"] if r["chat_id"] > 0 else r["created_by"]
-            if actor_id != owner or chat_id != r["chat_id"]:
+            if not from_inbox and (actor_id != owner or chat_id != r["chat_id"]):
                 return {"status": "forbidden"}
             if r["acked"] or not r["delivered"] or not r["active"]:
                 return {"status": "processed"}
@@ -138,6 +158,9 @@ class RecurrenceStore:
                 (r["template_id"], reminder_id),
             ).fetchone()
             if other:
+                if from_inbox:
+                    conn.execute("UPDATE reminders SET acked=1 WHERE id=?", (reminder_id,))
+                    return {"status": "applied"}
                 return {"status": "processed"}
             conn.execute("UPDATE reminders SET acked = 1 WHERE id = ? AND acked = 0", (reminder_id,))
             r["timezone_name"] = r["series_timezone"] or r["timezone_name"]

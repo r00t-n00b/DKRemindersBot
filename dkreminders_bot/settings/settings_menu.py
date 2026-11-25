@@ -134,7 +134,7 @@ async def _render(update, context, deps, session, *, query=None):
     return True
 
 
-async def start_settings(update, context, deps, *, page="home"):
+async def start_settings(update, context, deps, *, page="home", initial_data=None):
     user, chat, message = _identity(update)
     if not _personal(user, chat):
         if message is not None:
@@ -145,6 +145,7 @@ async def start_settings(update, context, deps, *, page="home"):
         from dkreminders_bot.settings.alias_menu import _remove_picker
         await _remove_picker(message)
     session = deps.settings_store.open(user.id, chat.id, deps.get_now())
+    session["data"].update(initial_data or {})
     _page(session, page)
     await _render(update, context, deps, session)
 
@@ -196,6 +197,10 @@ async def settings_menu_callback(update, context, deps):
         await query.answer(N["stale"], show_alert=True)
         return
     action, args = parts[4], parts[5:]
+    if action == "u_done":
+        from dkreminders_bot.settings.unfinished_actions import complete_unfinished
+        await complete_unfinished(update, context, deps, session, args)
+        return
     if action.startswith("a_"):
         from dkreminders_bot.settings.alias_menu import alias_action
         await alias_action(action, args, update, context, deps, session)
@@ -204,6 +209,9 @@ async def settings_menu_callback(update, context, deps):
     notice = None
     try:
         if action in {"home", "time", "zone", "nudges", "aliases", "unfinished"}:
+            if action == "unfinished":
+                data.pop("unfinished_target", None)
+                data["unfinished_page"] = 0
             _page(session, action)
         elif action == "unfinished_page":
             number = int(args[0])
