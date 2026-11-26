@@ -40,30 +40,25 @@ def unfinished_view(session, deps, keyboard):
         ])
     data["unfinished_page"] = number
     data["unfinished_ids"] = [row["id"] for row in reminders]
-    lines = [
-        T["title"],
-        T["summary"].format(total=total),
-        T["target_scope"].format(name=_truncate_list_reminder_text(data["unfinished_target"]["alias"], limit=60)) if data.get("unfinished_target") else T["scope"],
-        T["page"].format(page=number+1, pages=pages),
-    ]
+    target = data.get("unfinished_target")
+    title = T["target_title"].format(
+        name=_truncate_list_reminder_text(target["alias"], limit=60),
+    ) if target else T["title"]
+    lines = [title]
+    if reminders:
+        lines.append(T["summary"].format(total=total))
     zone = deps.get_user_timezone_name_raw(uid) or "Europe/Madrid"
     for index, row in enumerate(reminders, start=number*PAGE_SIZE+1):
-        if row["chat_id"] == uid:
-            target = T["me"]
-        elif row["target_alias"]:
-            target = _truncate_list_reminder_text(row["target_alias"], limit=40)
-        else:
-            target = T["person" if row["chat_id"] > 0 else "chat"].format(chat_id=row["chat_id"])
         lines.append(T["row"].format(
             number=index,
             text=_truncate_list_reminder_text(row["text"], limit=100),
             recurring=" 🔁" if row["template_id"] is not None else "",
-            status=T["delivered"],
             when=_when(row, zone),
-            target=target,
         ))
     if not reminders:
         lines.append(T["empty"])
+    if pages > 1:
+        lines.append(T["page"].format(page=number+1, pages=pages))
     navigation = []
     if number:
         navigation.append((T["previous"], f"unfinished_page:{number-1}"))

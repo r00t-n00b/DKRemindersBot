@@ -37,7 +37,7 @@ async def test_unfinished_default_includes_only_delivered_personal_reminders(env
     assert "Ожидают выполнения: 2" in menu.text
     assert all(text in menu.text for text in ["Уже доставлено", "Мне от другого"])
     assert all(text not in menu.text for text in ["Планы", "Выполненное", "Чужое в общей группе", "Чужое человеку", "Моё для человека", "Моё для группы"])
-    assert "Наташа" not in menu.text and "Офис" not in menu.text and "Мне" in menu.text
+    assert "Наташа" not in menu.text and "Офис" not in menu.text
     rows, _, _, total = UnfinishedRemindersStore(env.m.DB_PATH).page(456)
     assert total == 2
     assert {row["id"] for row in rows} == {delivered, incoming}
@@ -48,7 +48,7 @@ async def test_settings_entry_matches_command_and_back_opens_settings(env):
     add(env, "Проверить")
     menu = await open_menu(env)
     await click(env, menu, "Незавершённые напоминания")
-    assert "Проверить" in menu.text and "Страница 1 из 1" in menu.text
+    assert "Проверить" in menu.text and "Страница" not in menu.text
     await click(env, menu, "В настройки")
     assert "Часовой пояс:" in menu.text
 
@@ -89,7 +89,7 @@ async def test_completed_snoozed_and_deleted_records_disappear_on_refresh(env):
         conn.execute("UPDATE reminders SET acked=1 WHERE text='Дело0'")
         conn.execute("DELETE FROM reminders WHERE text='Дело1'")
     await click(env, menu, "Обновить")
-    assert "Страница 1 из 1" in menu.text and "Ожидают выполнения: 6" in menu.text
+    assert "Страница" not in menu.text and "Ожидают выполнения: 6" in menu.text
     assert "После откладывания" not in menu.text and "Отложить" not in menu.text
     rows, _, _, _ = UnfinishedRemindersStore(env.m.DB_PATH).page(456)
     assert successor not in {r["id"] for r in rows}
@@ -103,7 +103,7 @@ async def test_completed_snoozed_and_deleted_records_disappear_on_refresh(env):
     with sqlite3.connect(env.m.DB_PATH) as conn:
         conn.execute("UPDATE reminders SET acked=1")
     await click(env, menu, "Обновить")
-    assert "Ожидают выполнения: 0" in menu.text and "Незавершённых пока нет" in menu.text
+    assert menu.text == "📥 Незавершённые напоминания\n\nНезавершённых напоминаний нет."
     assert "→" not in [b.text for row in menu.reply_markup.inline_keyboard for b in row]
 
 
@@ -207,7 +207,7 @@ async def test_numbered_completion_buttons_acknowledge_selected_reminder_and_ref
     assert env.m.get_reminder(second).acked == 1
     assert env.m.get_reminder(first).acked == 0
     await click(env, menu, "✅1")
-    assert "Незавершённых пока нет" in menu.text
+    assert "Незавершённых напоминаний нет" in menu.text
     assert not any("u_done:" in b.callback_data for row in menu.reply_markup.inline_keyboard for b in row)
 
 
@@ -225,7 +225,7 @@ async def test_completion_uses_visible_id_after_list_changes_and_clamps_last_pag
     with sqlite3.connect(env.m.DB_PATH) as conn:
         conn.execute("DELETE FROM reminders WHERE text='Более раннее'")
     await click(env, menu, "Обновить")
-    assert "Страница 1 из 1" in menu.text
+    assert "Страница" not in menu.text
 
 
 @pytest.mark.asyncio
@@ -304,7 +304,7 @@ async def test_completion_series_counts_from_done_preserves_source_and_ignores_r
     assert rows[1][1] == 0
     assert datetime.fromisoformat(rows[1][2]) == env.clock["now"]+timedelta(hours=3)
     assert rows[1][3:] == (456, 987)
-    assert "Незавершённых пока нет" in menu.text
+    assert "Незавершённых напоминаний нет" in menu.text
 
 
 @pytest.mark.asyncio
@@ -346,7 +346,7 @@ async def test_completion_runs_normal_message_cleanup_and_recovers_from_telegram
     await click(env, menu, "✅1")
     assert cleaned == [rid]
     assert env.m.get_reminder(rid).acked == 1
-    assert "Незавершённых пока нет" in menu.text
+    assert "Незавершённых напоминаний нет" in menu.text
 
 
 def test_concurrent_completion_has_one_successor(env):
@@ -445,7 +445,7 @@ async def test_unfinished_alias_scope_shows_only_creator_records_for_recipient(e
     add(env, "Внешнее выполненное", chat=chat, acked=True)
     add(env, "Личное")
     menu = await open_unfinished(env, ["пОлУчАтЕлЬ"])
-    assert "Внешнее моё" in menu.text and "Для «Получатель»" in menu.text
+    assert "Внешнее моё" in menu.text and "Незавершённые · Получатель" in menu.text
     assert all(text not in menu.text for text in ["Внешнее чужое", "Внешнее будущее", "Внешнее выполненное", "Личное"])
     await click(env, menu, "✅1")
     assert env.m.get_reminder(wanted).acked == 1
@@ -463,7 +463,7 @@ async def test_alias_page_scope_survives_refresh_restart_and_back_to_personal_li
     env.context.user_data.clear()
     env.m.init_db()
     await click(env, menu, "Обновить")
-    assert "Для «Работа»" in menu.text and "Внешнее08" in menu.text
+    assert "Незавершённые · Работа" in menu.text and "Внешнее08" in menu.text
     await click(env, menu, "В настройки")
     await click(env, menu, "Незавершённые напоминания")
     assert "Мой личный" in menu.text and "Внешнее" not in menu.text
