@@ -2,7 +2,7 @@
 
 Telegram reminder bot deployed on Fly.io.
 
-Documentation reconciled on 26 November 2026 against production **v411**, commit **581a7d7**.
+Documentation reconciled on 28 November 2026 against production **v412**, commit **c76f0c4**.
 
 The bot supports one-off and recurring reminders, natural-language text and voice input, reply/forward-context reminders, snooze/reschedule/done flows, personal self-reminders from group chats, group and user aliases, timezone-aware scheduling, and undo for delete actions.
 
@@ -36,9 +36,9 @@ Migration adds nudge preference/snapshot fields and the `settings_sessions` tabl
 
 This feature uses the existing alias tables and settings-session data; no schema migration is required.
 
-The local alias audit on 26–28 November 2026 covers create → rename → create with the new name → delete → deliver previously created reminders for person and group aliases through the real handlers and worker with simulated Telegram responses. Pending publication: recipient lists sort by actual instant across UTC offsets; alias-input database read errors keep the original prompt valid for retry; settings screens disable link previews during both edits and replacement messages.
+The local alias audit on 26–28 November 2026 covers create → rename → create with the new name → delete → deliver previously created reminders for person and group aliases through the real handlers and worker with simulated Telegram responses. Published in v412: recipient lists sort by actual instant across UTC offsets; alias-input database read errors keep the original prompt valid for retry; settings screens disable link previews during both edits and replacement messages.
 
-The native Telegram check on v411 verified a temporary self-recipient alias, pagination, rename, rejection of the old name, recipient lists, and delivery/completion of reminders created before and after rename. The user confirmed deleting the temporary alias and cleaning up the messages. Native group selection, delivery after alias deletion, and the unpublished preview fix still require live verification.
+The native Telegram check on v411 verified a temporary self-recipient alias, pagination, rename, rejection of the old name, recipient lists, and delivery/completion of reminders created before and after rename. The user confirmed deleting the temporary alias and cleaning up the messages. Native group selection, delivery after alias deletion, and the preview fix still require live verification.
 
 ## Unfinished reminders
 
