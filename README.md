@@ -2,13 +2,15 @@
 
 Telegram reminder bot deployed on Fly.io.
 
+Documentation reconciled on 26 November 2026 against production **v411**, commit **581a7d7**.
+
 The bot supports one-off and recurring reminders, natural-language text and voice input, reply/forward-context reminders, snooze/reschedule/done flows, personal self-reminders from group chats, group and user aliases, timezone-aware scheduling, and undo for delete actions.
 
 Reply/forward-context reminders retain their source message through delivery, private-chat nudges, and repeated snooze (quick buttons or custom time). Notifications reply to the source only when it belongs to the destination chat. If the source was deleted, delivery is allowed without a reply.
 
 ## Personal settings
 
-`/settings` opens a private inline menu for default time, timezone, reminder nudges, aliases, and `/list`. Group requests show no personal settings. Older timezone/default-time buttons remain supported.
+`/settings` opens a private inline menu for default time, timezone, reminder nudges, aliases, `/list`, and `/unfinished`. Group requests show no personal settings. Older timezone/default-time buttons remain supported.
 
 - Default time accepts presets and custom `HH:MM` input (for example, `08:45`).
 - Timezone accepts presets, location, a limited offline city-alias list, and any available IANA timezone such as `America/New_York`. Search results require confirmation; changing timezone retains the migration question for active reminders.
@@ -34,13 +36,17 @@ Migration adds nudge preference/snapshot fields and the `settings_sessions` tabl
 
 This feature uses the existing alias tables and settings-session data; no schema migration is required.
 
+The local alias audit on 26–28 November 2026 covers create → rename → create with the new name → delete → deliver previously created reminders for person and group aliases through the real handlers and worker with simulated Telegram responses. Pending publication: recipient lists sort by actual instant across UTC offsets; alias-input database read errors keep the original prompt valid for retry; settings screens disable link previews during both edits and replacement messages.
+
+The native Telegram check on v411 verified a temporary self-recipient alias, pagination, rename, rejection of the old name, recipient lists, and delivery/completion of reminders created before and after rename. The user confirmed deleting the temporary alias and cleaning up the messages. Native group selection, delivery after alias deletion, and the unpublished preview fix still require live verification.
+
 ## Unfinished reminders
 
 /unfinished or /settings → **📥 Незавершённые напоминания** shows delivered reminders awaiting completion in the requester's own private chat (delivered=1 and acked=0). This includes incoming reminders from other authors and personal legacy records without a creator. Future reminders are available through /list.
 
 /unfinished alias opens the selected recipient's delivered, unfinished reminders created by the requester. Only aliases owned by that requester are resolved. Legacy multiword aliases are supported. Person aliases take priority over chat aliases of the same name, matching /list. An unknown alias returns an error. Each page and completion revalidates the selected alias and destination. Renaming, deleting, or retargeting the alias expires that view.
 
-Reminders are ordered by scheduled instant, oldest first. Pages contain 8 entries with recipient, scheduled time, timezone, and a recurring marker. There is no 20-record cap. Page arrows and **Обновить** reread the database. The private session, recipient scope, and visible IDs survive restarts.
+Reminders are ordered by scheduled instant, oldest first. Pages contain 8 entries with the task, scheduled time, timezone, and a recurring marker. The recipient alias appears in the heading for external lists. An empty list shows only the heading and an empty-state sentence. Page numbering appears when there are multiple pages. There is no 20-record cap. Page arrows and **Обновить** reread the database. The private session, recipient scope, and visible IDs survive restarts.
 
 Numbered **✅1**, **✅2**, and subsequent buttons complete the corresponding visible reminder and immediately refresh the list. The personal view permits completion by the private recipient. An alias view permits completion of reminders created by the requester for that destination. Authorization and acknowledgement are checked in one transaction. Completion-based series create their next occurrence atomically. Inactive series are acknowledged without restarting them. Standard completion cleanup updates tracked messages.
 
@@ -71,6 +77,14 @@ Creating an interval series (for example, `/remind every 30 minutes - stretch` o
 - Minutes/hours/days/weeks measure elapsed time across timezone/DST changes. Months use the series timezone and clamp to the last day of the month.
 
 Pending choices use the additive `recurrence_choices` table. The series mode is stored in the existing template payload; existing rows are not rewritten.
+
+## Recent parsing fixes
+
+- Voice recipient validation compares a proposed target against the transcript. An explicit recipient before the schedule can authorize routing to that alias. Names mentioned inside the task are retained as task text. An unconfirmed target produces a clarification message. The guard supports named calendar dates such as 14 декабря, 14 december, and 14 Dec.
+- Text requests with an explicit alias and relative delay, such as «напомни Наташе через 3 часа ответить всем в слаке», use the local parser.
+- «Напомни на следующей неделе фильтры и их мейнтейнс» uses the local parser. Next week means the next Monday with the user's default time, unless a time is supplied. Russian forms such as «следующей» are recognized as date prefixes.
+
+These changes were published in v405–v408 and are covered by handler-to-storage regression tests with simulated recognition responses. Real audio recognition remains part of Telegram smoke testing.
 
 ## Current architecture
 
@@ -106,7 +120,7 @@ python3.11 -m pytest -q
 Current expected result:
 
 ```text
-1651 passed, 1 skipped
+1661 passed, 1 skipped
 ```
 
 For feature work, tests should cover the full user/business path, not only isolated helpers:
@@ -147,27 +161,15 @@ Some smoke/contract tests may look small but are intentionally useful, especiall
 
 ## Deploy
 
-Production deploy is manual and must include a database backup before `fly deploy`.
+Production uses Fly.io app dk-reminders-bot. The publication sequence is commit → push → SQLite backup on Fly → deploy, with CI checked before the application update.
 
-Use this standard deploy block for production changes, adding both production files and relevant tests changed by the feature:
+1. Run the relevant tests and the full suite. Commit and push the intended files.
+2. Create a uniquely named backup under /data using Python's sqlite3.Connection.backup API against /data/reminders.db. Verify the backup with PRAGMA integrity_check.
+3. Download that backup to /Users/r00t_n00b/TGBOT-backups using fly sftp get. Verify its integrity and compare its SHA256 with the remote file. Store the backup path, commit, and checksum in a local manifest.
+4. Wait for the commit's GitHub Tests workflow to succeed. Build from a clean git archive of the committed revision, then run fly deploy --remote-only -a dk-reminders-bot from that archive directory.
+5. Verify machine startup, deployed source hashes, logs, database integrity, schema, and preservation of pre-deploy reminders. Complete the feature's smoke checks.
 
-```bash
-git status --short
-git add <production files and relevant tests>
-git commit -m "<meaningful message>"
-git push
-fly ssh console -a dk-reminders-bot -C 'sh -c "ts=$(date +%Y%m%d-%H%M%S); if [ -f /data/reminders.db ]; then cp /data/reminders.db /data/reminders-$ts.db.bak; else echo reminders.db not found, skip backup; fi"'
-fly deploy
-```
-
-For docs-only or tests-only changes, deploy is not needed.
-
-If code and tests were already committed and pushed separately, only run the backup and deploy commands:
-
-```bash
-fly ssh console -a dk-reminders-bot -C 'sh -c "ts=$(date +%Y%m%d-%H%M%S); if [ -f /data/reminders.db ]; then cp /data/reminders.db /data/reminders-$ts.db.bak; else echo reminders.db not found, skip backup; fi"'
-fly deploy
-```
+The online SQLite backup captures a consistent database while the bot is running. Documentation-only changes can be committed and pushed without a deployment.
 
 ## Post-deploy smoke test
 
@@ -217,7 +219,9 @@ Heartbeat delivery failures are logged but must never terminate the reminder bot
 
 See `BACKLOG.md` for the source of truth.
 
-Completion-based interval recurrence is implemented; verify the chooser and Done/Snooze flow in Telegram after deployment. The `/settings` menu, custom values, and configurable nudge intervals are implemented. Alias editing is implemented; verify the create/rename/delete flow in Telegram after deployment. Reminder diagnostics is implemented; verify `/debug_reminders` / `/history` in Telegram after deployment. The next planned functional priority is recurring-series management.
+Published features include completion-based interval recurrence, the native settings menu, alias editing and recipient lists, private diagnostics, and the delivered unfinished list with personal/alias scopes and completion buttons. The v411 list uses the compact message layout.
+
+The next planned feature is recurring-series management from /settings. Further backlog items include snooze/delete from the unfinished list, remaining settings UX, voice timezone onboarding, and delivery observability. Deployment verification and user confirmation in Telegram are tracked separately in BACKLOG.md.
 
 ## Notes
 

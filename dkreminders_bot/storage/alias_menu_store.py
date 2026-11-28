@@ -57,7 +57,7 @@ class AliasMenuStore:
                 rt.pattern_type, rt.payload, COALESCE(r.timezone_name, rt.timezone_name) AS timezone_name
                 FROM reminders r LEFT JOIN recurring_templates rt ON rt.id=r.template_id
                 WHERE r.created_by=? AND r.chat_id=? AND r.delivered=0
-                ORDER BY r.remind_at, r.id LIMIT ? OFFSET ?""", (*scope, page_size, page * page_size)).fetchall()
+                ORDER BY julianday(r.remind_at), r.id LIMIT ? OFFSET ?""", (*scope, page_size, page * page_size)).fetchall()
             return [dict(row) for row in rows], page, pages, total
 
     @classmethod

@@ -606,3 +606,147 @@ async def test_alias_reminders_access_and_telegram_message_limits(env):
     env.clock['now'] += timedelta(days=2)
     expired = await click(env, menu, 'Обновить')
     assert expired.answers[0][1].get('show_alert')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('delivery', ['initial', 'callback', 'callback_fallback', 'input_edit', 'input_fallback'])
+async def test_alias_reminder_links_never_expand_into_previews(env, monkeypatch, delivery):
+    from dkreminders_bot.settings.settings_menu import _render, start_settings
+    from test_settings_menu_integration import Query
+
+    env.m.set_user_alias('Друг', 999, 999, 'natasha', 456)
+    url = 'https://example.com/reminder'
+    env.m.add_reminder(999, url, env.clock['now'], 456)
+    selected = AliasMenuStore(env.m.DB_PATH).aliases(456)[0]
+    deps = env.m._build_timezone_settings_deps()
+    if delivery == 'initial':
+        await start_settings(update(Message(env.bot)), env.context, deps,
+                             page='alias_reminders', initial_data={'alias_selected': selected})
+        menu = env.bot.sent[-1]
+    else:
+        menu = await aliases_menu(env)
+        await click(env, menu, '👤 Друг')
+
+        async def fail(*args, **kwargs):
+            raise RuntimeError('message to edit not found')
+
+        if delivery == 'callback_fallback':
+            monkeypatch.setattr(Query, 'edit_message_text', fail)
+        if delivery.startswith('callback'):
+            await click(env, menu, 'Напоминания для этого алиаса')
+        else:
+            session = env.store.session(456, env.clock['now'])
+            session['data']['page'] = 'alias_reminders'
+            if delivery == 'input_fallback':
+                monkeypatch.setattr(env.bot, 'edit_message_text', fail)
+            await _render(update(Message(env.bot)), env.context, deps, session)
+        if delivery.endswith('fallback'):
+            menu = env.bot.sent[-1]
+            assert env.store.session(456, env.clock['now'])['message_id'] == menu.message_id
+    assert url in menu.text
+    assert menu.render_kwargs['disable_web_page_preview'] is True
+    await click(env, menu, 'Обновить')
+    refreshed = env.bot.sent[-1] if delivery == 'callback_fallback' else menu
+    assert refreshed.render_kwargs['disable_web_page_preview'] is True
+
+
+@pytest.mark.asyncio
+async def test_alias_reminder_list_orders_different_offsets_by_actual_instant(env):
+    from datetime import datetime
+
+    env.m.set_user_alias('Друг', 999, 999, 'natasha', 456)
+    env.m.add_reminder(999, 'Позже по факту', datetime.fromisoformat('2026-06-12T09:00:00+00:00'), 456)
+    env.m.add_reminder(999, 'Раньше по факту', datetime.fromisoformat('2026-06-12T10:00:00+02:00'), 456)
+    menu = await aliases_menu(env)
+    await click(env, menu, '👤 Друг')
+    await click(env, menu, 'Напоминания для этого алиаса')
+    assert menu.text.index('Раньше по факту') < menu.text.index('Позже по факту')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stage', ['name', 'username'])
+async def test_alias_input_storage_error_is_reported_and_original_prompt_can_retry(env, monkeypatch, stage):
+    known_user(env)
+    menu = await aliases_menu(env)
+    await click(env, menu, 'Добавить алиас')
+    await click(env, menu, 'Человек')
+    if stage == 'username':
+        await reply(env, 'Друг')
+    prompt = env.bot.sent[-1]
+    snapshot = env.store.session(456, env.clock['now'])
+    method = 'available' if stage == 'name' else 'user_target'
+
+    def fail(*args, **kwargs):
+        raise sqlite3.OperationalError('temporary read failure')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AliasMenuStore, method, fail)
+        await reply(env, 'Друг' if stage == 'name' else '@natasha', prompt=prompt)
+    assert 'Не удалось проверить алиас' in env.bot.sent[-1].text
+    assert env.store.session(456, env.clock['now']) == snapshot
+    assert env.m.get_all_user_aliases(456) == []
+    await reply(env, 'Друг' if stage == 'name' else '@natasha', prompt=prompt)
+    if stage == 'name':
+        await reply(env, '@natasha')
+    await click(env, menu, 'Создать алиас')
+    assert env.m.get_user_alias('Друг', 456)['chat_id'] == 999
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['user', 'chat'])
+async def test_alias_full_lifecycle_keeps_delivery_after_rename_and_delete(groups, kind):
+    from dkreminders_bot.workers.reminders_workers import run_reminders_worker
+    from test_settings_menu_integration import StopWorker
+
+    env = groups
+    if kind == 'user':
+        known_user(env)
+        menu = await person_preview(env)
+        old_name, new_name, destination = 'Наташа', 'Жена', 999
+    else:
+        menu, request_id = await group_picker(env)
+        await share(env, request_id)
+        old_name, new_name, destination = 'Работа', 'Команда', -100
+    await click(env, menu, 'Создать алиас')
+
+    async def create(name, text):
+        message = Message(env.bot, f'/remind {name} in 1 minute - {text}')
+        await env.m.remind_command(update(message), env.context)
+
+    await create(old_name, 'До переименования')
+    await click(env, menu, ('👤 ' if kind == 'user' else '💬 ') + old_name)
+    await click(env, menu, 'Переименовать')
+    await reply(env, new_name)
+    await click(env, menu, 'Сохранить новое имя')
+    await create(new_name, 'После переименования')
+    await create(old_name, 'По старому имени')
+    await click(env, menu, ('👤 ' if kind == 'user' else '💬 ') + new_name)
+    await click(env, menu, 'Напоминания для этого алиаса')
+    assert 'До переименования' in menu.text and 'После переименования' in menu.text
+    await click(env, menu, 'К алиасу')
+    await click(env, menu, 'Удалить')
+    await click(env, menu, 'Да, удалить')
+    await create(new_name, 'По удалённому имени')
+    with sqlite3.connect(env.m.DB_PATH) as conn:
+        assert conn.execute('SELECT chat_id,text FROM reminders ORDER BY id').fetchall() == [
+            (destination, 'До переименования'), (destination, 'После переименования'),
+        ]
+
+    async def get_chat(chat_id):
+        return SimpleNamespace(id=chat_id, type='private' if chat_id > 0 else 'supergroup')
+
+    async def stop(_):
+        raise StopWorker
+
+    env.bot.get_chat = get_chat
+    env.clock['now'] += timedelta(minutes=2)
+    deps = env.m._build_reminders_worker_deps()
+    deps.asyncio = SimpleNamespace(sleep=stop)
+    with pytest.raises(StopWorker):
+        await run_reminders_worker(SimpleNamespace(bot=env.bot), deps)
+    sent = [m.send_kwargs for m in env.bot.sent if hasattr(m, 'send_kwargs')]
+    assert [(m['chat_id'], m['text']) for m in sent] == [
+        (destination, 'До переименования'), (destination, 'После переименования'),
+    ]
+    with sqlite3.connect(env.m.DB_PATH) as conn:
+        assert conn.execute('SELECT delivered FROM reminders ORDER BY id').fetchall() == [(1,), (1,)]

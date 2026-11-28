@@ -22,6 +22,7 @@ class Message:
 
     async def reply_text(self, text, **kwargs):
         m = Message(self.bot, text, self.chat_id, markup=kwargs.get('reply_markup'))
+        m.render_kwargs = kwargs
         self.bot.sent.append(m)
         return m
 
@@ -50,9 +51,10 @@ class Bot:
     async def edit_message_reply_markup(self, **kwargs):
         pass
 
-    async def edit_message_text(self, *, chat_id, message_id, text, reply_markup=None):
+    async def edit_message_text(self, *, chat_id, message_id, text, reply_markup=None, **kwargs):
         m = next(m for m in self.sent if m.chat_id == chat_id and m.message_id == message_id)
         m.text, m.reply_markup = text, reply_markup
+        m.render_kwargs = kwargs
 
 
 class Query:
@@ -66,6 +68,7 @@ class Query:
 
     async def edit_message_text(self, text, **kwargs):
         self.message.text, self.message.reply_markup = text, kwargs.get('reply_markup')
+        self.message.render_kwargs = kwargs
 
     async def edit_message_reply_markup(self, reply_markup=None):
         self.message.reply_markup = reply_markup

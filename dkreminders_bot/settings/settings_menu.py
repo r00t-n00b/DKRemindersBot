@@ -1,5 +1,8 @@
 """Native Telegram settings: inline menus, reply-scoped custom input, drafts."""
 
+import logging
+import sqlite3
+
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -9,6 +12,9 @@ from dkreminders_bot.settings.timezone_features import InlineKeyboardButton, Inl
 from dkreminders_bot.settings.timezone_search import search_timezones
 from dkreminders_bot.ui.messages import SETTINGS_MENU_TEXT as TEXT, SETTINGS_MENU_LABELS as L, SETTINGS_INPUT_PROMPTS as PROMPTS, SETTINGS_NOTICES as N, settings_schedule_text
 from dkreminders_bot.ui.presentation import format_interval_duration
+from dkreminders_bot.ui.messages import ALIAS_MENU_NOTICES
+
+logger = logging.getLogger(__name__)
 
 try:
     from telegram import ForceReply
@@ -116,19 +122,20 @@ async def _render(update, context, deps, session, *, query=None):
     if not deps.settings_store.save(session):
         return False
     _, _, message = _identity(update)
+    render_options = {"reply_markup": keyboard, "disable_web_page_preview": True}
     if query is not None:
-        sent = await _edit_or_reply(query, text, reply_markup=keyboard)
+        sent = await _edit_or_reply(query, text, **render_options)
         if getattr(sent, "message_id", None) is not None:
             session["message_id"] = sent.message_id
     elif session.get("message_id") is not None:
         try:
-            await context.bot.edit_message_text(chat_id=session["chat_id"], message_id=session["message_id"], text=text, reply_markup=keyboard)
+            await context.bot.edit_message_text(chat_id=session["chat_id"], message_id=session["message_id"], text=text, **render_options)
         except Exception as exc:
             if "not modified" not in str(exc).lower():
-                sent = await message.reply_text(text, reply_markup=keyboard)
+                sent = await message.reply_text(text, **render_options)
                 session["message_id"] = getattr(sent, "message_id", None)
     else:
-        sent = await message.reply_text(text, reply_markup=keyboard)
+        sent = await message.reply_text(text, **render_options)
         session["message_id"] = getattr(sent, "message_id", None)
     deps.settings_store.save(session)
     return True
@@ -364,7 +371,11 @@ async def settings_text_input(update, context, deps):
     try:
         if kind.startswith("alias_"):
             from dkreminders_bot.settings.alias_menu import alias_text
-            await alias_text(kind, text, update, context, deps, session)
+            try:
+                await alias_text(kind, text, update, context, deps, session)
+            except sqlite3.Error:
+                logger.exception("Reading alias input failed")
+                await message.reply_text(ALIAS_MENU_NOTICES["input_storage_error"])
             return True
         if kind == "time":
             hour, minute = parse_default_time_value(text)
